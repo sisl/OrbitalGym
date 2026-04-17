@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "orbital-game"
+version = "0.1.0"
+description = "JAX-native framework for defender/intruder decision-making in orbital scenarios"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{name = "Duncan Eddy"}]
+dependencies = [
+    "jax>=0.4.30",
+    "jaxlib>=0.4.30",
+    "flax>=0.8.0",
+    "chex>=0.1.85",
+    "gymnax>=0.0.8",
+    "astrojax",
+    "h5py>=3.10",
+    "matplotlib>=3.8",
+    "scienceplots>=2.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-xdist>=3.5",
+    "ruff>=0.5",
+    "pyrefly>=0.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/orbital_game"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "B", "UP", "SIM", "PYI"]
+
+[tool.pyrefly]
+project-includes = ["src/orbital_game"]
+project-excludes = ["src/orbital_game/viz", "src/orbital_game/logging"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
