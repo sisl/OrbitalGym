@@ -28,7 +28,6 @@ class DynamicsKey(StrEnum):
 
 class ActuatorKey(StrEnum):
     IMPULSIVE = "impulsive"
-    CONTINUOUS = "continuous"
 
 
 class IntruderPolicyKey(StrEnum):
