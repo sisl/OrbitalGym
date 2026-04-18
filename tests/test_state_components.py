@@ -1,4 +1,5 @@
 """Tests for state components: fields() shape contract and zeros(n) initialization."""
+
 import jax.numpy as jnp
 import pytest
 
@@ -15,11 +16,11 @@ from orbital_game.state.components import (
 @pytest.mark.parametrize(
     "component, expected_fields",
     [
-        (RTState,   {"rt":  (4,)}),
-        (RTNState,  {"rtn": (6,)}),
-        (Mass,      {"propellant_mass": ()}),
-        (Power,     {"charge": ()}),
-        (Attitude,  {"quat": (4,)}),
+        (RTState, {"rt": (4,)}),
+        (RTNState, {"rtn": (6,)}),
+        (Mass, {"propellant_mass": ()}),
+        (Power, {"charge": ()}),
+        (Attitude, {"quat": (4,)}),
         (BodyRates, {"omega": (3,)}),
     ],
 )
@@ -30,12 +31,12 @@ def test_component_fields_match_spec(component, expected_fields):
 @pytest.mark.parametrize(
     "component, field, expected_leaf_shape",
     [
-        (RTState,   "rt",              (5, 4)),
-        (RTNState,  "rtn",             (5, 6)),
-        (Mass,      "propellant_mass", (5,)),
-        (Power,     "charge",          (5,)),
-        (Attitude,  "quat",            (5, 4)),
-        (BodyRates, "omega",           (5, 3)),
+        (RTState, "rt", (5, 4)),
+        (RTNState, "rtn", (5, 6)),
+        (Mass, "propellant_mass", (5,)),
+        (Power, "charge", (5,)),
+        (Attitude, "quat", (5, 4)),
+        (BodyRates, "omega", (5, 3)),
     ],
 )
 def test_component_zeros_shapes(component, field, expected_leaf_shape):

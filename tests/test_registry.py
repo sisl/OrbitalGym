@@ -1,4 +1,5 @@
 """Tests for enum keys + registry (serialization identity only)."""
+
 import pytest
 
 from orbital_game.registry import (
@@ -49,8 +50,15 @@ def test_resolve_missing_key_raises():
 def test_each_enum_has_at_least_one_member():
     """Spec sanity — no empty enum was accidentally shipped."""
     for enum_cls in (
-        StateComponentKey, DynamicsKey, ActuatorKey, IntruderPolicyKey,
-        ObservationFnKey, RewardFnKey, TerminationFnKey,
-        InitialConditionSamplerKey, BeliefInitializerKey, BeliefUpdaterKey,
+        StateComponentKey,
+        DynamicsKey,
+        ActuatorKey,
+        IntruderPolicyKey,
+        ObservationFnKey,
+        RewardFnKey,
+        TerminationFnKey,
+        InitialConditionSamplerKey,
+        BeliefInitializerKey,
+        BeliefUpdaterKey,
     ):
         assert len(list(enum_cls)) >= 1

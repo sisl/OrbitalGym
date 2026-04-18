@@ -4,6 +4,7 @@ Scope: serialization identity only. OrbitalGameEnv may also be constructed
 directly from callables in memory, bypassing the registry. The registry
 exists so a persisted ScenarioConfig can be reconstructed in a later session.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -12,21 +13,21 @@ from typing import TypeVar
 
 
 class StateComponentKey(StrEnum):
-    RT         = "rt"
-    RTN        = "rtn"
-    MASS       = "mass"
-    POWER      = "power"
-    ATTITUDE   = "attitude"
+    RT = "rt"
+    RTN = "rtn"
+    MASS = "mass"
+    POWER = "power"
+    ATTITUDE = "attitude"
     BODY_RATES = "body_rates"
 
 
 class DynamicsKey(StrEnum):
-    HCW_RT  = "hcw_rt"
+    HCW_RT = "hcw_rt"
     HCW_RTN = "hcw_rtn"
 
 
 class ActuatorKey(StrEnum):
-    IMPULSIVE  = "impulsive"
+    IMPULSIVE = "impulsive"
     CONTINUOUS = "continuous"
 
 
@@ -51,7 +52,7 @@ class InitialConditionSamplerKey(StrEnum):
 
 
 class BeliefInitializerKey(StrEnum):
-    GAUSSIAN_FROM_TRUTH      = "gaussian_from_truth"
+    GAUSSIAN_FROM_TRUTH = "gaussian_from_truth"
     GAUSSIAN_UNIFORM_DEFAULT = "gaussian_uniform_default"
 
 
@@ -65,9 +66,11 @@ F = TypeVar("F", bound=Callable)
 
 def register(key: Enum) -> Callable[[F], F]:
     """Decorator: @register(DynamicsKey.HCW_RTN) def hcw_rtn_step(...): ..."""
+
     def decorator(fn: F) -> F:
         _REGISTRY[key] = fn
         return fn
+
     return decorator
 
 

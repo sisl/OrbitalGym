@@ -8,6 +8,7 @@ Attitude and BodyRates ship as protocol-conforming stubs (no dynamics integratio
 in the bootstrap); they exist so future work can drop in without changing the
 assembly machinery.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -20,6 +21,7 @@ import jax.numpy as jnp
 @runtime_checkable
 class StateComponent(Protocol):
     """Shape contract for a state component."""
+
     name: ClassVar[str]
 
     @staticmethod
@@ -38,6 +40,7 @@ class RTState:
 
     rt layout: [r, t, r_dot, t_dot] — 4-dim per vehicle.
     """
+
     name: ClassVar[str] = "rt"
 
     @staticmethod
@@ -54,6 +57,7 @@ class RTNState:
 
     rtn layout: [r, t, n, r_dot, t_dot, n_dot] — 6-dim per vehicle.
     """
+
     name: ClassVar[str] = "rtn"
 
     @staticmethod
@@ -71,6 +75,7 @@ class Mass:
     Only propellant_mass is state; wet_mass is derived on demand as
     params.dry_mass_kg + state.propellant_mass.
     """
+
     name: ClassVar[str] = "mass"
 
     @staticmethod
@@ -84,6 +89,7 @@ class Mass:
 
 class Power:
     """Scalar state-of-charge. No-op dynamics in bootstrap (stub)."""
+
     name: ClassVar[str] = "power"
 
     @staticmethod
@@ -97,6 +103,7 @@ class Power:
 
 class Attitude:
     """Quaternion attitude (w, x, y, z). Protocol-level stub in bootstrap."""
+
     name: ClassVar[str] = "attitude"
 
     @staticmethod
@@ -112,6 +119,7 @@ class Attitude:
 
 class BodyRates:
     """Body-frame angular rates (ωx, ωy, ωz). Protocol-level stub in bootstrap."""
+
     name: ClassVar[str] = "body_rates"
 
     @staticmethod

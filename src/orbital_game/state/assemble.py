@@ -4,6 +4,7 @@ The resulting class is a flax.struct.dataclass (i.e., a JAX pytree) with exactly
 the union of the components' fields, in a deterministic order: components in the
 order passed, and each component's fields in their insertion order.
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence

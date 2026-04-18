@@ -1,4 +1,5 @@
 """Tests for runtime assembly of per-scenario state classes."""
+
 import jax
 import jax.numpy as jnp
 

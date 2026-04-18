@@ -1,4 +1,5 @@
 """Shared pytest fixtures for orbital-game tests."""
+
 import jax
 import pytest
 
@@ -19,5 +20,6 @@ def keys(key):
 def rng_float64():
     """Enable float64 precision for tests that need it (e.g., HVA epoch, HCW)."""
     from jax import config
+
     config.update("jax_enable_x64", True)
     yield
