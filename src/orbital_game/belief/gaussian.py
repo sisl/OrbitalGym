@@ -7,12 +7,13 @@ __call__ runs predict-then-correct.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import flax.struct
 import jax
 import jax.numpy as jnp
 
-from orbital_game.registry import BeliefUpdaterKey, register
+from orbital_game.registry import BeliefInitializerKey, BeliefUpdaterKey, register
 
 
 @flax.struct.dataclass
@@ -85,3 +86,41 @@ class GaussianKalmanUpdater:
         del params, dt, key
         predicted = self.predict(belief, action)
         return self.correct(predicted, observation)
+
+
+@register(BeliefInitializerKey.GAUSSIAN_FROM_TRUTH)
+@dataclass(frozen=True)
+class GaussianFromTruthInitializer:
+    """Initial belief centered on the sampled ground-truth env_state.
+
+    Mean = layout.flatten(env_state.defenders, env_state.intruders).
+    Cov  = diag(variance_diag).
+
+    Models "the defender starts with a noisy fix on the true initial state."
+    """
+
+    layout: Any
+    variance_diag: jax.Array
+
+    def __call__(self, config, env_state, key) -> GaussianBelief:
+        del config, key
+        mean = self.layout.flatten(env_state.defenders, env_state.intruders)
+        cov = jnp.diag(self.variance_diag)
+        return GaussianBelief(mean=mean, cov=cov)
+
+
+@register(BeliefInitializerKey.GAUSSIAN_UNIFORM_DEFAULT)
+@dataclass(frozen=True)
+class GaussianUniformDefaultInitializer:
+    """Uninformed initial belief — ignores env_state and uses a configured mean + diag cov.
+
+    Models "the defender starts with a prior that is not informed by ground truth."
+    Useful as a harder baseline than the from-truth version.
+    """
+
+    default_mean: jax.Array
+    variance_diag: jax.Array
+
+    def __call__(self, config, env_state, key) -> GaussianBelief:
+        del config, env_state, key
+        return GaussianBelief(mean=self.default_mean, cov=jnp.diag(self.variance_diag))
