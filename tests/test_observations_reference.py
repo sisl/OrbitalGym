@@ -21,6 +21,5 @@ def test_full_observation_returns_flat_state_vector():
         params=None,
         key=jax.random.PRNGKey(0),
         t=jnp.array(0.0),
-        for_side="defender",
     )
     assert jnp.allclose(out, jnp.concatenate([jnp.arange(6.0), jnp.arange(6.0) + 100]))

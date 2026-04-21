@@ -1,3 +1,9 @@
+# Defvelopment
+.DS_Store
+.idea/
+.vscode/
+refs/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -143,6 +149,10 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+# Un-ignore the package's env submodule (case-insensitive filesystems
+# match `env/` and `ENV/` against `src/orbital_game/env/`).
+!src/orbital_game/env/
+!src/orbital_game/env/**
 
 # Spyder project settings
 .spyderproject

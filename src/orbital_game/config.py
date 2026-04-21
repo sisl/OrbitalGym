@@ -21,13 +21,13 @@ from orbital_game.registry import (
     BeliefInitializerKey,
     BeliefUpdaterKey,
     DynamicsKey,
-    InitialConditionSamplerKey,
     IntruderPolicyKey,
     ObservationFnKey,
     RewardFnKey,
     StateComponentKey,
     TerminationFnKey,
 )
+from orbital_game.sampling.reference import GaussianAroundNominal
 
 
 @dataclass(frozen=True)
@@ -58,6 +58,12 @@ class ScenarioConfig:
     defender_params: VehicleParamsSpec
     intruder_params: VehicleParamsSpec
 
+    # Initial-condition sampler. The user constructs this with their chosen
+    # nominal states + noise magnitudes; the env uses it directly at reset.
+    # Typed concretely as GaussianAroundNominal for the bootstrap; if more
+    # IC samplers land, promote to a union or a structural protocol.
+    ic_sampler: GaussianAroundNominal
+
     # Environment clock + reproducibility
     dt: float
     max_horizon_s: float
@@ -69,10 +75,12 @@ class ScenarioConfig:
     defender_actuator: ActuatorKey = ActuatorKey.IMPULSIVE
     intruder_actuator: ActuatorKey = ActuatorKey.IMPULSIVE
     intruder_policy: IntruderPolicyKey = IntruderPolicyKey.ZERO_CONTROL
-    observation_fn: ObservationFnKey = ObservationFnKey.FULL
+    # Separate observation functions per side — defenders and intruders do not
+    # share sensor suites in general. Configure independently.
+    defender_observation_fn: ObservationFnKey = ObservationFnKey.FULL
+    intruder_observation_fn: ObservationFnKey = ObservationFnKey.FULL
     reward_fn: RewardFnKey = RewardFnKey.DISTANCE_TO_HVA
     termination_fn: TerminationFnKey = TerminationFnKey.MAX_STEPS_OR_BREACH
-    ic_sampler: InitialConditionSamplerKey = InitialConditionSamplerKey.GAUSSIAN_AROUND_NOMINAL
     belief_initializer: BeliefInitializerKey = BeliefInitializerKey.GAUSSIAN_FROM_TRUTH
     belief_updater: BeliefUpdaterKey = BeliefUpdaterKey.GAUSSIAN_KALMAN
 
@@ -121,6 +129,17 @@ def _config_to_primitive(cfg: ScenarioConfig) -> dict[str, Any]:
             }
         elif isinstance(v, VehicleParamsSpec):
             d[f.name] = asdict(v)
+        elif isinstance(v, GaussianAroundNominal):
+            d[f.name] = {
+                "nominal_defender_state": [
+                    [float(x) for x in row] for row in v.nominal_defender_state
+                ],
+                "nominal_intruder_state": [
+                    [float(x) for x in row] for row in v.nominal_intruder_state
+                ],
+                "sigma_pos": float(v.sigma_pos),
+                "sigma_vel": float(v.sigma_vel),
+            }
         else:
             d[f.name] = v
     return d
@@ -134,10 +153,10 @@ _ENUM_FIELDS: dict[str, type[Enum]] = {
     "defender_actuator": ActuatorKey,
     "intruder_actuator": ActuatorKey,
     "intruder_policy": IntruderPolicyKey,
-    "observation_fn": ObservationFnKey,
+    "defender_observation_fn": ObservationFnKey,
+    "intruder_observation_fn": ObservationFnKey,
     "reward_fn": RewardFnKey,
     "termination_fn": TerminationFnKey,
-    "ic_sampler": InitialConditionSamplerKey,
     "belief_initializer": BeliefInitializerKey,
     "belief_updater": BeliefUpdaterKey,
 }
@@ -158,6 +177,13 @@ def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> Scen
             )
         elif f.name in ("defender_params", "intruder_params"):
             kwargs[f.name] = VehicleParamsSpec(**v)
+        elif f.name == "ic_sampler":
+            kwargs[f.name] = GaussianAroundNominal(
+                nominal_defender_state=jnp.asarray(v["nominal_defender_state"]),
+                nominal_intruder_state=jnp.asarray(v["nominal_intruder_state"]),
+                sigma_pos=v["sigma_pos"],
+                sigma_vel=v["sigma_vel"],
+            )
         else:
             kwargs[f.name] = v
     return cls(**kwargs)

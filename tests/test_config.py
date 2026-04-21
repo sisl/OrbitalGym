@@ -9,6 +9,7 @@ from orbital_game.registry import (
     DynamicsKey,
     StateComponentKey,
 )
+from orbital_game.sampling.reference import GaussianAroundNominal
 
 
 def make_config(**overrides):
@@ -27,6 +28,12 @@ def make_config(**overrides):
         ),
         intruder_params=VehicleParamsSpec(
             dry_mass_kg=50.0, propellant_mass_kg=5.0, isp_s=200.0, max_thrust_n=2.0
+        ),
+        ic_sampler=GaussianAroundNominal(
+            nominal_defender_state=jnp.array([[1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
+            nominal_intruder_state=jnp.array([[-1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
+            sigma_pos=10.0,
+            sigma_vel=0.1,
         ),
         dt=10.0,
         max_horizon_s=2000.0,

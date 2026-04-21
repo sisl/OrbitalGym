@@ -1,0 +1,104 @@
+"""Tests for env/environment.py — OrbitalGameEnv reset/step determinism + shape contract."""
+
+import jax
+import jax.numpy as jnp
+
+from orbital_game.config import ScenarioConfig, VehicleParamsSpec
+from orbital_game.env.environment import OrbitalGameEnv
+from orbital_game.hva import HVAState
+from orbital_game.registry import DynamicsKey, StateComponentKey
+from orbital_game.sampling.reference import GaussianAroundNominal
+
+
+def _make_cfg() -> ScenarioConfig:
+    return ScenarioConfig(
+        n_defenders=1,
+        n_intruders=1,
+        epoch_mjd_utc=60067.0,
+        hva=HVAState(
+            position_eci=jnp.array([7000e3, 0.0, 0.0]),
+            velocity_eci=jnp.array([0.0, 7.5e3, 0.0]),
+        ),
+        defender_components=(StateComponentKey.RTN, StateComponentKey.MASS),
+        intruder_components=(StateComponentKey.RTN,),
+        defender_params=VehicleParamsSpec(100.0, 10.0, 220.0, 5.0),
+        intruder_params=VehicleParamsSpec(50.0, 5.0, 200.0, 2.0),
+        ic_sampler=GaussianAroundNominal(
+            nominal_defender_state=jnp.array([[1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
+            nominal_intruder_state=jnp.array([[-1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
+            sigma_pos=10.0,
+            sigma_vel=0.1,
+        ),
+        dt=10.0,
+        max_horizon_s=2000.0,
+        seed=0,
+    )
+
+
+def test_env_reset_is_deterministic_under_same_key():
+    env = OrbitalGameEnv(_make_cfg())
+    key = jax.random.PRNGKey(42)
+    s_a, obs_a = env.reset(key)
+    s_b, obs_b = env.reset(key)
+    assert jnp.allclose(s_a.defenders.rtn, s_b.defenders.rtn)
+    assert jnp.allclose(obs_a, obs_b)
+
+
+def test_env_step_is_deterministic_under_same_key():
+    env = OrbitalGameEnv(_make_cfg())
+    key = jax.random.PRNGKey(42)
+    s0, _ = env.reset(key)
+    action = jnp.zeros((1, 3))
+    step_key = jax.random.PRNGKey(99)
+    s1_a, obs_a, r_a, d_a, _ = env.step(step_key, s0, action)
+    s1_b, obs_b, r_b, d_b, _ = env.step(step_key, s0, action)
+    assert jnp.allclose(s1_a.defenders.rtn, s1_b.defenders.rtn)
+    assert jnp.isclose(r_a, r_b)
+
+
+def test_env_step_increments_step_counter_and_time():
+    env = OrbitalGameEnv(_make_cfg())
+    key = jax.random.PRNGKey(0)
+    s0, _ = env.reset(key)
+    assert int(s0.step) == 0
+    assert float(s0.t) == 0.0
+    s1, _, _, _, _ = env.step(jax.random.PRNGKey(1), s0, jnp.zeros((1, 3)))
+    assert int(s1.step) == 1
+    assert float(s1.t) == 10.0  # dt
+
+
+def test_env_runs_end_to_end_with_rt_2d_dynamics():
+    """HCW_RT (2D) scenario: reward + termination use 2D norm over (r, t), no error."""
+    cfg = ScenarioConfig(
+        n_defenders=1,
+        n_intruders=1,
+        epoch_mjd_utc=60067.0,
+        hva=HVAState(
+            position_eci=jnp.array([7000e3, 0.0, 0.0]),
+            velocity_eci=jnp.array([0.0, 7.5e3, 0.0]),
+        ),
+        defender_components=(StateComponentKey.RT,),
+        intruder_components=(StateComponentKey.RT,),
+        defender_params=VehicleParamsSpec(100.0, 10.0, 220.0, 5.0),
+        intruder_params=VehicleParamsSpec(50.0, 5.0, 200.0, 2.0),
+        ic_sampler=GaussianAroundNominal(
+            nominal_defender_state=jnp.array([[1000.0, 0.0, 0.0, 0.0]]),
+            nominal_intruder_state=jnp.array([[-1000.0, 0.0, 0.0, 0.0]]),
+            sigma_pos=10.0,
+            sigma_vel=0.1,
+        ),
+        dt=10.0,
+        max_horizon_s=2000.0,
+        seed=0,
+        truth_dynamics=DynamicsKey.HCW_RT,
+        planning_dynamics=DynamicsKey.HCW_RT,
+    )
+    env = OrbitalGameEnv(cfg)
+    s0, obs0 = env.reset(jax.random.PRNGKey(0))
+    assert s0.defenders.rt.shape == (1, 4)
+    assert s0.intruders.rt.shape == (1, 4)
+    # Defender action is 2D in RT scenarios.
+    s1, obs1, r1, d1, _ = env.step(jax.random.PRNGKey(1), s0, jnp.zeros((1, 2)))
+    assert s1.defenders.rt.shape == (1, 4)
+    assert jnp.isfinite(r1)
+    assert bool(d1) in (True, False)  # termination is a bool scalar

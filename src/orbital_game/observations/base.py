@@ -1,8 +1,14 @@
-"""ObservationFn protocol — structural contract for observation functions."""
+"""ObservationFn protocol — structural contract for observation functions.
+
+Defenders and intruders get their own independent observation functions —
+they are not constrained to share sensor suites, masking patterns, or noise
+models. `OrbitalGameEnv` wires a `defender_observation_fn` and an
+`intruder_observation_fn` separately, both satisfying this same protocol.
+"""
 
 from __future__ import annotations
 
-from typing import Any, Literal, Protocol
+from typing import Any, Protocol
 
 import jax
 
@@ -10,9 +16,10 @@ import jax
 class ObservationFn(Protocol):
     """Structural protocol for an observation function.
 
-    Receives the full ground-truth env_state and returns what the side under
-    `for_side` is allowed to see. Reference implementation returns the full
-    flat state; realistic implementations mask/noise the intruder portion.
+    Receives the full ground-truth env_state and returns what the caller
+    (defender or intruder — the env decides by which attribute it invokes)
+    is allowed to see. Reference implementation returns the full flat state;
+    realistic implementations mask, slice, or add noise per their sensor model.
     """
 
     def __call__(
@@ -21,5 +28,4 @@ class ObservationFn(Protocol):
         params: Any,
         key: jax.Array,
         t: jax.Array,
-        for_side: Literal["defender", "intruder"],
     ) -> Any: ...

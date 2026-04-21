@@ -16,8 +16,8 @@ class MaxStepsOrBreach:
     """Terminate when step count hits max_steps OR when any defender is inside
     breach_distance_m of the HVA origin.
 
-    Assumes the scenario uses RTNState (reads `state.defenders.rtn[:, :3]` for
-    position). For RTState (2D) scenarios this would need to read `rt[:, :2]`.
+    Works with either dynamics choice: RTN state → 3D norm over (r, t, n);
+    RT state → 2D norm over (r, t).
     """
 
     max_steps: int
@@ -26,7 +26,9 @@ class MaxStepsOrBreach:
     def __call__(self, state, params, t) -> jax.Array:
         del params, t
         hit_max = state.step >= self.max_steps
-        positions = state.defenders.rtn[:, :3]
+        defs = state.defenders
+        # RTN state → 3D norm over (r, t, n); RT state → 2D norm over (r, t).
+        positions = defs.rtn[:, :3] if hasattr(defs, "rtn") else defs.rt[:, :2]
         min_dist = jnp.min(jnp.linalg.norm(positions, axis=-1))
         breached = min_dist < self.breach_distance_m
         return jnp.logical_or(hit_max, breached)

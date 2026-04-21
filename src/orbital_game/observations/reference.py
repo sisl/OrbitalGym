@@ -13,12 +13,13 @@ from orbital_game.registry import ObservationFnKey, register
 class FullObservation:
     """Return StateLayout.flatten(env_state.defenders, env_state.intruders).
 
-    This is the no-partial-observability baseline. Real scenarios will swap this
-    out for a function that masks/noises the intruder portion.
+    The no-partial-observability baseline. Same behavior regardless of which
+    side invokes it; asymmetric observation models use separate
+    `FullObservation`-shaped implementations per side.
     """
 
     layout: Any  # StateLayout
 
-    def __call__(self, env_state, params, key, t, for_side):
-        del params, key, t, for_side
+    def __call__(self, env_state, params, key, t):
+        del params, key, t
         return self.layout.flatten(env_state.defenders, env_state.intruders)

@@ -22,6 +22,12 @@ def _make_cfg(seed: int) -> ScenarioConfig:
         intruder_components=(StateComponentKey.RTN,),
         defender_params=VehicleParamsSpec(100.0, 10.0, 220.0, 5.0),
         intruder_params=VehicleParamsSpec(50.0, 5.0, 200.0, 2.0),
+        ic_sampler=GaussianAroundNominal(
+            nominal_defender_state=jnp.array([[100.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
+            nominal_intruder_state=jnp.array([[-100.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
+            sigma_pos=1.0,
+            sigma_vel=0.1,
+        ),
         dt=10.0,
         max_horizon_s=2000.0,
         seed=seed,
@@ -30,13 +36,7 @@ def _make_cfg(seed: int) -> ScenarioConfig:
 
 def test_gaussian_around_nominal_is_seed_deterministic():
     cfg = _make_cfg(seed=0)
-    sampler = GaussianAroundNominal(
-        nominal_defender_rtn=jnp.array([[100.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
-        nominal_intruder_rtn=jnp.array([[-100.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
-        sigma_pos=1.0,
-        sigma_vel=0.1,
-    )
-    a = sampler(cfg, jax.random.PRNGKey(42))
-    b = sampler(cfg, jax.random.PRNGKey(42))
+    a = cfg.ic_sampler(cfg, jax.random.PRNGKey(42))
+    b = cfg.ic_sampler(cfg, jax.random.PRNGKey(42))
     assert jnp.allclose(a[0].rtn, b[0].rtn)
     assert jnp.allclose(a[1].rtn, b[1].rtn)
