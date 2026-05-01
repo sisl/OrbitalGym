@@ -2,7 +2,7 @@
 
 Design notes:
   - The rollout uses the observation returned by env.reset / env.step directly;
-    no extra call to env.defender_observation_fn is needed. The scan carry
+    no extra call to env.guard_observation_fn is needed. The scan carry
     threads (env_state, policy_state, obs, terminated) so the policy at step t
     sees the observation from step t-1 (or env.reset for step 0).
   - **Freeze-on-done.** Once `done=True` fires at step k, subsequent steps
@@ -40,16 +40,16 @@ class Trajectory:
     """
 
     env_state: Any  # EnvState pytree, leading T axis per leaf
-    action: jax.Array  # (T, N_defenders, action_dim)
+    action: jax.Array  # (T, N_guards, action_dim)
     reward: jax.Array  # (T,)
     done: jax.Array  # (T,) boolean — latched True after first termination
-    obs: jax.Array  # (T, obs_dim) — defender obs the policy saw at step t
+    obs: jax.Array  # (T, obs_dim) — guard obs the policy saw at step t
     policy_state: Any  # policy_state pytree at each step, leading T axis
 
 
 def rollout(
     env,
-    defender_policy: Callable,
+    guard_policy: Callable,
     init_policy_state_fn: Callable,
     key: jax.Array,
     n_steps: int,
@@ -65,7 +65,7 @@ def rollout(
 
     Args:
       env: OrbitalGameEnv
-      defender_policy: (policy_state, obs, key, t) -> (action, next_policy_state)
+      guard_policy: (policy_state, obs, key, t) -> (action, next_policy_state)
       init_policy_state_fn: (config, env_state, key) -> policy_state
       key: master PRNGKey for the rollout
       n_steps: scan length (fixed; jax.lax.scan requires a static loop count)
@@ -78,7 +78,7 @@ def rollout(
     def _step(carry, step_key):
         es, ps, obs, terminated = carry
         k_act, k_env = jax.random.split(step_key, 2)
-        action, next_ps = defender_policy(ps, obs, k_act, es.t)
+        action, next_ps = guard_policy(ps, obs, k_act, es.t)
         next_es, next_obs, reward, done, _ = env.step(k_env, es, action)
 
         next_terminated = terminated | done

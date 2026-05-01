@@ -1,4 +1,4 @@
-"""Multi-vehicle ROE example: 3 defenders + 2 intruders with min-separation rejection.
+"""Multi-vehicle ROE example: 3 guards + 2 bandits with min-separation rejection.
 
 Demonstrates:
   - Heterogeneous per-vehicle ROE specs (per-vehicle radial_ellipse_m array).
@@ -15,7 +15,7 @@ import jax.numpy as jnp
 
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec
 from orbital_game.env.environment import OrbitalGameEnv
-from orbital_game.hva import HVAState
+from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.registry import StateComponentKey
 from orbital_game.rollout import rollout
 from orbital_game.sampling.mass import ConstantMass
@@ -26,32 +26,32 @@ from orbital_game.sampling.validators import MinSeparation, SeparationScope
 
 def build_config() -> ScenarioConfig:
     return ScenarioConfig(
-        n_defenders=3,
-        n_intruders=2,
+        n_guards=3,
+        n_bandits=2,
         epoch_mjd_utc=60067.0,
-        hva=HVAState(
+        reference_orbit=ReferenceOrbitState(
             position_eci=jnp.array([7000e3, 0.0, 0.0]),
             velocity_eci=jnp.array([0.0, 7.5e3, 0.0]),
         ),
-        defender_components=(StateComponentKey.RTN, StateComponentKey.MASS),
-        intruder_components=(StateComponentKey.RTN,),
-        defender_params=VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
-        intruder_params=VehicleParamsSpec(dry_mass_kg=50.0, isp_s=200.0, max_thrust_n=2.0),
+        guard_components=(StateComponentKey.RTN, StateComponentKey.MASS),
+        bandit_components=(StateComponentKey.RTN,),
+        guard_params=VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
+        bandit_params=VehicleParamsSpec(dry_mass_kg=50.0, isp_s=200.0, max_thrust_n=2.0),
         ic_sampler=ICSpec(
-            defender_sampler=RelativeEllipse(
-                # Heterogeneous: 3 defenders with different ellipse sizes
+            guard_sampler=RelativeEllipse(
+                # Heterogeneous: 3 guards with different ellipse sizes
                 radial_ellipse_m=jnp.array([500.0, 750.0, 1000.0]),
                 cross_track_m=jnp.array([100.0, 100.0, 100.0]),
                 phase_rad=jnp.array([0.0, 2 * jnp.pi / 3, 4 * jnp.pi / 3]),
                 mass_sampler=ConstantMass(propellant_mass_kg=10.0),
             ),
-            intruder_sampler=RelativeEllipse(
+            bandit_sampler=RelativeEllipse(
                 radial_ellipse_m=jnp.array([1500.0, 1500.0]),
                 cross_track_m=jnp.array([200.0, 200.0]),
                 phase_rad=None,  # uniform random
                 sigma_radial_ellipse_m=50.0,
             ),
-            # Reject if any pair (defender-defender, intruder-intruder, or cross)
+            # Reject if any pair (guard-guard, bandit-bandit, or cross)
             # is closer than 50m at t=0.
             validators=(MinSeparation(distance_m=50.0, scope=SeparationScope.ALL),),
             max_attempts=200,
@@ -68,7 +68,7 @@ def run() -> None:
 
     def policy(ps, obs, key, t):
         del obs, key, t
-        return jnp.zeros((cfg.n_defenders, 3)), ps
+        return jnp.zeros((cfg.n_guards, 3)), ps
 
     def init_ps(config, env_state, key):
         del config, env_state, key
@@ -85,8 +85,8 @@ def run() -> None:
     valid_rate = float(jnp.mean(traj.env_state.ic_valid[:, 0]))
     print(f"IC validity rate across 64 seeds: {valid_rate:.3f}")
     print(
-        "Mean defender propellant at t=0: "
-        f"{float(jnp.mean(traj.env_state.defenders.propellant_mass[:, 0])):.2f} kg"
+        "Mean guard propellant at t=0: "
+        f"{float(jnp.mean(traj.env_state.guards.propellant_mass[:, 0])):.2f} kg"
     )
 
 

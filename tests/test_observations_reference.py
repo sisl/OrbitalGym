@@ -12,8 +12,8 @@ def test_full_observation_returns_flat_state_vector():
             return jnp.concatenate([d, i])
 
     class _Env:
-        defenders = jnp.arange(6.0)
-        intruders = jnp.arange(6.0) + 100
+        guards = jnp.arange(6.0)
+        bandits = jnp.arange(6.0) + 100
 
     obs_fn = FullObservation(layout=_Layout())
     out = obs_fn(

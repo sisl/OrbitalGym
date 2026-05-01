@@ -18,8 +18,8 @@ from orbital_game.registry import BeliefInitializerKey, BeliefUpdaterKey, regist
 
 @flax.struct.dataclass
 class GaussianBelief:
-    mean: jax.Array  # (D,) or (N_defenders, D) for decentralized
-    cov: jax.Array  # (D, D) or (N_defenders, D, D)
+    mean: jax.Array  # (D,) or (N_guards, D) for decentralized
+    cov: jax.Array  # (D, D) or (N_guards, D, D)
 
 
 @register(BeliefUpdaterKey.GAUSSIAN_KALMAN)
@@ -93,10 +93,10 @@ class GaussianKalmanUpdater:
 class GaussianFromTruthInitializer:
     """Initial belief centered on the sampled ground-truth env_state.
 
-    Mean = layout.flatten(env_state.defenders, env_state.intruders).
+    Mean = layout.flatten(env_state.guards, env_state.bandits).
     Cov  = diag(variance_diag).
 
-    Models "the defender starts with a noisy fix on the true initial state."
+    Models "the guard starts with a noisy fix on the true initial state."
     """
 
     layout: Any
@@ -104,7 +104,7 @@ class GaussianFromTruthInitializer:
 
     def __call__(self, config, env_state, key) -> GaussianBelief:
         del config, key
-        mean = self.layout.flatten(env_state.defenders, env_state.intruders)
+        mean = self.layout.flatten(env_state.guards, env_state.bandits)
         cov = jnp.diag(self.variance_diag)
         return GaussianBelief(mean=mean, cov=cov)
 
@@ -114,7 +114,7 @@ class GaussianFromTruthInitializer:
 class GaussianUniformDefaultInitializer:
     """Uninformed initial belief — ignores env_state and uses a configured mean + diag cov.
 
-    Models "the defender starts with a prior that is not informed by ground truth."
+    Models "the guard starts with a prior that is not informed by ground truth."
     Useful as a harder baseline than the from-truth version.
     """
 

@@ -15,13 +15,13 @@ from typing import Any
 
 import jax.numpy as jnp
 
-from orbital_game.hva import HVAState
+from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.registry import (
     ActuatorKey,
+    BanditPolicyKey,
     BeliefInitializerKey,
     BeliefUpdaterKey,
     DynamicsKey,
-    IntruderPolicyKey,
     ObservationFnKey,
     RewardFnKey,
     StateComponentKey,
@@ -40,22 +40,22 @@ class VehicleParamsSpec:
 @dataclass(frozen=True)
 class ScenarioConfig:
     # Fleet sizing
-    n_defenders: int
-    n_intruders: int
+    n_guards: int
+    n_bandits: int
 
-    # Scenario time anchor (epoch is scenario-level, not HVA-level)
+    # Scenario time anchor (epoch is scenario-level, not reference-orbit-level)
     epoch_mjd_utc: float
 
-    # HVA kinematic state at epoch
-    hva: HVAState
+    # Reference-orbit kinematic state at epoch (HCW dynamical anchor)
+    reference_orbit: ReferenceOrbitState
 
     # Per-side state components
-    defender_components: tuple[StateComponentKey, ...]
-    intruder_components: tuple[StateComponentKey, ...]
+    guard_components: tuple[StateComponentKey, ...]
+    bandit_components: tuple[StateComponentKey, ...]
 
     # Per-side vehicle parameters
-    defender_params: VehicleParamsSpec
-    intruder_params: VehicleParamsSpec
+    guard_params: VehicleParamsSpec
+    bandit_params: VehicleParamsSpec
 
     # Initial-condition specification. The user composes per-side samplers
     # (RelativeKeplerian, RelativeEllipse, ...), optional validators, and a
@@ -71,14 +71,14 @@ class ScenarioConfig:
     # Pluggables
     truth_dynamics: DynamicsKey = DynamicsKey.HCW_RTN
     planning_dynamics: DynamicsKey = DynamicsKey.HCW_RTN
-    defender_actuator: ActuatorKey = ActuatorKey.IMPULSIVE
-    intruder_actuator: ActuatorKey = ActuatorKey.IMPULSIVE
-    intruder_policy: IntruderPolicyKey = IntruderPolicyKey.ZERO_CONTROL
-    # Separate observation functions per side — defenders and intruders do not
+    guard_actuator: ActuatorKey = ActuatorKey.IMPULSIVE
+    bandit_actuator: ActuatorKey = ActuatorKey.IMPULSIVE
+    bandit_policy: BanditPolicyKey = BanditPolicyKey.ZERO_CONTROL
+    # Separate observation functions per side — guards and bandits do not
     # share sensor suites in general. Configure independently.
-    defender_observation_fn: ObservationFnKey = ObservationFnKey.FULL
-    intruder_observation_fn: ObservationFnKey = ObservationFnKey.FULL
-    reward_fn: RewardFnKey = RewardFnKey.DISTANCE_TO_HVA
+    guard_observation_fn: ObservationFnKey = ObservationFnKey.FULL
+    bandit_observation_fn: ObservationFnKey = ObservationFnKey.FULL
+    reward_fn: RewardFnKey = RewardFnKey.DISTANCE_TO_REFERENCE_ORBIT
     termination_fn: TerminationFnKey = TerminationFnKey.MAX_STEPS_OR_BREACH
     belief_initializer: BeliefInitializerKey = BeliefInitializerKey.GAUSSIAN_FROM_TRUTH
     belief_updater: BeliefUpdaterKey = BeliefUpdaterKey.GAUSSIAN_KALMAN
@@ -89,10 +89,10 @@ class ScenarioConfig:
         return math.ceil(self.max_horizon_s / self.dt)
 
     def __post_init__(self) -> None:
-        if self.n_defenders < 1:
-            raise ValueError("n_defenders must be >= 1")
-        if self.n_intruders < 1:
-            raise ValueError("n_intruders must be >= 1")
+        if self.n_guards < 1:
+            raise ValueError("n_guards must be >= 1")
+        if self.n_bandits < 1:
+            raise ValueError("n_bandits must be >= 1")
         if self.dt <= 0:
             raise ValueError("dt must be > 0")
         if self.max_horizon_s <= 0:
@@ -117,7 +117,7 @@ def _config_to_primitive(cfg: ScenarioConfig) -> dict[str, Any]:
             d[f.name] = v.value
         elif isinstance(v, tuple) and v and isinstance(v[0], Enum):
             d[f.name] = [x.value for x in v]
-        elif isinstance(v, HVAState):
+        elif isinstance(v, ReferenceOrbitState):
             d[f.name] = {
                 "position_eci": [float(x) for x in v.position_eci],
                 "velocity_eci": [float(x) for x in v.velocity_eci],
@@ -132,15 +132,15 @@ def _config_to_primitive(cfg: ScenarioConfig) -> dict[str, Any]:
 
 
 _ENUM_FIELDS: dict[str, type[Enum]] = {
-    "defender_components": StateComponentKey,
-    "intruder_components": StateComponentKey,
+    "guard_components": StateComponentKey,
+    "bandit_components": StateComponentKey,
     "truth_dynamics": DynamicsKey,
     "planning_dynamics": DynamicsKey,
-    "defender_actuator": ActuatorKey,
-    "intruder_actuator": ActuatorKey,
-    "intruder_policy": IntruderPolicyKey,
-    "defender_observation_fn": ObservationFnKey,
-    "intruder_observation_fn": ObservationFnKey,
+    "guard_actuator": ActuatorKey,
+    "bandit_actuator": ActuatorKey,
+    "bandit_policy": BanditPolicyKey,
+    "guard_observation_fn": ObservationFnKey,
+    "bandit_observation_fn": ObservationFnKey,
     "reward_fn": RewardFnKey,
     "termination_fn": TerminationFnKey,
     "belief_initializer": BeliefInitializerKey,
@@ -152,16 +152,16 @@ def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> Scen
     kwargs: dict[str, Any] = {}
     for f in fields(cls):
         v = raw[f.name]
-        if f.name in ("defender_components", "intruder_components"):
+        if f.name in ("guard_components", "bandit_components"):
             kwargs[f.name] = tuple(StateComponentKey(x) for x in v)
         elif f.name in _ENUM_FIELDS:
             kwargs[f.name] = _ENUM_FIELDS[f.name](v)
-        elif f.name == "hva":
-            kwargs[f.name] = HVAState(
+        elif f.name == "reference_orbit":
+            kwargs[f.name] = ReferenceOrbitState(
                 position_eci=jnp.asarray(v["position_eci"]),
                 velocity_eci=jnp.asarray(v["velocity_eci"]),
             )
-        elif f.name in ("defender_params", "intruder_params"):
+        elif f.name in ("guard_params", "bandit_params"):
             kwargs[f.name] = VehicleParamsSpec(**v)
         elif f.name == "ic_sampler":
             kwargs[f.name] = _ic_spec_from_primitive(v)
@@ -174,8 +174,8 @@ def _ic_spec_to_primitive(spec: ICSpec) -> dict:
     """Serialize an ICSpec for JSON round-trip."""
     from orbital_game.sampling.serialize import serializable_to_primitive
     return {
-        "defender_sampler": serializable_to_primitive(spec.defender_sampler),
-        "intruder_sampler": serializable_to_primitive(spec.intruder_sampler),
+        "guard_sampler": serializable_to_primitive(spec.guard_sampler),
+        "bandit_sampler": serializable_to_primitive(spec.bandit_sampler),
         "validators": [serializable_to_primitive(v) for v in spec.validators],
         "max_attempts": spec.max_attempts,
     }
@@ -192,8 +192,8 @@ def _ic_spec_from_primitive(d: dict) -> ICSpec:
         return serializable_from_primitive(sd, SideSamplerKey)
 
     return ICSpec(
-        defender_sampler=_hydrate_side_sampler(d["defender_sampler"]),
-        intruder_sampler=_hydrate_side_sampler(d["intruder_sampler"]),
+        guard_sampler=_hydrate_side_sampler(d["guard_sampler"]),
+        bandit_sampler=_hydrate_side_sampler(d["bandit_sampler"]),
         validators=tuple(serializable_from_primitive(v, ValidatorKey) for v in d["validators"]),
         max_attempts=d["max_attempts"],
     )

@@ -5,7 +5,7 @@ Writes:
   /trajectory/<field>  each dataset gzip-compressed
 
 Trajectory fields are flattened using jax.tree_util.tree_flatten_with_path so
-nested pytrees (e.g., env_state.defenders.rtn) become dotted dataset names.
+nested pytrees (e.g., env_state.guards.rtn) become dotted dataset names.
 
 Limitation: pytree field names or dict keys containing `/` are not supported —
 HDF5 treats `/` as a group separator so such names would create nested groups
@@ -24,7 +24,8 @@ import numpy as np
 
 from orbital_game.config import ScenarioConfig
 
-SCHEMA_VERSION = "1"
+# v2: defenders → guards, intruders → bandits, hva → reference_orbit (Phase 0 rename)
+SCHEMA_VERSION = "2"
 
 
 def save_run(path: Path | str, config: ScenarioConfig, trajectory: Any) -> None:

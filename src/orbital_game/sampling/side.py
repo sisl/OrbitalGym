@@ -1,8 +1,10 @@
 """Per-side IC samplers — physical-orbit-respecting only.
 
 Two implementations ship:
-  - RelativeKeplerian: sample Keplerian element differences around HVA.
+  - RelativeKeplerian: sample Keplerian element differences around the reference orbit.
   - RelativeEllipse: sample NSROE with ellipse extents in meters (Task 8).
+  Both can serve either side (guard or bandit); the env passes the
+  appropriate `class_name` ("GuardState" / "BanditState") at __call__.
 
 Both produce bounded relative orbits. Independent Gaussian/uniform sampling
 on raw RTN state is intentionally not provided — it produces drift orbits
@@ -13,8 +15,8 @@ appears in the components list at __call__ time. If Mass is in components
 and mass_sampler is None, ValueError is raised.
 
 Convention: KOE vector layout follows astrojax = [a, e, i, RAAN, omega, M]
-where M is mean anomaly. Singular at e=0, i=0; HVA should have small but
-nonzero eccentricity / inclination.
+where M is mean anomaly. Singular at e=0, i=0; the reference orbit should have
+small but nonzero eccentricity / inclination.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ import jax
 import jax.numpy as jnp
 from astrojax import state_eci_to_koe, state_eci_to_rtn, state_koe_to_eci
 
-from orbital_game.hva import mean_motion as _hva_mean_motion
+from orbital_game.reference_orbit import mean_motion as _ref_mean_motion
 from orbital_game.registry import (
     SideSamplerKey,
     StateComponentKey,
@@ -87,15 +89,15 @@ def _broadcast_to_n(x, n):
 @register(SideSamplerKey.RELATIVE_KEPLERIAN)
 @dataclass(frozen=True)
 class RelativeKeplerian:
-    """Sample Keplerian element differences around HVA's osculating elements.
+    """Sample Keplerian element differences around the reference orbit's osculating elements.
 
     Each delta (delta_a, delta_e, delta_i, delta_RAAN, delta_omega, delta_M)
     is Gaussian: mean_* (default 0) and sigma_* (default 0). Scalars broadcast
     to all N vehicles; (N,) arrays specify per-vehicle parameters.
     M = mean anomaly (astrojax convention).
 
-    Singular at HVA e=0, i=0 (RAAN/omega/M ill-defined). Use a slightly
-    inclined or eccentric HVA for clean sampling.
+    Singular at reference orbit e=0, i=0 (RAAN/omega/M ill-defined). Use a
+    slightly inclined or eccentric reference orbit for clean sampling.
 
     Precision note: this sampler relies on astrojax for KOE<->ECI conversions.
     The package configures astrojax for float64 at import time
@@ -129,11 +131,11 @@ class RelativeKeplerian:
         cls = _build_side_class(components, n_vehicles, class_name)
         k_sample, k_mass = jax.random.split(key, 2)
 
-        # 1. HVA osculating elements (KOE = [a, e, i, RAAN, omega, M])
-        hva_state_eci = jnp.concatenate(
-            [config.hva.position_eci, config.hva.velocity_eci]
+        # 1. Reference orbit osculating elements (KOE = [a, e, i, RAAN, omega, M])
+        ref_state_eci = jnp.concatenate(
+            [config.reference_orbit.position_eci, config.reference_orbit.velocity_eci]
         )
-        hva_koe = state_eci_to_koe(hva_state_eci)
+        ref_koe = state_eci_to_koe(ref_state_eci)
 
         # 2. Sample per-vehicle element-difference vectors
         means = jnp.stack(
@@ -163,12 +165,12 @@ class RelativeKeplerian:
         deltas = means + sigmas * noise
 
         # 3. Per-vehicle absolute KOE
-        per_vehicle_koe = hva_koe[None, :] + deltas
+        per_vehicle_koe = ref_koe[None, :] + deltas
 
-        # 4. Convert each vehicle's KOE -> ECI -> HVA-RTN
+        # 4. Convert each vehicle's KOE -> ECI -> reference-orbit-RTN
         def _to_rtn(koe):
             state_eci = state_koe_to_eci(koe)
-            return state_eci_to_rtn(hva_state_eci, state_eci)
+            return state_eci_to_rtn(ref_state_eci, state_eci)
 
         rtn_states = jax.vmap(_to_rtn)(per_vehicle_koe)
 
@@ -237,10 +239,10 @@ class RelativeEllipse:
         cls = _build_side_class(components, n_vehicles, class_name)
         k_extents, k_phase, k_mass = jax.random.split(key, 3)
 
-        # Use the shared HVA mean-motion helper so sampler and dynamics agree
-        # exactly on `n` — required for the IC to satisfy the bounded-orbit
-        # condition under HCW.
-        n_motion = _hva_mean_motion(config.hva)
+        # Use the shared reference-orbit mean-motion helper so sampler and
+        # dynamics agree exactly on `n` — required for the IC to satisfy the
+        # bounded-orbit condition under HCW.
+        n_motion = _ref_mean_motion(config.reference_orbit)
 
         # Per-vehicle extents
         radial_e = _broadcast_to_n(self.radial_ellipse_m, n_vehicles)

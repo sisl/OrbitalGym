@@ -1,11 +1,11 @@
 """Post-sample combined-state validators for the IC rejection loop.
 
-Each validator is a frozen dataclass with __call__(config, defs, ints) returning
+Each validator is a frozen dataclass with __call__(config, guards, bandits) returning
 a scalar bool jax.Array. The env's reset loop ANDs together all validators
 in the ICSpec; one False triggers re-sampling. Validators must be vmap-safe
 (no Python control flow on traced values).
 
-Position is read from `defs.rtn[:, :3]` / `ints.rtn[:, :3]` (or `defs.rt[:, :2]`
+Position is read from `guards.rtn[:, :3]` / `bandits.rtn[:, :3]` (or `guards.rt[:, :2]`
 for 2D scenarios). The validator inspects whichever exists.
 """
 
@@ -21,15 +21,15 @@ from orbital_game.registry import ValidatorKey, register
 
 class SeparationScope(StrEnum):
     ALL = "all"
-    WITHIN_DEFENDERS = "within_defenders"
-    WITHIN_INTRUDERS = "within_intruders"
+    WITHIN_GUARDS = "within_guards"
+    WITHIN_BANDITS = "within_bandits"
     CROSS = "cross"
 
 
 class SideSelector(StrEnum):
     ALL = "all"
-    DEFENDERS = "defenders"
-    INTRUDERS = "intruders"
+    GUARDS = "guards"
+    BANDITS = "bandits"
 
 
 def _positions(side) -> jnp.ndarray:
@@ -70,26 +70,26 @@ class MinSeparation:
 
     scope:
       ALL - every pair across both sides
-      WITHIN_DEFENDERS - defender-defender pairs only
-      WITHIN_INTRUDERS - intruder-intruder pairs only
-      CROSS - defender-intruder pairs only
+      WITHIN_GUARDS - guard-guard pairs only
+      WITHIN_BANDITS - bandit-bandit pairs only
+      CROSS - guard-bandit pairs only
     """
 
     distance_m: float
     scope: SeparationScope = SeparationScope.ALL
 
-    def __call__(self, config, defenders, intruders) -> jnp.ndarray:
+    def __call__(self, config, guards, bandits) -> jnp.ndarray:
         del config
-        pd = _positions(defenders)
-        pi = _positions(intruders)
-        if self.scope == SeparationScope.WITHIN_DEFENDERS:
-            d = _min_pairwise_distance(pd)
-        elif self.scope == SeparationScope.WITHIN_INTRUDERS:
-            d = _min_pairwise_distance(pi)
+        pg = _positions(guards)
+        pb = _positions(bandits)
+        if self.scope == SeparationScope.WITHIN_GUARDS:
+            d = _min_pairwise_distance(pg)
+        elif self.scope == SeparationScope.WITHIN_BANDITS:
+            d = _min_pairwise_distance(pb)
         elif self.scope == SeparationScope.CROSS:
-            d = _min_cross_distance(pd, pi)
+            d = _min_cross_distance(pg, pb)
         else:  # ALL
-            all_p = jnp.concatenate([pd, pi], axis=0)
+            all_p = jnp.concatenate([pg, pb], axis=0)
             d = _min_pairwise_distance(all_p)
         return d >= self.distance_m
 
@@ -97,25 +97,26 @@ class MinSeparation:
 @register(ValidatorKey.MAX_RANGE)
 @dataclass(frozen=True)
 class MaxRange:
-    """Reject if any selected vehicle is farther than distance_m from HVA origin.
+    """Reject if any selected vehicle is farther than distance_m from the reference orbit origin.
 
-    Since RTN positions are HVA-relative, the HVA origin is (0,0,0) in this frame.
+    Since RTN positions are reference-orbit-relative, the reference orbit origin
+    is (0,0,0) in this frame.
     side:
-      ALL - both defenders and intruders
-      DEFENDERS - defenders only
-      INTRUDERS - intruders only
+      ALL - both guards and bandits
+      GUARDS - guards only
+      BANDITS - bandits only
     """
 
     distance_m: float
     side: SideSelector = SideSelector.ALL
 
-    def __call__(self, config, defenders, intruders) -> jnp.ndarray:
+    def __call__(self, config, guards, bandits) -> jnp.ndarray:
         del config
-        if self.side == SideSelector.DEFENDERS:
-            p = _positions(defenders)
-        elif self.side == SideSelector.INTRUDERS:
-            p = _positions(intruders)
+        if self.side == SideSelector.GUARDS:
+            p = _positions(guards)
+        elif self.side == SideSelector.BANDITS:
+            p = _positions(bandits)
         else:
-            p = jnp.concatenate([_positions(defenders), _positions(intruders)], axis=0)
+            p = jnp.concatenate([_positions(guards), _positions(bandits)], axis=0)
         ranges = jnp.linalg.norm(p, axis=-1)
         return jnp.all(ranges <= self.distance_m)

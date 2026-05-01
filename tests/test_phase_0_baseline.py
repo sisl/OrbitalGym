@@ -6,9 +6,9 @@ asserting array_equal on every leaf.
 Function names and fixture keys use post-rename clean names from Day 0.
 Attribute accesses on `fresh_traj` track current code state and update
 bucket-by-bucket:
-  - Bucket A: env_state.hva → env_state.reference_orbit
-  - Bucket B: env_state.defenders → env_state.guards
-  - Bucket C: env_state.intruders → env_state.bandits
+  - Bucket A: DONE (env_state.hva → env_state.reference_orbit)
+  - Bucket B: DONE (env_state.defenders → env_state.guards)
+  - Bucket C: DONE (env_state.intruders → env_state.bandits)
 
 The fixture file itself is NEVER regenerated during Phase 0 — that's the
 load-bearing byte-identity guarantee.
@@ -42,8 +42,8 @@ def fresh_traj():
 
     def policy(ps, obs, key, t):
         del obs, key, t
-        # Bucket B updates: cfg.n_defenders → cfg.n_guards
-        return jnp.zeros((cfg.n_defenders, 3)), ps
+        # Bucket B: DONE
+        return jnp.zeros((cfg.n_guards, 3)), ps
 
     def init_ps(config, env_state, key):
         del config, env_state, key
@@ -69,40 +69,40 @@ def test_obs_identical(baseline, fresh_traj):
 
 
 def test_guards_rtn_identical(baseline, fresh_traj):
-    # Bucket B updates: fresh_traj.env_state.defenders → .guards
+    # Bucket B: DONE
     np.testing.assert_array_equal(
-        baseline["guards_rtn"], np.asarray(fresh_traj.env_state.defenders.rtn)
+        baseline["guards_rtn"], np.asarray(fresh_traj.env_state.guards.rtn)
     )
 
 
 def test_bandits_rtn_identical(baseline, fresh_traj):
-    # Bucket C updates: fresh_traj.env_state.intruders → .bandits
+    # Bucket C: DONE (env_state.intruders → env_state.bandits)
     np.testing.assert_array_equal(
-        baseline["bandits_rtn"], np.asarray(fresh_traj.env_state.intruders.rtn)
+        baseline["bandits_rtn"], np.asarray(fresh_traj.env_state.bandits.rtn)
     )
 
 
 def test_guards_propellant_mass_identical(baseline, fresh_traj):
-    # Bucket B updates: fresh_traj.env_state.defenders → .guards
+    # Bucket B: DONE
     np.testing.assert_array_equal(
         baseline["guards_propellant_mass"],
-        np.asarray(fresh_traj.env_state.defenders.propellant_mass),
+        np.asarray(fresh_traj.env_state.guards.propellant_mass),
     )
 
 
 def test_reference_orbit_position_eci_identical(baseline, fresh_traj):
-    # Bucket A updates: fresh_traj.env_state.hva → .reference_orbit
+    # Bucket A: DONE
     np.testing.assert_array_equal(
         baseline["reference_orbit_position_eci"],
-        np.asarray(fresh_traj.env_state.hva.position_eci),
+        np.asarray(fresh_traj.env_state.reference_orbit.position_eci),
     )
 
 
 def test_reference_orbit_velocity_eci_identical(baseline, fresh_traj):
-    # Bucket A updates: fresh_traj.env_state.hva → .reference_orbit
+    # Bucket A: DONE
     np.testing.assert_array_equal(
         baseline["reference_orbit_velocity_eci"],
-        np.asarray(fresh_traj.env_state.hva.velocity_eci),
+        np.asarray(fresh_traj.env_state.reference_orbit.velocity_eci),
     )
 
 

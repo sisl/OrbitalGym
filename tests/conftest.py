@@ -18,7 +18,7 @@ def keys(key):
 
 @pytest.fixture
 def rng_float64():
-    """Enable float64 precision for tests that need it (e.g., HVA epoch, HCW)."""
+    """Enable float64 precision for tests that need it (e.g., reference orbit epoch, HCW)."""
     from jax import config
 
     config.update("jax_enable_x64", True)

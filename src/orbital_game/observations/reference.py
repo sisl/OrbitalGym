@@ -11,7 +11,7 @@ from orbital_game.registry import ObservationFnKey, register
 @register(ObservationFnKey.FULL)
 @dataclass(frozen=True)
 class FullObservation:
-    """Return StateLayout.flatten(env_state.defenders, env_state.intruders).
+    """Return StateLayout.flatten(env_state.guards, env_state.bandits).
 
     The no-partial-observability baseline. Same behavior regardless of which
     side invokes it; asymmetric observation models use separate
@@ -22,4 +22,4 @@ class FullObservation:
 
     def __call__(self, env_state, params, key, t):
         del params, key, t
-        return self.layout.flatten(env_state.defenders, env_state.intruders)
+        return self.layout.flatten(env_state.guards, env_state.bandits)

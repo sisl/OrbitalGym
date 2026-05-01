@@ -12,7 +12,7 @@ from orbital_game.rollout import rollout
 
 def _policy(ps, obs, key, t):
     del obs, key, t
-    return jnp.zeros((3, 3)), ps  # 3 defenders, 3D dv
+    return jnp.zeros((3, 3)), ps  # 3 guards, 3D dv
 
 
 def _init_ps(config, env_state, key):

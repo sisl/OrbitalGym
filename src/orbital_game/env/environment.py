@@ -1,12 +1,12 @@
 """OrbitalGameEnv — the composed environment.
 
-Wires together: state classes (per scenario), dynamics, actuators, intruder policy,
+Wires together: state classes (per scenario), dynamics, actuators, bandit policy,
 observation fn, reward fn, termination fn, IC sampler. Exposes reset / step with
 a lightweight API. Strict gymnax Environment inheritance is deferred (see spec
 §Known gaps).
 
 EnvState is defined here (not in canonical types) because its per-scenario pytree
-structure depends on the assembled DefenderState / IntruderState classes.
+structure depends on the assembled GuardState / BanditState classes.
 """
 
 from __future__ import annotations
@@ -20,12 +20,12 @@ import jax.numpy as jnp
 from orbital_game.actuators.impulsive import ImpulsiveActuator
 from orbital_game.config import ScenarioConfig
 from orbital_game.dynamics.hcw import hcw_rt_step, hcw_rtn_step
-from orbital_game.hva import HVAState
-from orbital_game.hva import mean_motion as _hva_mean_motion
 from orbital_game.observations.reference import FullObservation
-from orbital_game.policies.intruder import ZeroControlIntruder
+from orbital_game.policies.bandit import ZeroControlBandit
+from orbital_game.reference_orbit import ReferenceOrbitState
+from orbital_game.reference_orbit import mean_motion as _ref_mean_motion
 from orbital_game.registry import ActuatorKey, DynamicsKey, StateComponentKey
-from orbital_game.rewards.reference import DistanceToHVA
+from orbital_game.rewards.reference import DistanceToReferenceOrbit
 from orbital_game.state.assemble import build_state_class
 from orbital_game.state.components import (
     Attitude,
@@ -74,9 +74,9 @@ def _build_per_side_params(spec, mean_motion: float) -> _FleetParams:
 class EnvState:
     t: jax.Array  # scalar seconds since episode start
     step: jax.Array  # scalar int
-    defenders: Any  # assembled defender pytree
-    intruders: Any  # assembled intruder pytree
-    hva: HVAState
+    guards: Any  # assembled guard pytree
+    bandits: Any  # assembled bandit pytree
+    reference_orbit: ReferenceOrbitState
     # bool scalar — False iff IC rejection cap was exhausted at reset.
     # Defaults to True so legacy construction sites (and tests that build
     # EnvState without rejection sampling) get a sensible value.
@@ -129,47 +129,47 @@ class OrbitalGameEnv:
     def __init__(self, config: ScenarioConfig):
         self.config = config
 
-        # Mean motion via vis-viva. Shared helper in hva.py — RelativeEllipse
+        # Mean motion via vis-viva. Shared helper in reference_orbit.py — RelativeEllipse
         # uses the same so sampled ICs satisfy the dynamics' bounded-orbit condition.
-        self.mean_motion = float(_hva_mean_motion(config.hva))
+        self.mean_motion = float(_ref_mean_motion(config.reference_orbit))
 
         # Build per-side state classes.
-        def_comps = [_COMP_LOOKUP[k] for k in config.defender_components]
-        int_comps = [_COMP_LOOKUP[k] for k in config.intruder_components]
-        self.defender_state_cls = build_state_class(def_comps, config.n_defenders, "DefenderState")
-        self.intruder_state_cls = build_state_class(int_comps, config.n_intruders, "IntruderState")
+        guard_comps = [_COMP_LOOKUP[k] for k in config.guard_components]
+        bandit_comps = [_COMP_LOOKUP[k] for k in config.bandit_components]
+        self.guard_state_cls = build_state_class(guard_comps, config.n_guards, "GuardState")
+        self.bandit_state_cls = build_state_class(bandit_comps, config.n_bandits, "BanditState")
 
         self.layout = StateLayout.build(
-            defender_state_cls=self.defender_state_cls,
-            intruder_state_cls=self.intruder_state_cls,
-            n_defenders=config.n_defenders,
-            n_intruders=config.n_intruders,
+            guard_state_cls=self.guard_state_cls,
+            bandit_state_cls=self.bandit_state_cls,
+            n_guards=config.n_guards,
+            n_bandits=config.n_bandits,
         )
 
-        self.defender_params = _build_per_side_params(config.defender_params, self.mean_motion)
-        self.intruder_params = _build_per_side_params(config.intruder_params, self.mean_motion)
+        self.guard_params = _build_per_side_params(config.guard_params, self.mean_motion)
+        self.bandit_params = _build_per_side_params(config.bandit_params, self.mean_motion)
 
         # For bootstrap, construct reference pluggables directly. Registry-driven
         # resolution is a follow-up (noted in spec §Known gaps).
-        def_track_mass = Mass in def_comps
-        int_track_mass = Mass in int_comps
-        self.defender_actuator = _make_actuator(config.defender_actuator, def_track_mass)
-        self.intruder_actuator = _make_actuator(config.intruder_actuator, int_track_mass)
+        guard_track_mass = Mass in guard_comps
+        bandit_track_mass = Mass in bandit_comps
+        self.guard_actuator = _make_actuator(config.guard_actuator, guard_track_mass)
+        self.bandit_actuator = _make_actuator(config.bandit_actuator, bandit_track_mass)
 
         self.truth_dynamics = _DYN_LOOKUP[config.truth_dynamics]
         self.planning_dynamics = _DYN_LOOKUP[config.planning_dynamics]
 
-        self.intruder_policy = ZeroControlIntruder(
-            n_intruders=config.n_intruders,
+        self.bandit_policy = ZeroControlBandit(
+            n_bandits=config.n_bandits,
             action_dim=_dyn_action_dim(config.truth_dynamics),
         )
         # Separate observation functions per side. Currently both resolve to the
         # same FullObservation reference, but they are independent objects so a
-        # realistic scenario can swap defender-side for a masked/noisy sensor
-        # model while leaving the intruder-side omniscient (or vice versa).
-        self.defender_observation_fn = FullObservation(layout=self.layout)
-        self.intruder_observation_fn = FullObservation(layout=self.layout)
-        self.reward_fn = DistanceToHVA()
+        # realistic scenario can swap guard-side for a masked/noisy sensor
+        # model while leaving the bandit-side omniscient (or vice versa).
+        self.guard_observation_fn = FullObservation(layout=self.layout)
+        self.bandit_observation_fn = FullObservation(layout=self.layout)
+        self.reward_fn = DistanceToReferenceOrbit()
         self.termination_fn = MaxStepsOrBreach(max_steps=config.max_steps, breach_distance_m=10.0)
         # IC sampler comes from the scenario config — the user picks nominals,
         # sigmas, and (in the future) the sampler variant. The env just holds
@@ -181,57 +181,57 @@ class OrbitalGameEnv:
         # Currently the reference pluggables ignore the observation key, but
         # noisy observation models will consume it; keep them uncoupled from IC.
         k_ic, k_obs = jax.random.split(key, 2)
-        defs, ints, ok = self._reset_with_icspec(k_ic)
+        guards, bandits, ok = self._reset_with_icspec(k_ic)
         state = EnvState(
             t=jnp.asarray(0.0),
             step=jnp.asarray(0),
-            defenders=defs,
-            intruders=ints,
-            hva=self.config.hva,
+            guards=guards,
+            bandits=bandits,
+            reference_orbit=self.config.reference_orbit,
             ic_valid=ok,
         )
-        obs = self.defender_observation_fn(state, None, k_obs, state.t)
+        obs = self.guard_observation_fn(state, None, k_obs, state.t)
         return state, obs
 
     def _reset_with_icspec(self, k_ic: jax.Array):
         """Rejection-sampling reset for ICSpec configurations.
 
         Runs `jax.lax.while_loop` capped at `ic_sampler.max_attempts`. If all
-        validators pass, returns (defs, ints, True). If the cap is exhausted,
-        returns the last-drawn (defs, ints) with ic_valid=False — non-fatal,
+        validators pass, returns (guards, bandits, True). If the cap is exhausted,
+        returns the last-drawn (guards, bandits) with ic_valid=False — non-fatal,
         so downstream code can surface infeasibility rates instead of crashing.
         """
-        n_def = self.config.n_defenders
-        n_int = self.config.n_intruders
-        def_components = self.config.defender_components
-        int_components = self.config.intruder_components
+        n_guards = self.config.n_guards
+        n_bandits = self.config.n_bandits
+        guard_components = self.config.guard_components
+        bandit_components = self.config.bandit_components
 
         def _draw(i):
             k = jax.random.fold_in(k_ic, i)
-            kd, ki = jax.random.split(k, 2)
-            defs = self.ic_sampler.defender_sampler(
-                self.config, kd,
-                n_vehicles=n_def, components=def_components, class_name="DefenderState",
+            kg, kb = jax.random.split(k, 2)
+            guards = self.ic_sampler.guard_sampler(
+                self.config, kg,
+                n_vehicles=n_guards, components=guard_components, class_name="GuardState",
             )
-            ints = self.ic_sampler.intruder_sampler(
-                self.config, ki,
-                n_vehicles=n_int, components=int_components, class_name="IntruderState",
+            bandits = self.ic_sampler.bandit_sampler(
+                self.config, kb,
+                n_vehicles=n_bandits, components=bandit_components, class_name="BanditState",
             )
             # Python-side branch on a static tuple length: safe under jit/vmap.
             if self.ic_sampler.validators:
                 checks = jnp.stack([
-                    jnp.asarray(v(self.config, defs, ints))
+                    jnp.asarray(v(self.config, guards, bandits))
                     for v in self.ic_sampler.validators
                 ])
                 ok = jnp.all(checks)
             else:
                 ok = jnp.asarray(True)
-            return defs, ints, ok
+            return guards, bandits, ok
 
         # Seed the carry with a concrete-shape draw so the while_loop has a
         # well-defined pytree structure.
-        seed_defs, seed_ints, seed_ok = _draw(jnp.asarray(0))
-        init_carry = (jnp.asarray(1), seed_defs, seed_ints, seed_ok)
+        seed_guards, seed_bandits, seed_ok = _draw(jnp.asarray(0))
+        init_carry = (jnp.asarray(1), seed_guards, seed_bandits, seed_ok)
 
         def _cond(carry):
             i, _, _, ok = carry
@@ -239,60 +239,60 @@ class OrbitalGameEnv:
 
         def _body(carry):
             i, _, _, _ = carry
-            d, n, ok = _draw(i)
-            return (i + 1, d, n, ok)
+            g, b, ok = _draw(i)
+            return (i + 1, g, b, ok)
 
-        _, defs, ints, ok = jax.lax.while_loop(_cond, _body, init_carry)
-        return defs, ints, ok
+        _, guards, bandits, ok = jax.lax.while_loop(_cond, _body, init_carry)
+        return guards, bandits, ok
 
     def step(self, key: jax.Array, state: EnvState, action: jax.Array):
-        # Separate keys for intruder obs+action, dynamics (if stochastic), and
-        # terminal defender obs. Reference implementations ignore the keys, but
+        # Separate keys for bandit obs+action, dynamics (if stochastic), and
+        # terminal guard obs. Reference implementations ignore the keys, but
         # stochastic observation / dynamics models would produce correlated
         # noise if the keys were shared.
-        k_intr, k_dyn, k_obs = jax.random.split(key, 3)
+        k_bandit, k_dyn, k_obs = jax.random.split(key, 3)
 
-        # Intruder observes + acts via its own (independent) observation fn.
-        obs_intr = self.intruder_observation_fn(state, None, k_intr, state.t)
-        intr_action = self.intruder_policy(obs_intr, k_intr, state.t)
+        # Bandit observes + acts via its own (independent) observation fn.
+        obs_bandit = self.bandit_observation_fn(state, None, k_bandit, state.t)
+        bandit_action = self.bandit_policy(obs_bandit, k_bandit, state.t)
 
         # Actuators: command -> applied control + propellant delta (zeros if track_mass=False).
-        applied_def, delta_propellant_def = self.defender_actuator.apply(
-            action, state.defenders, self.defender_params, self.config.dt
+        applied_guard, delta_propellant_guard = self.guard_actuator.apply(
+            action, state.guards, self.guard_params, self.config.dt
         )
-        applied_int, delta_propellant_int = self.intruder_actuator.apply(
-            intr_action, state.intruders, self.intruder_params, self.config.dt
+        applied_bandit, delta_propellant_bandit = self.bandit_actuator.apply(
+            bandit_action, state.bandits, self.bandit_params, self.config.dt
         )
 
         # Truth dynamics on the raw rtn/rt state array.
-        new_def_state = self.truth_dynamics(
-            _get_dynamics_state(state.defenders),
-            applied_def.dv,
-            self.defender_params,
+        new_guard_state = self.truth_dynamics(
+            _get_dynamics_state(state.guards),
+            applied_guard.dv,
+            self.guard_params,
             self.config.dt,
         )
-        new_int_state = self.truth_dynamics(
-            _get_dynamics_state(state.intruders),
-            applied_int.dv,
-            self.intruder_params,
+        new_bandit_state = self.truth_dynamics(
+            _get_dynamics_state(state.bandits),
+            applied_bandit.dv,
+            self.bandit_params,
             self.config.dt,
         )
         del k_dyn  # reserved for stochastic dynamics (unused by HCW)
-        next_def = _set_dynamics_state(state.defenders, new_def_state)
-        next_int = _set_dynamics_state(state.intruders, new_int_state)
+        next_guard = _set_dynamics_state(state.guards, new_guard_state)
+        next_bandit = _set_dynamics_state(state.bandits, new_bandit_state)
 
         # Apply propellant deltas if Mass is tracked.
-        next_def = _apply_propellant(next_def, delta_propellant_def)
-        next_int = _apply_propellant(next_int, delta_propellant_int)
+        next_guard = _apply_propellant(next_guard, delta_propellant_guard)
+        next_bandit = _apply_propellant(next_bandit, delta_propellant_bandit)
 
         next_state = state.replace(  # pyrefly: ignore[missing-attribute]
             t=state.t + self.config.dt,
             step=state.step + 1,
-            defenders=next_def,
-            intruders=next_int,
+            guards=next_guard,
+            bandits=next_bandit,
         )
 
         reward = self.reward_fn(state, action, next_state, None, state.t)
         done = self.termination_fn(next_state, None, next_state.t)
-        obs = self.defender_observation_fn(next_state, None, k_obs, next_state.t)
+        obs = self.guard_observation_fn(next_state, None, k_obs, next_state.t)
         return next_state, obs, reward, done, {}

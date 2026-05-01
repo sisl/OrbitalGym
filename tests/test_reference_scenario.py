@@ -15,5 +15,5 @@ def test_reference_scenario_end_to_end(tmp_path):
 
     assert run_path.exists()
     pngs = list(out_dir.glob("*.png"))
-    # Three plots: defender_rtn_3d, reward, defender_mass
+    # Three plots: guard_rtn_3d, reward, guard_mass
     assert len(pngs) >= 3

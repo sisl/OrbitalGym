@@ -1,4 +1,4 @@
-"""Reference intruder policy."""
+"""Reference bandit policy."""
 
 from __future__ import annotations
 
@@ -6,17 +6,17 @@ from dataclasses import dataclass
 
 import jax.numpy as jnp
 
-from orbital_game.registry import IntruderPolicyKey, register
+from orbital_game.registry import BanditPolicyKey, register
 
 
-@register(IntruderPolicyKey.ZERO_CONTROL)
+@register(BanditPolicyKey.ZERO_CONTROL)
 @dataclass(frozen=True)
-class ZeroControlIntruder:
+class ZeroControlBandit:
     """Always outputs a zero command. Reference for bootstrap validation."""
 
-    n_intruders: int
+    n_bandits: int
     action_dim: int = 3
 
     def __call__(self, obs, key, t):
         del obs, key, t
-        return jnp.zeros((self.n_intruders, self.action_dim))
+        return jnp.zeros((self.n_bandits, self.action_dim))

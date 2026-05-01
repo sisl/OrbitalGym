@@ -5,9 +5,9 @@ import jax.numpy as jnp
 
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec
 from orbital_game.env.environment import OrbitalGameEnv
-from orbital_game.hva import HVAState
 from orbital_game.logging.reader import load_run
 from orbital_game.logging.writer import save_run
+from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.registry import StateComponentKey
 from orbital_game.rollout import rollout
 from orbital_game.sampling.mass import ConstantMass
@@ -17,24 +17,24 @@ from orbital_game.sampling.spec import ICSpec
 
 def _make_cfg() -> ScenarioConfig:
     return ScenarioConfig(
-        n_defenders=1,
-        n_intruders=1,
+        n_guards=1,
+        n_bandits=1,
         epoch_mjd_utc=60067.0,
-        hva=HVAState(
+        reference_orbit=ReferenceOrbitState(
             position_eci=jnp.array([7000e3, 0.0, 0.0]),
             velocity_eci=jnp.array([0.0, 7.5e3, 0.0]),
         ),
-        defender_components=(StateComponentKey.RTN, StateComponentKey.MASS),
-        intruder_components=(StateComponentKey.RTN,),
-        defender_params=VehicleParamsSpec(100.0, 220.0, 5.0),
-        intruder_params=VehicleParamsSpec(50.0, 200.0, 2.0),
+        guard_components=(StateComponentKey.RTN, StateComponentKey.MASS),
+        bandit_components=(StateComponentKey.RTN,),
+        guard_params=VehicleParamsSpec(100.0, 220.0, 5.0),
+        bandit_params=VehicleParamsSpec(50.0, 200.0, 2.0),
         ic_sampler=ICSpec(
-            defender_sampler=RelativeEllipse(
+            guard_sampler=RelativeEllipse(
                 radial_ellipse_m=1000.0,
                 phase_rad=0.0,
                 mass_sampler=ConstantMass(propellant_mass_kg=10.0),
             ),
-            intruder_sampler=RelativeEllipse(
+            bandit_sampler=RelativeEllipse(
                 radial_ellipse_m=1000.0,
                 phase_rad=jnp.pi,
             ),
@@ -60,7 +60,7 @@ def test_hdf5_save_load_roundtrip(tmp_path):
     save_run(path, cfg, traj)
     loaded_cfg, loaded_traj = load_run(path)
 
-    assert loaded_cfg.n_defenders == cfg.n_defenders
+    assert loaded_cfg.n_guards == cfg.n_guards
     assert loaded_cfg.dt == cfg.dt
     assert loaded_cfg.max_horizon_s == cfg.max_horizon_s
     # Reward and action survive byte-equal through the round-trip.
@@ -92,7 +92,7 @@ def test_hdf5_rejects_file_missing_config_attribute(tmp_path):
 
     path = tmp_path / "no_config.h5"
     with h5py.File(path, "w") as f:
-        f.attrs["schema_version"] = "1"
+        f.attrs["schema_version"] = "2"
         f.create_group("trajectory")
 
     import pytest

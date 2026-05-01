@@ -17,7 +17,7 @@ import jax.numpy as jnp
 
 from orbital_game.config import ScenarioConfig
 
-_EXPECTED_SCHEMA_VERSION = "1"
+_EXPECTED_SCHEMA_VERSION = "2"
 
 
 def load_run(path: Path | str) -> tuple[ScenarioConfig, dict[str, Any]]:
@@ -25,7 +25,7 @@ def load_run(path: Path | str) -> tuple[ScenarioConfig, dict[str, Any]]:
 
     Returns:
       (config, trajectory_dict) where trajectory_dict maps dotted-path strings
-      to jax.Arrays (e.g., "reward", "action", "env_state.defenders.rtn").
+      to jax.Arrays (e.g., "reward", "action", "env_state.guards.rtn").
 
     Raises ValueError if the file is missing required structure (config attr,
     schema_version attr, /trajectory group) or if schema_version doesn't match

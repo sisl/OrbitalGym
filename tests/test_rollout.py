@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec
 from orbital_game.env.environment import OrbitalGameEnv
-from orbital_game.hva import HVAState
+from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.registry import StateComponentKey
 from orbital_game.rollout import Trajectory, episode_mask, rollout
 from orbital_game.sampling.mass import ConstantMass
@@ -15,25 +15,25 @@ from orbital_game.sampling.spec import ICSpec
 
 def _make_cfg(max_horizon_s: float = 2000.0) -> ScenarioConfig:
     return ScenarioConfig(
-        n_defenders=1,
-        n_intruders=1,
+        n_guards=1,
+        n_bandits=1,
         epoch_mjd_utc=60067.0,
-        hva=HVAState(
+        reference_orbit=ReferenceOrbitState(
             position_eci=jnp.array([7000e3, 0.0, 0.0]),
             velocity_eci=jnp.array([0.0, 7.5e3, 0.0]),
         ),
-        defender_components=(StateComponentKey.RTN, StateComponentKey.MASS),
-        intruder_components=(StateComponentKey.RTN,),
-        defender_params=VehicleParamsSpec(100.0, 220.0, 5.0),
-        intruder_params=VehicleParamsSpec(50.0, 200.0, 2.0),
+        guard_components=(StateComponentKey.RTN, StateComponentKey.MASS),
+        bandit_components=(StateComponentKey.RTN,),
+        guard_params=VehicleParamsSpec(100.0, 220.0, 5.0),
+        bandit_params=VehicleParamsSpec(50.0, 200.0, 2.0),
         ic_sampler=ICSpec(
-            defender_sampler=RelativeEllipse(
+            guard_sampler=RelativeEllipse(
                 radial_ellipse_m=1000.0,
                 # phase_rad=None -> uniform random per vehicle, so different
                 # seeds produce different ICs (needed for the vmap test).
                 mass_sampler=ConstantMass(propellant_mass_kg=10.0),
             ),
-            intruder_sampler=RelativeEllipse(
+            bandit_sampler=RelativeEllipse(
                 radial_ellipse_m=1000.0,
             ),
         ),

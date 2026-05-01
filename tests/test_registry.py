@@ -6,10 +6,10 @@ import pytest
 
 from orbital_game.registry import (
     ActuatorKey,
+    BanditPolicyKey,
     BeliefInitializerKey,
     BeliefUpdaterKey,
     DynamicsKey,
-    IntruderPolicyKey,
     MassSamplerKey,
     ObservationFnKey,
     RewardFnKey,
@@ -58,7 +58,7 @@ def test_each_enum_has_at_least_one_member():
         StateComponentKey,
         DynamicsKey,
         ActuatorKey,
-        IntruderPolicyKey,
+        BanditPolicyKey,
         ObservationFnKey,
         RewardFnKey,
         TerminationFnKey,

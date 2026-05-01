@@ -1,8 +1,9 @@
 """Assemble a per-scenario state class from a list of StateComponent types.
 
-The resulting class is a flax.struct.dataclass (i.e., a JAX pytree) with exactly
-the union of the components' fields, in a deterministic order: components in the
-order passed, and each component's fields in their insertion order.
+The resulting class is a flax.struct.dataclass (i.e., a JAX pytree, e.g.
+GuardState/BanditState) with exactly the union of the components' fields, in a
+deterministic order: components in the order passed, and each component's
+fields in their insertion order.
 """
 
 from __future__ import annotations

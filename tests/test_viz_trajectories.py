@@ -11,7 +11,7 @@ from orbital_game.viz.trajectories import plot_rn, plot_rt, plot_rtn_3d, plot_tn
 
 
 def _fake_rtn_trajectory(n_steps: int = 50):
-    """Shape (T, N_defenders=1, 6) — RTN state with position components
+    """Shape (T, N_guards=1, 6) — RTN state with position components
     tracing a known shape so visual tests are deterministic."""
     t = jnp.linspace(0, 2 * jnp.pi, n_steps)
     r = jnp.cos(t) * 100
@@ -201,9 +201,9 @@ def test_plot_rt_multi_vehicle_label_appends_vehicle_suffix():
     traj = jnp.stack([v0, v1], axis=1)  # (T, 2, 6)
 
     fig, ax = plt.subplots()
-    plot_rt(traj, ax=ax, label="defender")
+    plot_rt(traj, ax=ax, label="guard")
     legend = ax.legend()
-    assert [t.get_text() for t in legend.get_texts()] == ["defender v0", "defender v1"]
+    assert [t.get_text() for t in legend.get_texts()] == ["guard v0", "guard v1"]
     plt.close(fig)
 
 

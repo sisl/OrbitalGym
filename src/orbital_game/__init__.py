@@ -1,4 +1,4 @@
-"""orbital-game — JAX-native framework for defender/intruder POMDP research.
+"""orbital-game — JAX-native framework for guard/bandit POMDP research.
 
 NOTE: At import time, we configure astrojax (and JAX) for float64 precision.
 This is required because astrojax defaults to float32 internally even when
@@ -19,15 +19,15 @@ _set_astrojax_dtype(jnp.float64)
 # submodules import astrojax helpers, and we want them to see float64.
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec  # noqa: E402
 from orbital_game.env.environment import EnvState, OrbitalGameEnv  # noqa: E402
-from orbital_game.hva import HVAState  # noqa: E402
 from orbital_game.logging.reader import load_run  # noqa: E402
 from orbital_game.logging.writer import save_run  # noqa: E402
+from orbital_game.reference_orbit import ReferenceOrbitState  # noqa: E402
 from orbital_game.rollout import Trajectory, episode_mask, rollout  # noqa: E402
 
 __all__ = [
     "EnvState",
-    "HVAState",
     "OrbitalGameEnv",
+    "ReferenceOrbitState",
     "ScenarioConfig",
     "Trajectory",
     "VehicleParamsSpec",

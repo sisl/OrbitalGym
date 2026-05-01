@@ -28,8 +28,8 @@ def main():
 
     def policy(ps, obs, key, t):
         del obs, key, t
-        # Bucket B updates: cfg.n_defenders → cfg.n_guards
-        return jnp.zeros((cfg.n_defenders, 3)), ps
+        # Bucket B: DONE
+        return jnp.zeros((cfg.n_guards, 3)), ps
 
     def init_ps(config, env_state, key):
         del config, env_state, key
@@ -38,19 +38,19 @@ def main():
     traj = rollout(env, policy, init_ps, jax.random.PRNGKey(cfg.seed), n_steps=cfg.max_steps)
 
     # Output keys use POST-rename clean names. Attribute access uses CURRENT names.
-    # Bucket A updates: traj.env_state.hva → traj.env_state.reference_orbit
-    # Bucket B updates: traj.env_state.defenders → traj.env_state.guards
-    # Bucket C updates: traj.env_state.intruders → traj.env_state.bandits
+    # Bucket A: DONE (traj.env_state.hva → traj.env_state.reference_orbit)
+    # Bucket B: DONE (traj.env_state.defenders → traj.env_state.guards)
+    # Bucket C: DONE (traj.env_state.intruders → traj.env_state.bandits)
     out = {
         "reward": np.asarray(traj.reward),
         "done": np.asarray(traj.done),
         "action": np.asarray(traj.action),
         "obs": np.asarray(traj.obs),
-        "guards_rtn": np.asarray(traj.env_state.defenders.rtn),
-        "bandits_rtn": np.asarray(traj.env_state.intruders.rtn),
-        "guards_propellant_mass": np.asarray(traj.env_state.defenders.propellant_mass),
-        "reference_orbit_position_eci": np.asarray(traj.env_state.hva.position_eci),
-        "reference_orbit_velocity_eci": np.asarray(traj.env_state.hva.velocity_eci),
+        "guards_rtn": np.asarray(traj.env_state.guards.rtn),
+        "bandits_rtn": np.asarray(traj.env_state.bandits.rtn),
+        "guards_propellant_mass": np.asarray(traj.env_state.guards.propellant_mass),
+        "reference_orbit_position_eci": np.asarray(traj.env_state.reference_orbit.position_eci),
+        "reference_orbit_velocity_eci": np.asarray(traj.env_state.reference_orbit.velocity_eci),
         "t": np.asarray(traj.env_state.t),
         "step": np.asarray(traj.env_state.step),
     }

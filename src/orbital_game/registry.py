@@ -34,8 +34,8 @@ class ActuatorKey(StrEnum):
     IMPULSIVE = "impulsive"
 
 
-class IntruderPolicyKey(StrEnum):
-    ZERO_CONTROL = "zero_control_intruder"
+class BanditPolicyKey(StrEnum):
+    ZERO_CONTROL = "zero_control_bandit"
 
 
 class ObservationFnKey(StrEnum):
@@ -43,7 +43,7 @@ class ObservationFnKey(StrEnum):
 
 
 class RewardFnKey(StrEnum):
-    DISTANCE_TO_HVA = "distance_to_hva"
+    DISTANCE_TO_REFERENCE_ORBIT = "distance_to_reference_orbit"
 
 
 class TerminationFnKey(StrEnum):

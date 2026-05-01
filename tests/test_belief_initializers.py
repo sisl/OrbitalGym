@@ -17,8 +17,8 @@ class _Layout:
 
 
 class _Env:
-    defenders = jnp.array([1.0, 2.0])
-    intruders = jnp.array([3.0, 4.0])
+    guards = jnp.array([1.0, 2.0])
+    bandits = jnp.array([3.0, 4.0])
 
 
 def test_gaussian_from_truth_uses_env_state_as_mean():

@@ -1,13 +1,13 @@
-"""Tests for HVAState."""
+"""Tests for ReferenceOrbitState."""
 
 import jax
 import jax.numpy as jnp
 
-from orbital_game.hva import HVAState
+from orbital_game.reference_orbit import ReferenceOrbitState
 
 
-def test_hva_state_construction_has_expected_fields():
-    state = HVAState(
+def test_reference_orbit_state_construction_has_expected_fields():
+    state = ReferenceOrbitState(
         position_eci=jnp.array([7000e3, 0.0, 0.0]),
         velocity_eci=jnp.array([0.0, 7.5e3, 0.0]),
     )
@@ -15,9 +15,9 @@ def test_hva_state_construction_has_expected_fields():
     assert state.velocity_eci.shape == (3,)
 
 
-def test_hva_state_is_pytree():
+def test_reference_orbit_state_is_pytree():
     """Must flatten/unflatten as a pytree so jax.tree_util treats it as a leaf container."""
-    state = HVAState(
+    state = ReferenceOrbitState(
         position_eci=jnp.array([7000e3, 0.0, 0.0]),
         velocity_eci=jnp.array([0.0, 7.5e3, 0.0]),
     )

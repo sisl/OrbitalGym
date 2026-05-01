@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "orbital-game"
 version = "0.1.0"
-description = "JAX-native framework for defender/intruder decision-making in orbital scenarios"
+description = "JAX-native framework for guard/bandit decision-making in orbital scenarios"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"

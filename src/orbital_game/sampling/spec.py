@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class SideSampler(Protocol):
-    """Sample initial state for one side (defenders or intruders).
+    """Sample initial state for one side (guards or bandits).
 
     Concrete implementations are frozen dataclasses with __call__. The env
     passes (n_vehicles, components, class_name) as keyword args so the same
@@ -47,8 +47,8 @@ class Validator(Protocol):
     def __call__(
         self,
         config: ScenarioConfig,
-        defenders: Any,
-        intruders: Any,
+        guards: Any,
+        bandits: Any,
     ) -> jax.Array: ...
 
 
@@ -61,7 +61,7 @@ class ICSpec:
     sets `EnvState.ic_valid=False` if the cap is hit.
     """
 
-    defender_sampler: Callable
-    intruder_sampler: Callable
+    guard_sampler: Callable
+    bandit_sampler: Callable
     validators: tuple[Callable, ...] = ()
     max_attempts: int = 100

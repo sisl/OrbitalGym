@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import pytest
 
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.hva import HVAState
+from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.registry import (
     DynamicsKey,
     StateComponentKey,
@@ -16,28 +16,28 @@ from orbital_game.sampling.spec import ICSpec
 
 def make_config(**overrides):
     base = dict(
-        n_defenders=1,
-        n_intruders=1,
+        n_guards=1,
+        n_bandits=1,
         epoch_mjd_utc=60067.0,
-        hva=HVAState(
+        reference_orbit=ReferenceOrbitState(
             position_eci=jnp.array([7000e3, 0.0, 0.0]),
             velocity_eci=jnp.array([0.0, 7.5e3, 0.0]),
         ),
-        defender_components=(StateComponentKey.RTN, StateComponentKey.MASS),
-        intruder_components=(StateComponentKey.RTN,),
-        defender_params=VehicleParamsSpec(
+        guard_components=(StateComponentKey.RTN, StateComponentKey.MASS),
+        bandit_components=(StateComponentKey.RTN,),
+        guard_params=VehicleParamsSpec(
             dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0
         ),
-        intruder_params=VehicleParamsSpec(
+        bandit_params=VehicleParamsSpec(
             dry_mass_kg=50.0, isp_s=200.0, max_thrust_n=2.0
         ),
         ic_sampler=ICSpec(
-            defender_sampler=RelativeEllipse(
+            guard_sampler=RelativeEllipse(
                 radial_ellipse_m=0.0,
                 phase_rad=0.0,
                 mass_sampler=ConstantMass(propellant_mass_kg=10.0),
             ),
-            intruder_sampler=RelativeEllipse(
+            bandit_sampler=RelativeEllipse(
                 radial_ellipse_m=0.0,
                 phase_rad=0.0,
             ),
@@ -64,7 +64,7 @@ def test_json_roundtrip_preserves_enum_identity():
     cfg = make_config()
     s = cfg.to_json()
     cfg2 = ScenarioConfig.from_json(s)
-    assert cfg2.defender_components == cfg.defender_components
+    assert cfg2.guard_components == cfg.guard_components
     assert cfg2.dt == cfg.dt
     assert cfg2.truth_dynamics is DynamicsKey.HCW_RTN
 
@@ -81,24 +81,24 @@ def test_post_init_rejects_horizon_smaller_than_dt():
 
 def test_config_round_trips_with_relative_ellipse_ic():
     cfg = ScenarioConfig(
-        n_defenders=1,
-        n_intruders=1,
+        n_guards=1,
+        n_bandits=1,
         epoch_mjd_utc=60067.0,
-        hva=HVAState(
+        reference_orbit=ReferenceOrbitState(
             position_eci=jnp.array([7000e3, 0.0, 0.0]),
             velocity_eci=jnp.array([0.0, 7546.05, 0.0]),
         ),
-        defender_components=(StateComponentKey.RTN, StateComponentKey.MASS),
-        intruder_components=(StateComponentKey.RTN,),
-        defender_params=VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
-        intruder_params=VehicleParamsSpec(dry_mass_kg=50.0, isp_s=200.0, max_thrust_n=2.0),
+        guard_components=(StateComponentKey.RTN, StateComponentKey.MASS),
+        bandit_components=(StateComponentKey.RTN,),
+        guard_params=VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
+        bandit_params=VehicleParamsSpec(dry_mass_kg=50.0, isp_s=200.0, max_thrust_n=2.0),
         ic_sampler=ICSpec(
-            defender_sampler=RelativeEllipse(
+            guard_sampler=RelativeEllipse(
                 radial_ellipse_m=100.0,
                 phase_rad=0.0,
                 mass_sampler=ConstantMass(propellant_mass_kg=10.0),
             ),
-            intruder_sampler=RelativeEllipse(
+            bandit_sampler=RelativeEllipse(
                 radial_ellipse_m=100.0,
                 phase_rad=jnp.pi,
             ),
@@ -109,10 +109,10 @@ def test_config_round_trips_with_relative_ellipse_ic():
     )
     s = cfg.to_json()
     cfg2 = ScenarioConfig.from_json(s)
-    assert cfg2.n_defenders == 1
-    assert isinstance(cfg2.ic_sampler.defender_sampler, RelativeEllipse)
-    assert isinstance(cfg2.ic_sampler.defender_sampler.mass_sampler, ConstantMass)
-    assert cfg2.ic_sampler.defender_sampler.mass_sampler.propellant_mass_kg == 10.0
+    assert cfg2.n_guards == 1
+    assert isinstance(cfg2.ic_sampler.guard_sampler, RelativeEllipse)
+    assert isinstance(cfg2.ic_sampler.guard_sampler.mass_sampler, ConstantMass)
+    assert cfg2.ic_sampler.guard_sampler.mass_sampler.propellant_mass_kg == 10.0
 
 
 def test_vehicle_params_spec_no_longer_has_propellant_mass_kg():

@@ -8,14 +8,14 @@ from orbital_game.state.components import Mass, RTNState, RTState
 
 
 def test_build_single_component_state_class():
-    DefenderState = build_state_class([RTNState], n_vehicles=3, class_name="DefenderState")  # noqa: N806
-    s = DefenderState.zeros(3)
+    GuardState = build_state_class([RTNState], n_vehicles=3, class_name="GuardState")  # noqa: N806
+    s = GuardState.zeros(3)
     assert s.rtn.shape == (3, 6)
 
 
 def test_build_multi_component_state_class_has_all_fields():
-    DefenderState = build_state_class([RTNState, Mass], n_vehicles=4, class_name="DefenderState")  # noqa: N806
-    s = DefenderState.zeros(4)
+    GuardState = build_state_class([RTNState, Mass], n_vehicles=4, class_name="GuardState")  # noqa: N806
+    s = GuardState.zeros(4)
     assert s.rtn.shape == (4, 6)
     assert s.propellant_mass.shape == (4,)
 
