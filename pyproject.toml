@@ -36,6 +36,11 @@ packages = ["src/orbital_game"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# Notebooks use interactive-code conventions (semicolon-chained statements,
+# combined imports) that don't apply to library/test code. Lint the .py files
+# only; users can format notebooks with `jupyter nbconvert --to notebook
+# --execute` or in the editor.
+extend-exclude = ["*.ipynb"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "B", "UP", "SIM", "PYI"]

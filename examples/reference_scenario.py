@@ -73,9 +73,9 @@ def run(hdf5_path: Path, plots_dir: Path) -> None:
     # Defender RTN trajectory: shape (T, N_defenders, 6)
     defender_rtn = traj.env_state.defenders.rtn
 
-    fig = plot_rtn_3d(defender_rtn)
-    fig.savefig(plots_dir / "defender_rtn_3d.png", dpi=120)
-    plt.close(fig)
+    ax3d = plot_rtn_3d(defender_rtn)
+    ax3d.figure.savefig(plots_dir / "defender_rtn_3d.png", dpi=120)
+    plt.close(ax3d.figure)
 
     fig, ax = plt.subplots()
     plot_reward_curve(traj.reward, ax=ax)
