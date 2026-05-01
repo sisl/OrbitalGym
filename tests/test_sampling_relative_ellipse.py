@@ -7,14 +7,14 @@ import jax.numpy as jnp
 
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec
 from orbital_game.dynamics.hcw import hcw_rtn_step
-from orbital_game.hva import HVAState
+from orbital_game.hva import HVAState, mean_motion
 from orbital_game.registry import StateComponentKey
 from orbital_game.sampling.side import RelativeEllipse
 
-MU_EARTH = 3.986004418e14
 
-
-def _config(n_def=1):
+def _config(n_def=1, velocity_y_mps=7546.05):
+    """Build a minimal scenario config. Default velocity is circular at r=7000km;
+    pass a different value to construct an elliptical HVA orbit."""
     from orbital_game.sampling.spec import ICSpec
     return ScenarioConfig(
         n_defenders=n_def,
@@ -22,9 +22,7 @@ def _config(n_def=1):
         epoch_mjd_utc=60067.0,
         hva=HVAState(
             position_eci=jnp.array([7000e3, 0.0, 0.0]),
-            # Circular equatorial HVA — fine for RelativeEllipse since it
-            # doesn't go through Keplerian elements (no singularity).
-            velocity_eci=jnp.array([0.0, 7546.05, 0.0]),
+            velocity_eci=jnp.array([0.0, velocity_y_mps, 0.0]),
         ),
         defender_components=(StateComponentKey.RTN,),
         intruder_components=(StateComponentKey.RTN,),
@@ -38,11 +36,6 @@ def _config(n_def=1):
         max_horizon_s=2000.0,
         seed=0,
     )
-
-
-def _hva_mean_motion(cfg):
-    r = jnp.linalg.norm(cfg.hva.position_eci)
-    return jnp.sqrt(MU_EARTH / r**3)
 
 
 def test_phase_zero_radial_ellipse_only_puts_vehicle_at_radial_max():
@@ -81,11 +74,8 @@ def test_along_track_offset_only_yields_co_orbital_companion():
     assert jnp.isclose(rtn[4], 0.0, atol=1e-3)
 
 
-def test_boundedness_invariant_radial_ellipse():
-    """Propagate a sampled IC under HCW for 10 orbits; max radial excursion stays
-    within configured radial_ellipse_m + small tolerance."""
-    sampler = RelativeEllipse(radial_ellipse_m=200.0, phase_rad=0.0)
-    cfg = _config()
+def _propagate_max_excursion(cfg, sampler, n_periods=10):
+    """Sample an IC and propagate via HCW, returning the (max|R|, max|T|) pair."""
     out = sampler(
         cfg,
         jax.random.PRNGKey(0),
@@ -93,19 +83,46 @@ def test_boundedness_invariant_radial_ellipse():
         components=(StateComponentKey.RTN,),
         class_name="DefenderState",
     )
-    n = _hva_mean_motion(cfg)
+    n = mean_motion(cfg.hva)
     period = 2 * jnp.pi / n
 
     class _Params:
-        mean_motion = float(n)
+        pass
+    _Params.mean_motion = float(n)
 
     state = out.rtn
     dt = float(period / 200.0)
-    radial_max = jnp.abs(state[0, 0])
-    for _ in range(2000):  # 10 periods
+    max_r = float(jnp.abs(state[0, 0]))
+    max_t = float(jnp.abs(state[0, 1]))
+    for _ in range(200 * n_periods):
         state = hcw_rtn_step(state, jnp.zeros((1, 3)), _Params(), dt)
-        radial_max = jnp.maximum(radial_max, jnp.abs(state[0, 0]))
-    assert float(radial_max) <= 200.0 + 1.0
+        max_r = max(max_r, float(jnp.abs(state[0, 0])))
+        max_t = max(max_t, float(jnp.abs(state[0, 1])))
+    return max_r, max_t
+
+
+def test_boundedness_invariant_radial_ellipse():
+    """Circular HVA: sampled IC produces a closed 2:1 relative ellipse over 10 periods."""
+    sampler = RelativeEllipse(radial_ellipse_m=200.0, phase_rad=0.0)
+    cfg = _config()  # circular HVA (default v=7546.05 m/s at r=7000 km)
+    max_r, max_t = _propagate_max_excursion(cfg, sampler, n_periods=10)
+    assert max_r <= 200.0 + 1.0
+    assert max_t <= 400.0 + 1.0  # 2x radial — canonical HCW relative ellipse
+
+
+def test_boundedness_invariant_with_elliptical_hva():
+    """Elliptical HVA: sampler must agree with env's mean motion (vis-viva), not
+    assume circular. With v=7500 m/s vs circular 7546.05 at r=7000 km, the orbit
+    has e≈0.012. The previous `a = |r|` shortcut produced ~700m drift per period;
+    the vis-viva fix keeps closure tight. This test would have caught that bug.
+    """
+    sampler = RelativeEllipse(radial_ellipse_m=200.0, phase_rad=0.0)
+    cfg = _config(velocity_y_mps=7500.0)  # below circular -> elliptical HVA
+    max_r, max_t = _propagate_max_excursion(cfg, sampler, n_periods=10)
+    # With the broken sampler this would be O(thousands of meters); with the
+    # vis-viva fix it's exact under HCW (sampler n == dynamics n).
+    assert max_r <= 200.0 + 1.0
+    assert max_t <= 400.0 + 1.0
 
 
 def test_phase_uniform_when_phase_rad_is_none():

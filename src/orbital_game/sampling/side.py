@@ -26,6 +26,7 @@ import jax
 import jax.numpy as jnp
 from astrojax import state_eci_to_koe, state_eci_to_rtn, state_koe_to_eci
 
+from orbital_game.hva import mean_motion as _hva_mean_motion
 from orbital_game.registry import (
     SideSamplerKey,
     StateComponentKey,
@@ -236,10 +237,10 @@ class RelativeEllipse:
         cls = _build_side_class(components, n_vehicles, class_name)
         k_extents, k_phase, k_mass = jax.random.split(key, 3)
 
-        # HVA mean motion + semi-major axis (assume circular HVA)
-        mu_earth = 3.986004418e14
-        a = jnp.linalg.norm(config.hva.position_eci)
-        n_motion = jnp.sqrt(mu_earth / a**3)
+        # Use the shared HVA mean-motion helper so sampler and dynamics agree
+        # exactly on `n` — required for the IC to satisfy the bounded-orbit
+        # condition under HCW.
+        n_motion = _hva_mean_motion(config.hva)
 
         # Per-vehicle extents
         radial_e = _broadcast_to_n(self.radial_ellipse_m, n_vehicles)

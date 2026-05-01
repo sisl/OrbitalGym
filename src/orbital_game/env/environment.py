@@ -21,6 +21,7 @@ from orbital_game.actuators.impulsive import ImpulsiveActuator
 from orbital_game.config import ScenarioConfig
 from orbital_game.dynamics.hcw import hcw_rt_step, hcw_rtn_step
 from orbital_game.hva import HVAState
+from orbital_game.hva import mean_motion as _hva_mean_motion
 from orbital_game.observations.reference import FullObservation
 from orbital_game.policies.intruder import ZeroControlIntruder
 from orbital_game.registry import ActuatorKey, DynamicsKey, StateComponentKey
@@ -36,8 +37,6 @@ from orbital_game.state.components import (
 )
 from orbital_game.state.layout import StateLayout
 from orbital_game.termination.reference import MaxStepsOrBreach
-
-MU_EARTH = 3.986004418e14
 
 _COMP_LOOKUP = {
     StateComponentKey.RT: RTState,
@@ -130,11 +129,9 @@ class OrbitalGameEnv:
     def __init__(self, config: ScenarioConfig):
         self.config = config
 
-        # Compute mean motion from HVA semi-major axis via vis-viva: 1/a = 2/r - v²/μ.
-        r = jnp.linalg.norm(config.hva.position_eci)
-        v2 = jnp.sum(config.hva.velocity_eci**2)
-        a = 1.0 / (2.0 / r - v2 / MU_EARTH)
-        self.mean_motion = float(jnp.sqrt(MU_EARTH / a**3))
+        # Mean motion via vis-viva. Shared helper in hva.py — RelativeEllipse
+        # uses the same so sampled ICs satisfy the dynamics' bounded-orbit condition.
+        self.mean_motion = float(_hva_mean_motion(config.hva))
 
         # Build per-side state classes.
         def_comps = [_COMP_LOOKUP[k] for k in config.defender_components]
