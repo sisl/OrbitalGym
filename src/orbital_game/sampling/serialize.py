@@ -16,7 +16,7 @@ import inspect
 import typing
 from dataclasses import fields, is_dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 import jax
 import jax.numpy as jnp
@@ -57,9 +57,10 @@ def serializable_from_primitive(d: dict, key_enum_cls: type[Enum]) -> Any:
             f"No callable registered for {key_value!r} "
             f"(not a valid {key_enum_cls.__name__})"
         ) from e
-    cls = resolve(key)
-    if not is_dataclass(cls):
-        raise TypeError(f"Resolved class for {key_value!r} is not a dataclass")
+    resolved = resolve(key)
+    if not (is_dataclass(resolved) and isinstance(resolved, type)):
+        raise TypeError(f"Resolved class for {key_value!r} is not a dataclass class")
+    cls = cast(type, resolved)
     hints = typing.get_type_hints(cls)
     kwargs: dict = {}
     for f in fields(cls):

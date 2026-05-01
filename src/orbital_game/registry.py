@@ -75,7 +75,7 @@ class BeliefUpdaterKey(StrEnum):
 
 
 _REGISTRY: dict[Enum, Callable] = {}
-_REVERSE: dict[type, tuple[str, type[Enum]]] = {}
+_REVERSE: dict[Callable, tuple[str, type[Enum]]] = {}
 F = TypeVar("F", bound=Callable)
 
 
@@ -102,10 +102,18 @@ def resolve(key: Enum) -> Callable:
     return _REGISTRY[key]
 
 
-def resolve_class_to_key(cls: type) -> tuple[str, type[Enum]]:
-    """Reverse lookup: class -> (enum_value, enum_class). Raises KeyError if not registered."""
+def resolve_class_to_key(cls: Callable) -> tuple[str, type[Enum]]:
+    """Reverse lookup: registered class/function -> (enum_value, enum_class).
+
+    Raises KeyError if not registered. The reverse map accepts any callable
+    (functions for stateless registrations like dynamics step fns; classes
+    for dataclass-based pluggables) since `register` is decorator-bound to
+    `Callable`. Round-trip serialization (`sampling/serialize.py`) only
+    consults this for dataclass classes, but the storage shape is broader.
+    """
     if cls not in _REVERSE:
-        raise KeyError(f"Class {cls.__qualname__} is not registered")
+        name = getattr(cls, "__qualname__", repr(cls))
+        raise KeyError(f"Callable {name} is not registered")
     return _REVERSE[cls]
 
 

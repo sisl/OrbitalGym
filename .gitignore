@@ -154,6 +154,11 @@ venv.bak/
 # match `env/` and `ENV/` against `src/orbital_game/env/`).
 !src/orbital_game/env/
 !src/orbital_game/env/**
+# Re-ignore __pycache__ underneath the un-ignored env submodule
+# (the `**` un-ignore above would otherwise override the global
+# `__pycache__/` rule from line 9 for this one directory).
+src/orbital_game/env/**/__pycache__/
+src/orbital_game/env/__pycache__/
 
 # Spyder project settings
 .spyderproject
