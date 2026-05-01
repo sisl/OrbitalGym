@@ -9,7 +9,9 @@ from orbital_game.registry import (
     DynamicsKey,
     StateComponentKey,
 )
-from orbital_game.sampling.reference import GaussianAroundNominal
+from orbital_game.sampling.mass import ConstantMass
+from orbital_game.sampling.side import RelativeEllipse
+from orbital_game.sampling.spec import ICSpec
 
 
 def make_config(**overrides):
@@ -24,16 +26,21 @@ def make_config(**overrides):
         defender_components=(StateComponentKey.RTN, StateComponentKey.MASS),
         intruder_components=(StateComponentKey.RTN,),
         defender_params=VehicleParamsSpec(
-            dry_mass_kg=100.0, propellant_mass_kg=10.0, isp_s=220.0, max_thrust_n=5.0
+            dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0
         ),
         intruder_params=VehicleParamsSpec(
-            dry_mass_kg=50.0, propellant_mass_kg=5.0, isp_s=200.0, max_thrust_n=2.0
+            dry_mass_kg=50.0, isp_s=200.0, max_thrust_n=2.0
         ),
-        ic_sampler=GaussianAroundNominal(
-            nominal_defender_state=jnp.array([[1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
-            nominal_intruder_state=jnp.array([[-1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
-            sigma_pos=10.0,
-            sigma_vel=0.1,
+        ic_sampler=ICSpec(
+            defender_sampler=RelativeEllipse(
+                radial_ellipse_m=0.0,
+                phase_rad=0.0,
+                mass_sampler=ConstantMass(propellant_mass_kg=10.0),
+            ),
+            intruder_sampler=RelativeEllipse(
+                radial_ellipse_m=0.0,
+                phase_rad=0.0,
+            ),
         ),
         dt=10.0,
         max_horizon_s=2000.0,
@@ -70,3 +77,44 @@ def test_post_init_rejects_zero_dt():
 def test_post_init_rejects_horizon_smaller_than_dt():
     with pytest.raises(ValueError):
         make_config(dt=10.0, max_horizon_s=5.0)
+
+
+def test_config_round_trips_with_relative_ellipse_ic():
+    cfg = ScenarioConfig(
+        n_defenders=1,
+        n_intruders=1,
+        epoch_mjd_utc=60067.0,
+        hva=HVAState(
+            position_eci=jnp.array([7000e3, 0.0, 0.0]),
+            velocity_eci=jnp.array([0.0, 7546.05, 0.0]),
+        ),
+        defender_components=(StateComponentKey.RTN, StateComponentKey.MASS),
+        intruder_components=(StateComponentKey.RTN,),
+        defender_params=VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
+        intruder_params=VehicleParamsSpec(dry_mass_kg=50.0, isp_s=200.0, max_thrust_n=2.0),
+        ic_sampler=ICSpec(
+            defender_sampler=RelativeEllipse(
+                radial_ellipse_m=100.0,
+                phase_rad=0.0,
+                mass_sampler=ConstantMass(propellant_mass_kg=10.0),
+            ),
+            intruder_sampler=RelativeEllipse(
+                radial_ellipse_m=100.0,
+                phase_rad=jnp.pi,
+            ),
+        ),
+        dt=10.0,
+        max_horizon_s=2000.0,
+        seed=0,
+    )
+    s = cfg.to_json()
+    cfg2 = ScenarioConfig.from_json(s)
+    assert cfg2.n_defenders == 1
+    assert isinstance(cfg2.ic_sampler.defender_sampler, RelativeEllipse)
+    assert isinstance(cfg2.ic_sampler.defender_sampler.mass_sampler, ConstantMass)
+    assert cfg2.ic_sampler.defender_sampler.mass_sampler.propellant_mass_kg == 10.0
+
+
+def test_vehicle_params_spec_no_longer_has_propellant_mass_kg():
+    spec = VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0)
+    assert not hasattr(spec, "propellant_mass_kg")

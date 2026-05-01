@@ -8,7 +8,9 @@ from orbital_game.env.environment import OrbitalGameEnv
 from orbital_game.hva import HVAState
 from orbital_game.registry import StateComponentKey
 from orbital_game.rollout import Trajectory, episode_mask, rollout
-from orbital_game.sampling.reference import GaussianAroundNominal
+from orbital_game.sampling.mass import ConstantMass
+from orbital_game.sampling.side import RelativeEllipse
+from orbital_game.sampling.spec import ICSpec
 
 
 def _make_cfg(max_horizon_s: float = 2000.0) -> ScenarioConfig:
@@ -22,13 +24,18 @@ def _make_cfg(max_horizon_s: float = 2000.0) -> ScenarioConfig:
         ),
         defender_components=(StateComponentKey.RTN, StateComponentKey.MASS),
         intruder_components=(StateComponentKey.RTN,),
-        defender_params=VehicleParamsSpec(100.0, 10.0, 220.0, 5.0),
-        intruder_params=VehicleParamsSpec(50.0, 5.0, 200.0, 2.0),
-        ic_sampler=GaussianAroundNominal(
-            nominal_defender_state=jnp.array([[1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
-            nominal_intruder_state=jnp.array([[-1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
-            sigma_pos=10.0,
-            sigma_vel=0.1,
+        defender_params=VehicleParamsSpec(100.0, 220.0, 5.0),
+        intruder_params=VehicleParamsSpec(50.0, 200.0, 2.0),
+        ic_sampler=ICSpec(
+            defender_sampler=RelativeEllipse(
+                radial_ellipse_m=1000.0,
+                # phase_rad=None -> uniform random per vehicle, so different
+                # seeds produce different ICs (needed for the vmap test).
+                mass_sampler=ConstantMass(propellant_mass_kg=10.0),
+            ),
+            intruder_sampler=RelativeEllipse(
+                radial_ellipse_m=1000.0,
+            ),
         ),
         dt=10.0,
         max_horizon_s=max_horizon_s,

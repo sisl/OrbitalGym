@@ -1,5 +1,7 @@
 """Tests for enum keys + registry (serialization identity only)."""
 
+from enum import StrEnum
+
 import pytest
 
 from orbital_game.registry import (
@@ -7,15 +9,18 @@ from orbital_game.registry import (
     BeliefInitializerKey,
     BeliefUpdaterKey,
     DynamicsKey,
-    InitialConditionSamplerKey,
     IntruderPolicyKey,
+    MassSamplerKey,
     ObservationFnKey,
     RewardFnKey,
+    SideSamplerKey,
     StateComponentKey,
     TerminationFnKey,
+    ValidatorKey,
     _clear_registry_for_tests,
     register,
     resolve,
+    resolve_class_to_key,
 )
 
 
@@ -57,8 +62,32 @@ def test_each_enum_has_at_least_one_member():
         ObservationFnKey,
         RewardFnKey,
         TerminationFnKey,
-        InitialConditionSamplerKey,
+        SideSamplerKey,
+        MassSamplerKey,
+        ValidatorKey,
         BeliefInitializerKey,
         BeliefUpdaterKey,
     ):
         assert len(list(enum_cls)) >= 1
+
+
+class _TestKey(StrEnum):
+    ALPHA = "alpha"
+
+
+def test_resolve_class_to_key_returns_enum_member_and_class():
+    @register(_TestKey.ALPHA)
+    class Alpha:
+        pass
+
+    enum_value, enum_class = resolve_class_to_key(Alpha)
+    assert enum_value == "alpha"
+    assert enum_class is _TestKey
+
+
+def test_resolve_class_to_key_raises_for_unregistered():
+    class NotRegistered:
+        pass
+
+    with pytest.raises(KeyError, match="not registered"):
+        resolve_class_to_key(NotRegistered)

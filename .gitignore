@@ -3,6 +3,7 @@
 .idea/
 .vscode/
 refs/
+.worktrees/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

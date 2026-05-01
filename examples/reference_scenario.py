@@ -17,7 +17,9 @@ from orbital_game.hva import HVAState
 from orbital_game.logging.writer import save_run
 from orbital_game.registry import StateComponentKey
 from orbital_game.rollout import rollout
-from orbital_game.sampling.reference import GaussianAroundNominal
+from orbital_game.sampling.mass import ConstantMass
+from orbital_game.sampling.side import RelativeEllipse
+from orbital_game.sampling.spec import ICSpec
 from orbital_game.viz.summaries import plot_mass_curve, plot_reward_curve
 from orbital_game.viz.trajectories import plot_rtn_3d
 
@@ -26,7 +28,9 @@ def build_config() -> ScenarioConfig:
     """Construct the canonical bootstrap scenario.
 
     1 defender with RTN+Mass, 1 intruder with RTN, HCW-RTN dynamics, impulsive
-    actuator, gaussian ICs around ±1 km radial, 200 steps at 10 s each.
+    actuator. Both vehicles share a bounded 1 km radial-ellipse relative orbit
+    (defender at phase 0, intruder at phase pi) with sigma=10 m extent jitter.
+    200 steps at 10 s each.
     """
     return ScenarioConfig(
         n_defenders=1,
@@ -38,13 +42,26 @@ def build_config() -> ScenarioConfig:
         ),
         defender_components=(StateComponentKey.RTN, StateComponentKey.MASS),
         intruder_components=(StateComponentKey.RTN,),
-        defender_params=VehicleParamsSpec(100.0, 10.0, 220.0, 5.0),
-        intruder_params=VehicleParamsSpec(50.0, 5.0, 200.0, 2.0),
-        ic_sampler=GaussianAroundNominal(
-            nominal_defender_state=jnp.array([[1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
-            nominal_intruder_state=jnp.array([[-1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
-            sigma_pos=10.0,
-            sigma_vel=0.1,
+        defender_params=VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
+        intruder_params=VehicleParamsSpec(dry_mass_kg=50.0, isp_s=200.0, max_thrust_n=2.0),
+        ic_sampler=ICSpec(
+            defender_sampler=RelativeEllipse(
+                radial_ellipse_m=1000.0,
+                cross_track_m=0.0,
+                along_track_offset_m=0.0,
+                phase_rad=0.0,
+                sigma_radial_ellipse_m=10.0,
+                mass_sampler=ConstantMass(propellant_mass_kg=10.0),
+            ),
+            intruder_sampler=RelativeEllipse(
+                radial_ellipse_m=1000.0,
+                cross_track_m=0.0,
+                along_track_offset_m=0.0,
+                phase_rad=jnp.pi,
+                sigma_radial_ellipse_m=10.0,
+            ),
+            validators=(),
+            max_attempts=100,
         ),
         dt=10.0,
         max_horizon_s=2000.0,

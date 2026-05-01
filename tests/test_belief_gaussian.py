@@ -100,6 +100,6 @@ def test_joseph_form_preserves_symmetry():
     )
     updated = upd.correct(belief, observation=jnp.zeros(2))
     asymmetry = jnp.max(jnp.abs(updated.cov - updated.cov.T))
-    # JAX defaults to float32; machine epsilon ~1e-7. Joseph form holds asymmetry
-    # at the epsilon level; simple form can drift measurably more over many steps.
+    # Joseph form holds asymmetry at machine-epsilon level. (Package init enables
+    # float64, so eps ~1e-15; the 1e-6 bound is generous for either dtype.)
     assert asymmetry < 1e-6

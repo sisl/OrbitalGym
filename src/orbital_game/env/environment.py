@@ -57,7 +57,6 @@ _DYN_LOOKUP = {
 @flax.struct.dataclass
 class _FleetParams:
     dry_mass_kg: jax.Array
-    propellant_mass_kg: jax.Array
     isp_s: jax.Array
     max_thrust_n: jax.Array
     mean_motion: jax.Array
@@ -66,7 +65,6 @@ class _FleetParams:
 def _build_per_side_params(spec, mean_motion: float) -> _FleetParams:
     return _FleetParams(
         dry_mass_kg=jnp.asarray(spec.dry_mass_kg),
-        propellant_mass_kg=jnp.asarray(spec.propellant_mass_kg),
         isp_s=jnp.asarray(spec.isp_s),
         max_thrust_n=jnp.asarray(spec.max_thrust_n),
         mean_motion=jnp.asarray(mean_motion),
@@ -80,6 +78,10 @@ class EnvState:
     defenders: Any  # assembled defender pytree
     intruders: Any  # assembled intruder pytree
     hva: HVAState
+    # bool scalar — False iff IC rejection cap was exhausted at reset.
+    # Defaults to True so legacy construction sites (and tests that build
+    # EnvState without rejection sampling) get a sensible value.
+    ic_valid: jax.Array = flax.struct.field(default_factory=lambda: jnp.asarray(True))
 
 
 def _dyn_action_dim(dyn_key: DynamicsKey) -> int:
@@ -182,16 +184,69 @@ class OrbitalGameEnv:
         # Currently the reference pluggables ignore the observation key, but
         # noisy observation models will consume it; keep them uncoupled from IC.
         k_ic, k_obs = jax.random.split(key, 2)
-        defs, ints = self.ic_sampler(self.config, k_ic)
+        defs, ints, ok = self._reset_with_icspec(k_ic)
         state = EnvState(
             t=jnp.asarray(0.0),
             step=jnp.asarray(0),
             defenders=defs,
             intruders=ints,
             hva=self.config.hva,
+            ic_valid=ok,
         )
         obs = self.defender_observation_fn(state, None, k_obs, state.t)
         return state, obs
+
+    def _reset_with_icspec(self, k_ic: jax.Array):
+        """Rejection-sampling reset for ICSpec configurations.
+
+        Runs `jax.lax.while_loop` capped at `ic_sampler.max_attempts`. If all
+        validators pass, returns (defs, ints, True). If the cap is exhausted,
+        returns the last-drawn (defs, ints) with ic_valid=False — non-fatal,
+        so downstream code can surface infeasibility rates instead of crashing.
+        """
+        n_def = self.config.n_defenders
+        n_int = self.config.n_intruders
+        def_components = self.config.defender_components
+        int_components = self.config.intruder_components
+
+        def _draw(i):
+            k = jax.random.fold_in(k_ic, i)
+            kd, ki = jax.random.split(k, 2)
+            defs = self.ic_sampler.defender_sampler(
+                self.config, kd,
+                n_vehicles=n_def, components=def_components, class_name="DefenderState",
+            )
+            ints = self.ic_sampler.intruder_sampler(
+                self.config, ki,
+                n_vehicles=n_int, components=int_components, class_name="IntruderState",
+            )
+            # Python-side branch on a static tuple length: safe under jit/vmap.
+            if self.ic_sampler.validators:
+                checks = jnp.stack([
+                    jnp.asarray(v(self.config, defs, ints))
+                    for v in self.ic_sampler.validators
+                ])
+                ok = jnp.all(checks)
+            else:
+                ok = jnp.asarray(True)
+            return defs, ints, ok
+
+        # Seed the carry with a concrete-shape draw so the while_loop has a
+        # well-defined pytree structure.
+        seed_defs, seed_ints, seed_ok = _draw(jnp.asarray(0))
+        init_carry = (jnp.asarray(1), seed_defs, seed_ints, seed_ok)
+
+        def _cond(carry):
+            i, _, _, ok = carry
+            return jnp.logical_and(jnp.logical_not(ok), i < self.ic_sampler.max_attempts)
+
+        def _body(carry):
+            i, _, _, _ = carry
+            d, n, ok = _draw(i)
+            return (i + 1, d, n, ok)
+
+        _, defs, ints, ok = jax.lax.while_loop(_cond, _body, init_carry)
+        return defs, ints, ok
 
     def step(self, key: jax.Array, state: EnvState, action: jax.Array):
         # Separate keys for intruder obs+action, dynamics (if stochastic), and

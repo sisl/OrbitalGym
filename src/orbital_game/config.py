@@ -27,13 +27,12 @@ from orbital_game.registry import (
     StateComponentKey,
     TerminationFnKey,
 )
-from orbital_game.sampling.reference import GaussianAroundNominal
+from orbital_game.sampling.spec import ICSpec
 
 
 @dataclass(frozen=True)
 class VehicleParamsSpec:
     dry_mass_kg: float
-    propellant_mass_kg: float
     isp_s: float
     max_thrust_n: float
 
@@ -58,11 +57,11 @@ class ScenarioConfig:
     defender_params: VehicleParamsSpec
     intruder_params: VehicleParamsSpec
 
-    # Initial-condition sampler. The user constructs this with their chosen
-    # nominal states + noise magnitudes; the env uses it directly at reset.
-    # Typed concretely as GaussianAroundNominal for the bootstrap; if more
-    # IC samplers land, promote to a union or a structural protocol.
-    ic_sampler: GaussianAroundNominal
+    # Initial-condition specification. The user composes per-side samplers
+    # (RelativeKeplerian, RelativeEllipse, ...), optional validators, and a
+    # max_attempts cap; the env runs rejection sampling under jax.lax.while_loop
+    # at reset time.
+    ic_sampler: ICSpec
 
     # Environment clock + reproducibility
     dt: float
@@ -100,10 +99,6 @@ class ScenarioConfig:
             raise ValueError("max_horizon_s must be > 0")
         if self.max_horizon_s < self.dt:
             raise ValueError("max_horizon_s must be >= dt")
-        if self.defender_params.propellant_mass_kg < 0:
-            raise ValueError("defender propellant_mass_kg must be >= 0")
-        if self.intruder_params.propellant_mass_kg < 0:
-            raise ValueError("intruder propellant_mass_kg must be >= 0")
 
     def to_json(self) -> str:
         return json.dumps(_config_to_primitive(self), sort_keys=True)
@@ -129,17 +124,8 @@ def _config_to_primitive(cfg: ScenarioConfig) -> dict[str, Any]:
             }
         elif isinstance(v, VehicleParamsSpec):
             d[f.name] = asdict(v)
-        elif isinstance(v, GaussianAroundNominal):
-            d[f.name] = {
-                "nominal_defender_state": [
-                    [float(x) for x in row] for row in v.nominal_defender_state
-                ],
-                "nominal_intruder_state": [
-                    [float(x) for x in row] for row in v.nominal_intruder_state
-                ],
-                "sigma_pos": float(v.sigma_pos),
-                "sigma_vel": float(v.sigma_vel),
-            }
+        elif isinstance(v, ICSpec):
+            d[f.name] = _ic_spec_to_primitive(v)
         else:
             d[f.name] = v
     return d
@@ -178,12 +164,36 @@ def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> Scen
         elif f.name in ("defender_params", "intruder_params"):
             kwargs[f.name] = VehicleParamsSpec(**v)
         elif f.name == "ic_sampler":
-            kwargs[f.name] = GaussianAroundNominal(
-                nominal_defender_state=jnp.asarray(v["nominal_defender_state"]),
-                nominal_intruder_state=jnp.asarray(v["nominal_intruder_state"]),
-                sigma_pos=v["sigma_pos"],
-                sigma_vel=v["sigma_vel"],
-            )
+            kwargs[f.name] = _ic_spec_from_primitive(v)
         else:
             kwargs[f.name] = v
     return cls(**kwargs)
+
+
+def _ic_spec_to_primitive(spec: ICSpec) -> dict:
+    """Serialize an ICSpec for JSON round-trip."""
+    from orbital_game.sampling.serialize import serializable_to_primitive
+    return {
+        "defender_sampler": serializable_to_primitive(spec.defender_sampler),
+        "intruder_sampler": serializable_to_primitive(spec.intruder_sampler),
+        "validators": [serializable_to_primitive(v) for v in spec.validators],
+        "max_attempts": spec.max_attempts,
+    }
+
+
+def _ic_spec_from_primitive(d: dict) -> ICSpec:
+    from orbital_game.registry import MassSamplerKey, SideSamplerKey, ValidatorKey
+    from orbital_game.sampling.serialize import serializable_from_primitive
+
+    def _hydrate_side_sampler(sd: dict):
+        sd = dict(sd)
+        if sd.get("mass_sampler") is not None and isinstance(sd["mass_sampler"], dict):
+            sd["mass_sampler"] = serializable_from_primitive(sd["mass_sampler"], MassSamplerKey)
+        return serializable_from_primitive(sd, SideSamplerKey)
+
+    return ICSpec(
+        defender_sampler=_hydrate_side_sampler(d["defender_sampler"]),
+        intruder_sampler=_hydrate_side_sampler(d["intruder_sampler"]),
+        validators=tuple(serializable_from_primitive(v, ValidatorKey) for v in d["validators"]),
+        max_attempts=d["max_attempts"],
+    )
