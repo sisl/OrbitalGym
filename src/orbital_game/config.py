@@ -113,6 +113,16 @@ class ScenarioConfig:
         if self.max_horizon_s < self.dt:
             raise ValueError("max_horizon_s must be >= dt")
 
+        # The spatial state component must match the dynamics frame. Catch
+        # incoherent combinations here so callers get a clear error instead
+        # of a downstream crash inside state assembly or the dynamics step.
+        for dyn_field, dyn in (
+            ("truth_dynamics", self.truth_dynamics),
+            ("planning_dynamics", self.planning_dynamics),
+        ):
+            _validate_components_match_dynamics("guard", self.guard_components, dyn_field, dyn)
+            _validate_components_match_dynamics("bandit", self.bandit_components, dyn_field, dyn)
+
         # Coerce controlled_side string value to Side enum (deferred import to
         # avoid circular dependency at module load time).
         from orbital_game.env.types import Side as _Side
@@ -179,6 +189,33 @@ class ScenarioConfig:
     def from_json(cls, s: str) -> ScenarioConfig:
         raw = json.loads(s)
         return _primitive_to_config(raw, cls)
+
+
+_DYNAMICS_REQUIRED_COMPONENT: dict[DynamicsKey, StateComponentKey] = {
+    DynamicsKey.HCW_RT: StateComponentKey.RT,
+    DynamicsKey.HCW_RTN: StateComponentKey.RTN,
+}
+
+
+def _validate_components_match_dynamics(
+    side: str,
+    components: tuple[StateComponentKey, ...],
+    dynamics_field: str,
+    dynamics: DynamicsKey,
+) -> None:
+    required = _DYNAMICS_REQUIRED_COMPONENT[dynamics]
+    forbidden = StateComponentKey.RT if required is StateComponentKey.RTN else StateComponentKey.RTN
+    got = [c.value for c in components]
+    if required not in components:
+        raise ValueError(
+            f"{dynamics_field}={dynamics.value} requires {side}_components to include "
+            f"{required.value!r}; got {got}"
+        )
+    if forbidden in components:
+        raise ValueError(
+            f"{dynamics_field}={dynamics.value} is incompatible with {forbidden.value!r} "
+            f"in {side}_components; got {got}"
+        )
 
 
 # Fields that are serialized as typed-instance dicts via serializable_to_primitive.
