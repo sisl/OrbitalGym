@@ -15,8 +15,7 @@ each, take the first action of the best. It is *not* MCTS: there is
 no tree, no UCB, no expansion-by-uncertainty. The teaching value is
 the API patterns: how to call `transition` / `reward`, how to thread
 PRNG keys through a horizon loop, how the action vector is laid out,
-and — critically — how to drive an adapter that carries internal
-mutable state.
+and how a pure adapter composes with `jax.vmap` and `jax.lax.scan`.
 
 For real planning, swap the search loop for [`mctx`](https://github.com/google-deepmind/mctx)
 or [`pomdp-py`](https://github.com/h2r/pomdp-py). The wiring stays
@@ -35,16 +34,17 @@ the same.
 `POMDPAdapter` exposes a [POMDPs.jl](https://juliapomdp.github.io/POMDPs.jl/latest/)-shaped
 interface over `OrbitalGameEnv`:
 
-- `states_dim` — flat-state dimensionality (per-side guard/bandit
-  truth, flattened by `StateLayout`). Scalar fields like `t`, `step`,
-  and the `reference_orbit` are *not* in the flat vector — the adapter
-  carries them in a stashed "context state" between calls.
+- `states_dim` — flat-state dimensionality. The vector packs
+  `StateLayout.flatten` (per-side guard/bandit truth) followed by
+  two scalar tail entries: `t` and `step`. The reference orbit is
+  captured at `__init__` time as a per-scenario constant, so it
+  doesn't need to live in the flat vector.
 - `action_dim_per_side` — components of `Δv` per vehicle (3 for
   RTN dynamics, 2 for in-plane).
 - `discount() → float` — episode-bounded games return `1.0`. Override
   by subclassing if your problem needs `γ < 1`.
-- `initialstate(key) → s_flat` — sample an initial state, return its
-  flat vector, and stash the full env state internally.
+- `initialstate(key) → s_flat` — sample an initial state and return
+  its flat vector.
 - `transition(s_flat, a_flat, key) → s_flat'` — apply one env step.
 - `observation(s, a, s', side) → obs` — per-side observation at `s'`.
 - `reward(s, a, s', side) → float` — per-side scalar reward.
@@ -66,10 +66,10 @@ with total length `(n_g + n_b) * d`.
 --8<-- "tests/docs/test_tut_t4_short_horizon_search.py:initial-state"
 ```
 
-`s0` is a flat `(states_dim,)` array. The full env state — including
-`t`, `step`, and `reference_orbit` — is now stashed inside the
-adapter as `adapter._last_state`. Hold on to that fact; the planner
-below depends on it.
+`s0` is a flat `(states_dim,)` array — the per-side truth plus the
+two-scalar `(t, step)` tail. There is no hidden mutable bookkeeping;
+every call to `transition` reads its bookkeeping out of the input
+vector and writes the new bookkeeping into the output vector.
 
 ## Build the planner
 
@@ -77,37 +77,21 @@ below depends on it.
 --8<-- "tests/docs/test_tut_t4_short_horizon_search.py:planner-class"
 ```
 
-The planner has two nested Python loops: an outer loop over `K`
-candidate sequences, an inner loop of length `H` advancing the
-state. For each candidate it:
+The planner is a single `jax.vmap(jax.lax.scan)`:
 
-1. Splits `key` into per-step subkeys.
-2. Samples a fresh `(H, action_dim)` Gaussian action sequence.
-3. Resets `adapter._last_state` to the snapshot taken before the
-   search began.
-4. Steps the adapter forward through the horizon, summing per-step
-   reward to the controlled side.
-5. Tracks the best-scoring candidate's first action.
+1. Outer `vmap` over `K` candidates — each candidate gets its own
+   PRNG sub-key. JAX runs them in parallel on whatever device is
+   available.
+2. Inner `lax.scan` over `H` horizon steps — `transition` advances
+   the flat state, `reward` scores it for the controlled side, and
+   the scan accumulates the per-step rewards.
+3. `argmax` over the per-candidate cumulative rewards picks the
+   best sequence; the planner returns its first action.
 
-### Why not `vmap`/`scan`?
-
-The load-bearing teaching point: **`POMDPAdapter` is stateful**. Each
-call to `transition` mutates `self._last_state` to thread the env's
-`t`, `step`, and `reference_orbit` through a flat-vector API that
-otherwise only carries the per-side guard/bandit truth. The `act`
-method *snapshots* `_last_state` once before the search, *restores*
-it before each candidate's rollout so they all start from the same
-root, and *restores* it again at exit so callers see no side effect.
-
-This rules out `jax.vmap(planner_step)` or `jax.lax.scan` over
-`transition`. Tracers from a transformed call would land in
-`_last_state` and the next post-tracing call to `transition` would
-raise `UnexpectedTracerError`. The POMDPPlanners-shape interface is
-imperative by design — drive it with imperative Python.
-
-If you need vectorised search, build a *pure-functional* clone of
-the adapter that returns the next env state explicitly instead of
-stashing it, and `vmap` that.
+Because `POMDPAdapter` is pure, all of this compiles to a single
+JIT call. No Python loops, no per-candidate state snapshots — the
+horizon-rollout primitive is a JAX function from `(seq_key) →
+(score, first_action)` and `vmap` does the parallelism.
 
 ## Plan one step
 
@@ -136,8 +120,8 @@ search loop should multiply it into the inner-loop accumulator.
 
 - [`mctx`](https://github.com/google-deepmind/mctx) — DeepMind's
   JAX-native MCTS library. Plugs into a *pure* dynamics function;
-  wrap a functional version of the adapter and pass it as the
-  `recurrent_fn`.
+  `POMDPAdapter.transition` is exactly that, so it slots in as
+  `recurrent_fn` directly.
 - [`pomdp-py`](https://github.com/h2r/pomdp-py) — Python POMDPs
   framework with a similar interface to `POMDPAdapter`. The flat
   vector here is intentionally compatible with that ecosystem.

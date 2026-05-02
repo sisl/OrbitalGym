@@ -35,9 +35,11 @@ uses `env.layout.flatten` and `env.layout.unflatten`:
 --8<-- "tests/docs/test_indepth_state_layout.py:flat-flatten"
 ```
 
-The flat layout deliberately excludes the scalar time / step counter
-and the reference orbit, since `(s, a) → s'` consumers typically
-treat time bookkeeping as implicit.
+The `StateLayout`-level flat vector excludes the scalar time / step
+counter and the reference orbit. `POMDPAdapter` packs `(t, step)`
+onto the tail of its own flat vector so `transition` can stay pure
+(see [Use the POMDP adapter](../how-to/use-pomdp-adapter.md)); the
+reference orbit is treated as a per-scenario constant.
 
 ## Worked example: adding a `Power` component
 

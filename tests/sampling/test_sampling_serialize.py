@@ -8,7 +8,7 @@ from enum import StrEnum
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.registry import _clear_registry_for_tests, register
+from orbital_game.registry import register
 from orbital_game.sampling.serialize import (
     serializable_from_primitive,
     serializable_to_primitive,
@@ -93,7 +93,3 @@ def test_missing_required_field_raises_clear_error():
     primitive.pop("mean")
     with pytest.raises(KeyError, match="mean"):
         serializable_from_primitive(primitive, _ToyKey)
-
-
-def teardown_module(_module):
-    _clear_registry_for_tests()

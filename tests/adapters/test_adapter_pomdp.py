@@ -19,7 +19,8 @@ def _make_adapter():
 
 def test_pomdp_adapter_states_dim_matches_layout():
     adapter, env, _cfg = _make_adapter()
-    assert adapter.states_dim == env.layout.flat_dim
+    # +2 for the (t, step) tail packed onto the flat vector.
+    assert adapter.states_dim == env.layout.flat_dim + 2
 
 
 def test_pomdp_adapter_discount_is_one():
@@ -70,15 +71,24 @@ def test_pomdp_adapter_observation_per_side():
     assert o_b.ndim == 1
 
 
-def test_pomdp_adapter_transition_before_init_raises():
+def test_pomdp_adapter_transition_is_pure_under_vmap():
+    """Adapter is pure: transition composes with jax.vmap without leaking
+    tracers (regression test for the old stateful _last_state design)."""
     adapter, _env, cfg = _make_adapter()
+    s0 = adapter.initialstate(jax.random.PRNGKey(0))
     n_g, n_b = cfg.n_guards, cfg.n_bandits
     d = adapter.action_dim_per_side
-    a = jnp.zeros(n_g * d + n_b * d)
-    s = jnp.zeros(adapter.states_dim)
-    try:
-        adapter.transition(s, a, jax.random.PRNGKey(0))
-    except RuntimeError:
-        pass
-    else:
-        raise AssertionError("expected RuntimeError")
+    action_dim = (n_g + n_b) * d
+
+    keys = jax.random.split(jax.random.PRNGKey(1), 4)
+    actions = jax.random.normal(jax.random.PRNGKey(2), (4, action_dim)) * 0.05
+
+    def step(k, a):
+        return adapter.transition(s0, a, k)
+
+    s_next_batch = jax.vmap(step)(keys, actions)
+    assert s_next_batch.shape == (4, adapter.states_dim)
+    # And a regular post-vmap call must still work — this would raise
+    # UnexpectedTracerError under the old stateful design.
+    s_next = adapter.transition(s0, actions[0], keys[0])
+    assert s_next.shape == (adapter.states_dim,)

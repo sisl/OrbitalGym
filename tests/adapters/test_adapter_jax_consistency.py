@@ -98,8 +98,13 @@ def test_pomdp_adapter_consistency_with_direct_env():
 
     # Direct path: replicate adapter's reset (PRNGKey(0)).
     state_direct, _outs = env.reset(jax.random.PRNGKey(0))
-    s0_expected = env.layout.flatten(state_direct.guards, state_direct.bandits)
-    np.testing.assert_array_equal(np.asarray(s0), np.asarray(s0_expected))
+    # Adapter packs (guards, bandits) followed by (t, step) as a float tail.
+    s0_xy_expected = env.layout.flatten(state_direct.guards, state_direct.bandits)
+    np.testing.assert_array_equal(np.asarray(s0[:-2]), np.asarray(s0_xy_expected))
+    np.testing.assert_array_equal(np.asarray(s0[-2]), np.asarray(state_direct.t))
+    np.testing.assert_array_equal(
+        np.asarray(s0[-1]), np.asarray(state_direct.step).astype(s0.dtype)
+    )
 
     # Now step once.
     n_g = cfg.n_guards
@@ -113,9 +118,12 @@ def test_pomdp_adapter_consistency_with_direct_env():
         )
     )
     step_out_direct = env.step(jax.random.PRNGKey(1), state_direct, actions_direct)
-    s_next_expected = env.layout.flatten(
+    s_next_xy_expected = env.layout.flatten(
         step_out_direct.state.guards, step_out_direct.state.bandits
     )
 
     s_next_adapter = adapter.transition(s0, a, jax.random.PRNGKey(1))
-    np.testing.assert_array_equal(np.asarray(s_next_adapter), np.asarray(s_next_expected))
+    np.testing.assert_array_equal(np.asarray(s_next_adapter[:-2]), np.asarray(s_next_xy_expected))
+    np.testing.assert_array_equal(
+        np.asarray(s_next_adapter[-2]), np.asarray(step_out_direct.state.t)
+    )

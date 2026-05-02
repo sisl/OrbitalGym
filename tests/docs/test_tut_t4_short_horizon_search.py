@@ -46,15 +46,10 @@ def test_t4_short_horizon_search_walkthrough():
         cumulative reward to ``controlled_side``, and return the first
         action of the best-scoring sequence.
 
-        ``POMDPAdapter`` is *stateful*: ``transition`` mutates
-        ``adapter._last_state`` to thread the env's ``t``/``step``/
-        ``reference_orbit`` through the flat-vector API. That means
-        candidate rollouts must run in a plain Python loop — wrapping
-        ``transition`` in ``jax.vmap`` or ``jax.lax.scan`` would leak
-        tracers into ``_last_state`` and break the next call. Snapshot
-        ``_last_state`` once before the search, restore it between
-        candidates so each rollout starts from the same root, and
-        restore it again at exit so callers see no side effect.
+        ``POMDPAdapter`` is pure, so the entire search compiles to a
+        single ``jax.vmap(jax.lax.scan)`` call: candidates run in
+        parallel on whatever device JAX has, and each candidate's
+        horizon rolls forward inside a scanned step.
         """
 
         adapter: POMDPAdapter
@@ -69,38 +64,23 @@ def test_t4_short_horizon_search_walkthrough():
             d = self.adapter.action_dim_per_side
             action_dim = (n_g + n_b) * d
 
-            # Snapshot the adapter's mutable state. Each candidate
-            # rollout will reset to this point before stepping forward.
-            saved_last_state = self.adapter._last_state
-
-            seq_keys = jax.random.split(key, self.n_candidates)
-            best_score = -jnp.inf
-            best_first_action = jnp.zeros(action_dim)
-
-            for cand_idx in range(self.n_candidates):
-                keys = jax.random.split(seq_keys[cand_idx], self.horizon + 1)
+            def score_sequence(seq_key):
+                keys = jax.random.split(seq_key, self.horizon + 1)
                 actions = jax.random.normal(keys[0], (self.horizon, action_dim)) * self.dv_scale
 
-                # Reset the adapter to the planning root before this
-                # candidate's rollout.
-                self.adapter._last_state = saved_last_state
+                def step(carry_state, idx):
+                    a = actions[idx]
+                    s_next = self.adapter.transition(carry_state, a, keys[idx + 1])
+                    r = self.adapter.reward(carry_state, a, s_next, self.controlled_side)
+                    return s_next, r
 
-                s = s_flat
-                total_reward = jnp.asarray(0.0)
-                for h in range(self.horizon):
-                    a = actions[h]
-                    s_next = self.adapter.transition(s, a, keys[h + 1])
-                    r = self.adapter.reward(s, a, s_next, self.controlled_side)
-                    total_reward = total_reward + r
-                    s = s_next
+                _, rewards = jax.lax.scan(step, s_flat, jnp.arange(self.horizon))
+                return rewards.sum(), actions[0]
 
-                if float(total_reward) > float(best_score):
-                    best_score = total_reward
-                    best_first_action = actions[0]
-
-            # Restore so callers see no observable mutation.
-            self.adapter._last_state = saved_last_state
-            return best_first_action
+            seq_keys = jax.random.split(key, self.n_candidates)
+            scores, first_actions = jax.vmap(score_sequence)(seq_keys)
+            best = jnp.argmax(scores)
+            return first_actions[best]
 
     # --8<-- [end:planner-class]
 

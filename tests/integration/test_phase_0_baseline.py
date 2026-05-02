@@ -22,7 +22,7 @@ from orbital_game.env.types import BySide
 from orbital_game.policies.library import ZeroControl
 from orbital_game.rollout import rollout
 
-FIXTURE = Path(__file__).parent / "fixtures" / "phase_0_baseline.npz"
+FIXTURE = Path(__file__).parent.parent / "fixtures" / "phase_0_baseline.npz"
 
 
 @pytest.fixture(scope="module")

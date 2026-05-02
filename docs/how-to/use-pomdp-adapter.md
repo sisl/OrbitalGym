@@ -40,8 +40,10 @@ Guards' actions first, bandits' second; total length
 
 ## State vector layout
 
-`env.layout.flatten(state.guards, state.bandits)`. Excludes the
-scalar time / step counter and the reference orbit.
+`env.layout.flatten(state.guards, state.bandits)` followed by two
+scalar tail entries `(t, step)` cast to the flat vector's float
+dtype. The reference orbit is captured at `__init__` time as a
+per-scenario constant. Total length: `env.layout.flat_dim + 2`.
 
 ## Per-side dispatch
 
@@ -50,13 +52,15 @@ to a controlled side. `observation` and `reward` take an explicit
 `side` argument, so the same `(s, a, s')` triple yields both
 perspectives.
 
-## Adapter is stateful
+## Pure under JAX transforms
 
-`POMDPAdapter._last_state` is mutated between calls to thread the
-scalar time, step counter, and reference orbit. Calling `transition`
-inside a JAX transform (`vmap`, `lax.scan`) leaks tracers; use
-plain Python loops if you need to enumerate candidates. See [T4 —
-Plan with short-horizon search](../tutorials/t4-short-horizon-search.md).
+`transition`, `observation`, and `reward` are pure functions of
+their flat-vector arguments. They compose with `jax.vmap`,
+`jax.lax.scan`, and `jax.jit` without leaking tracers — vectorised
+search loops (e.g. random shooting over K candidates × H horizon)
+compile to a single JIT call. See [T4 — Plan with short-horizon
+search](../tutorials/t4-short-horizon-search.md) for an end-to-end
+`vmap(scan)` planner.
 
 ## Discount
 
