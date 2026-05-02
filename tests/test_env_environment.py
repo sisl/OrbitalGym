@@ -53,12 +53,17 @@ def _make_actions(cfg: ScenarioConfig, guard_action: jnp.ndarray) -> Actions:
 
 
 def test_env_reset_is_deterministic_under_same_key():
+    from orbital_game.observations.types import flatten_observations
+
     env = OrbitalGameEnv(_make_cfg())
     key = jax.random.PRNGKey(42)
     s_a, outputs_a = env.reset(key)
     s_b, outputs_b = env.reset(key)
     assert jnp.allclose(s_a.guards.rtn, s_b.guards.rtn)
-    assert jnp.allclose(outputs_a.guard.obs, outputs_b.guard.obs)
+    assert jnp.allclose(
+        flatten_observations(outputs_a.guard.obs),
+        flatten_observations(outputs_b.guard.obs),
+    )
 
 
 def test_env_step_is_deterministic_under_same_key():

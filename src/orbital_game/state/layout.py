@@ -71,3 +71,17 @@ class StateLayout:
 
     def unflatten(self, vec: jax.Array) -> tuple[Any, Any]:
         return self._unflatten_fn(vec)
+
+    # ---- dynamics state dim (for belief / observation construction) ----
+
+    @property
+    def dynamics_state_dim(self) -> int:
+        """Per-vehicle dynamics state dim — read from the assembled state class."""
+        from orbital_game.state.components import RTNState, RTState
+
+        comps = self.guard_state_cls._orbital_game_components
+        if RTNState in comps:
+            return 6
+        if RTState in comps:
+            return 4
+        raise AttributeError("State has no dynamics component (RTState or RTNState)")

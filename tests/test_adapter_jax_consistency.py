@@ -44,10 +44,14 @@ def test_gymnasium_adapter_consistency_with_direct_env():
     # the env.reset key inside the adapter is jax.random.split(PRNGKey(0))[1],
     # NOT PRNGKey(0). So byte-equality is only expected if we use the same
     # transformation. Replicate the adapter's key handling here:
+    from orbital_game.observations.types import coerce_obs_to_flat_array
+
     expected_rng = jax.random.PRNGKey(0)
     _, expected_k_reset = jax.random.split(expected_rng, 2)
     state_expected, outputs_expected = env_direct.reset(expected_k_reset)
-    obs_expected = outputs_expected.guard.obs  # GUARD is the default controlled side
+    obs_expected = coerce_obs_to_flat_array(
+        outputs_expected.guard.obs
+    )  # GUARD is the default controlled side
     np.testing.assert_array_equal(obs_adapter, np.asarray(obs_expected, dtype=np.float32))
 
 
@@ -56,6 +60,8 @@ def test_pettingzoo_adapter_consistency_with_direct_env():
     from orbital_game.adapters.pettingzoo import PettingZooAdapter
 
     cfg = build_config()
+
+    from orbital_game.observations.types import coerce_obs_to_flat_array
 
     env = OrbitalGameEnv(cfg)
     adapter = PettingZooAdapter(env, seed=0)
@@ -67,10 +73,12 @@ def test_pettingzoo_adapter_consistency_with_direct_env():
     state_direct, outputs_direct = env.reset(expected_k_reset)
 
     np.testing.assert_array_equal(
-        obs_dict["guard_0"], np.asarray(outputs_direct.guard.obs, dtype=np.float32)
+        obs_dict["guard_0"],
+        np.asarray(coerce_obs_to_flat_array(outputs_direct.guard.obs), dtype=np.float32),
     )
     np.testing.assert_array_equal(
-        obs_dict["bandit_0"], np.asarray(outputs_direct.bandit.obs, dtype=np.float32)
+        obs_dict["bandit_0"],
+        np.asarray(coerce_obs_to_flat_array(outputs_direct.bandit.obs), dtype=np.float32),
     )
 
 
