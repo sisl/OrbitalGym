@@ -1,6 +1,6 @@
 # Architecture
 
-A condensed design overview. The full design spec lives at [`superpowers/specs/2026-05-01-orbital-game-api-overhaul-design.md`](https://github.com/duncaneddy/orbital-game/blob/main/superpowers/specs/2026-05-01-orbital-game-api-overhaul-design.md).
+A condensed design overview.
 
 ## Layered design
 
