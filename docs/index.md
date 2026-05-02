@@ -1,15 +1,64 @@
 # orbital-game
 
-A JAX-native framework for guard / bandit decision-making in orbital scenarios.
+A JAX-native framework for two-side decision-making in orbital
+scenarios. Same symmetric core drives single-agent (Gymnasium-shaped),
+multi-agent (PettingZoo-shaped), and POMDP-shaped views of the same
+underlying game. Four scenarios ship in the box.
 
-Guard and bandit are symmetric agents: either side can be the learning agent, with the opposite side driven by a scripted policy. The same symmetric core drives single-agent (Gymnasium-shaped), multi-agent (PettingZoo-shaped), and POMDP-shaped views of the same underlying game. Four scenarios ship in the box: Lady-Bandit-Guard, Pursuit-Evasion, Sun-Blocking, and Observation-Blocking.
+## Choose your path
 
-## Where to start
+<div class="grid cards" markdown>
 
-- New here? [Getting started](getting-started.md) walks from install to a rendered trajectory plot in five minutes.
-- Want the mental model? [Concepts](concepts.md) explains sides, per-side outputs, and observation/reward scope.
-- Looking for a specific game? Browse the [game guides](games/index.md).
-- Plugging into a framework? See the [adapter how-tos](adapters/index.md).
-- Writing custom observations, rewards, or games? See [Extending](extending/index.md).
-- Looking up a type or function? Browse the [API reference](api/index.md).
-- Curious about the design? [Architecture](architecture.md) sketches the layered decomposition.
+- :material-school: **New here**
+  Start with [Tutorials](tutorials/index.md). Five guided walkthroughs
+  from `pip install` to a working short-horizon planner running on GPU.
+
+- :material-book-search: **Looking up an API**
+  Jump to the [API reference](api/index.md). Auto-generated from
+  in-code docstrings.
+
+- :material-target: **Building a scenario**
+  See [Game guides](games/index.md) for what each game rewards, then
+  the [How-to recipes](how-to/index.md) for the task-by-task steps.
+
+- :material-cog: **Understanding the design**
+  Read [In depth](in-depth/index.md). Eleven deep-dives on the
+  symmetric core, state layout, dynamics, observations, belief, and
+  more.
+
+</div>
+
+## What's in the box
+
+- **Four games:** [Lady-Bandit-Guard](games/lady-bandit-guard.md),
+  [Pursuit-Evasion](games/pursuit-evasion.md),
+  [Sun-Blocking](games/sun-blocking.md),
+  [Observation-Blocking](games/observation-blocking.md).
+- **Three adapters:** Gymnasium (single-agent RL), PettingZoo
+  (multi-agent RL), and a POMDPPlanners-shape duck-typed protocol
+  (belief-space planners).
+- **Four observation channels:** full state, onboard GPS, range-limited,
+  composite.
+- **Linear and extended Kalman belief updaters**, plus a `BeliefRollout`
+  helper.
+
+## How fast
+
+A whole episode compiles to one `jax.lax.scan`, so a single rollout is
+fast. The bigger win is `vmap` over seeds: 1024 parallel rollouts on a
+single GPU run in roughly the wall time of one. See
+[T5 — GPU / MPS](tutorials/t5-acceleration.md).
+
+## What's not here
+
+- **No production planners.** [T4](tutorials/t4-short-horizon-search.md)
+  builds a teaching-quality short-horizon search planner; for serious
+  work plug into `mctx` or `pomdp-py`.
+- **No J2 / drag dynamics yet.** HCW only. Adding a perturbed dynamics
+  module is sketched in [In depth → Dynamics](in-depth/dynamics.md).
+- **No attitude control.** Vehicles are point masses with impulsive
+  thrust.
+
+These are extension targets, not gaps in the design — the
+component-and-registry architecture is built for adding them. See
+[In depth](in-depth/index.md) for the patterns.
