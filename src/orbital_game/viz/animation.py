@@ -24,7 +24,9 @@ import numpy as np
 
 from orbital_game.env.types import BySide, Side, Trajectory
 from orbital_game.viz.glyphs import (
+    draw_belief_ellipse_2d,
     draw_belief_ellipsoid,
+    draw_circle,
     draw_cube,
     draw_sphere,
     draw_thrust_arrow,
@@ -64,7 +66,7 @@ def _positions_xyz(side_state: Any) -> np.ndarray:
 
 
 def _action_to_plot(action: np.ndarray) -> np.ndarray:
-    """Permute an action array's last axis from RTN-Δv to plot order.
+    """Permute an action array's last axis from RTN-Δv to 3D plot order.
 
     For 3-dim actions (``[dvR, dvT, dvN]``) returns ``[dvT, dvN, dvR]``.
     For 2-dim RT actions (``[dvR, dvT]``) returns ``[dvT, 0, dvR]``.
@@ -76,6 +78,26 @@ def _action_to_plot(action: np.ndarray) -> np.ndarray:
     r_col = action[..., 0:1]
     zeros = np.zeros_like(t_col)
     return np.concatenate([t_col, zeros, r_col], axis=-1)
+
+
+def _positions_xy(side_state: Any) -> np.ndarray:
+    """Extract a ``(T_steps, N_actors, 2)`` position array in 2D plot order ``[T, R]``.
+
+    Works for both ``rt`` (4-dim, ``[R, T, ...]``) and ``rtn`` (6-dim,
+    ``[R, T, N, ...]``) by dropping the N component for the 2D projection.
+    """
+    if hasattr(side_state, "rt"):
+        rt = np.asarray(side_state.rt)
+        return rt[..., [1, 0]]  # [R, T] → [T, R]
+    if hasattr(side_state, "rtn"):
+        rtn = np.asarray(side_state.rtn)
+        return rtn[..., [1, 0]]  # drop N; [R, T, N] → [T, R]
+    raise AttributeError("Side state has no `rtn` or `rt` field.")
+
+
+def _action_to_plot_2d(action: np.ndarray) -> np.ndarray:
+    """Permute an action's last axis from RTN-Δv to 2D plot order ``[dvT, dvR]``."""
+    return action[..., [1, 0]]
 
 
 def _quat_history(side_state: Any) -> np.ndarray | None:
@@ -119,6 +141,13 @@ class RolloutScene:
     cfg: Any | None = None
     dt: float | None = None
 
+    # ---- mode ----
+    # ``"3d"`` (full RTN), ``"2d"`` (RT projection), or ``"auto"`` which picks
+    # 2D when both sides only carry the ``rt`` (4-dim) state component, else
+    # 3D. The two modes use different matplotlib axes types — ``interactive_viewer``
+    # and ``save_animation`` create the correct kind based on this resolved mode.
+    mode: str = "auto"
+
     # ---- layer toggles ----
     show_trail: bool = True
     show_cubes: bool = True
@@ -135,6 +164,7 @@ class RolloutScene:
     thrust_max_fraction: float = 1.0 / 20.0
     thrust_color: str = "orange"
     belief_history: BySide | None = None
+    belief_sigma: float = 1.0
     belief_alpha: float = 0.15
     trail_alpha: float = 0.6
 
@@ -146,6 +176,9 @@ class RolloutScene:
     figsize: tuple[float, float] = (8.0, 7.0)
 
     # ---- precomputed (filled by __post_init__) ----
+    # ``_g_xyz`` / ``_b_xyz`` carry the per-mode plot-order positions: shape
+    # ``(T, N, 3)`` in 3D mode, ``(T, N, 2)`` in 2D mode. Same for actions.
+    _mode: str = field(init=False, repr=False)
     _g_xyz: np.ndarray = field(init=False, repr=False)
     _b_xyz: np.ndarray = field(init=False, repr=False)
     _g_quat: np.ndarray | None = field(init=False, repr=False)
@@ -159,19 +192,37 @@ class RolloutScene:
     _n_frames: int = field(init=False, repr=False)
 
     def __post_init__(self):
-        self._g_xyz = _positions_xyz(self.traj.env_state.guards)
-        self._b_xyz = _positions_xyz(self.traj.env_state.bandits)
+        # Resolve mode.
+        if self.mode == "auto":
+            g = self.traj.env_state.guards
+            b = self.traj.env_state.bandits
+            self._mode = "3d" if (hasattr(g, "rtn") and hasattr(b, "rtn")) else "2d"
+        elif self.mode in ("2d", "3d"):
+            self._mode = self.mode
+        else:
+            raise ValueError(f"mode must be 'auto', '2d', or '3d'; got {self.mode!r}")
+
+        if self._mode == "3d":
+            self._g_xyz = _positions_xyz(self.traj.env_state.guards)
+            self._b_xyz = _positions_xyz(self.traj.env_state.bandits)
+            self._g_action = _action_to_plot(np.asarray(self.traj.sides.guard.action))
+            self._b_action = _action_to_plot(np.asarray(self.traj.sides.bandit.action))
+        else:
+            self._g_xyz = _positions_xy(self.traj.env_state.guards)
+            self._b_xyz = _positions_xy(self.traj.env_state.bandits)
+            self._g_action = _action_to_plot_2d(np.asarray(self.traj.sides.guard.action))
+            self._b_action = _action_to_plot_2d(np.asarray(self.traj.sides.bandit.action))
+
         self._g_quat = _quat_history(self.traj.env_state.guards)
         self._b_quat = _quat_history(self.traj.env_state.bandits)
-        # Actions are stored in RTN order; permute once to plot order so the
-        # thrust quivers align with the (now-permuted) plot axes.
-        self._g_action = _action_to_plot(np.asarray(self.traj.sides.guard.action))
-        self._b_action = _action_to_plot(np.asarray(self.traj.sides.bandit.action))
         self._n_frames = self._g_xyz.shape[0]
 
         # Auto axis limit: max |coord| across all guards + bandits over all time.
+        coord_dim = self._g_xyz.shape[-1]
         if self.axis_limit is None:
-            both = np.concatenate([self._g_xyz.reshape(-1, 3), self._b_xyz.reshape(-1, 3)], axis=0)
+            both = np.concatenate(
+                [self._g_xyz.reshape(-1, coord_dim), self._b_xyz.reshape(-1, coord_dim)], axis=0
+            )
             extent = float(np.max(np.abs(both))) if both.size else 1.0
             self._axis_limit = max(extent * 1.1, 1.0)
         else:
@@ -187,12 +238,12 @@ class RolloutScene:
         # extent (full extent = 2*axis_limit). Smaller maneuvers shrink linearly.
         if self.show_thrust:
             max_dv_g = (
-                float(np.max(np.linalg.norm(self._g_action[..., :3], axis=-1)))
+                float(np.max(np.linalg.norm(self._g_action, axis=-1)))
                 if self._g_action.size
                 else 0.0
             )
             max_dv_b = (
-                float(np.max(np.linalg.norm(self._b_action[..., :3], axis=-1)))
+                float(np.max(np.linalg.norm(self._b_action, axis=-1)))
                 if self._b_action.size
                 else 0.0
             )
@@ -214,6 +265,11 @@ class RolloutScene:
             }
 
     @property
+    def resolved_mode(self) -> str:
+        """``"2d"`` or ``"3d"`` — the mode actually used for rendering."""
+        return self._mode
+
+    @property
     def n_frames(self) -> int:
         return self._n_frames
 
@@ -229,16 +285,15 @@ _BANDIT_COLORS = (0.75, 0.20, 0.20)
 
 
 def _draw_trail(ax, xyz: np.ndarray, color, alpha: float, frame: int) -> None:
+    """Draw a fading trail of past positions. Works for 2D and 3D — passes
+    each coordinate column as a separate positional arg to ``ax.plot``."""
     if frame < 1:
         return
-    ax.plot(
-        xyz[: frame + 1, 0],
-        xyz[: frame + 1, 1],
-        xyz[: frame + 1, 2],
-        color=color,
-        alpha=alpha,
-        linewidth=1.2,
-    )
+    cols = [xyz[: frame + 1, k] for k in range(xyz.shape[-1])]
+    ax.plot(*cols, color=color, alpha=alpha, linewidth=1.2)
+
+
+_RT_TO_PLOT_2D = np.array([[0.0, 1.0], [1.0, 0.0]])  # [R, T] → [T, R]
 
 
 def _belief_position_block(belief: Any, frame: int) -> tuple[np.ndarray, np.ndarray] | None:
@@ -246,9 +301,9 @@ def _belief_position_block(belief: Any, frame: int) -> tuple[np.ndarray, np.ndar
 
     Belief shape: ``mean (T, N_obs, N_total, d)``, ``cov (T, N_obs, N_total, d, d)``.
     We only render belief about the *other* side (own-side belief mirrors truth).
-    Returns position-only slices in *plot* axis order: ``(N_obs, N_opp, 3)`` for
-    means (RTN→[T,N,R] permuted) and ``(N_obs, N_opp, 3, 3)`` for covariance
-    (similarity transform ``P @ cov[:3,:3] @ P.T``).
+    Returns position-only slices in 3D *plot* axis order: ``(N_obs, N_opp, 3)``
+    for means (RTN→[T,N,R] permuted) and ``(N_obs, N_opp, 3, 3)`` for covariance
+    (similarity transform ``P @ cov[:3,:3] @ P.T``). Used for ``mode="3d"``.
     """
     if belief is None:
         return None
@@ -267,8 +322,55 @@ def _belief_position_block(belief: Any, frame: int) -> tuple[np.ndarray, np.ndar
     return opp_mean, opp_cov
 
 
+def _belief_position_block_2d(belief: Any, frame: int) -> tuple[np.ndarray, np.ndarray] | None:
+    """2D analogue of :func:`_belief_position_block`.
+
+    Slices the position-only ``[R, T]`` 2x2 block (state dims 0..1) and
+    permutes to plot order ``[T, R]`` via the swap matrix
+    ``P_2d = [[0,1],[1,0]]``. Works for both 4-dim RT belief and 6-dim RTN
+    belief (where the first two state dims are still R and T).
+    """
+    if belief is None:
+        return None
+    mean = np.asarray(belief.mean[frame])  # (N_obs, N_total, d)
+    cov = np.asarray(belief.cov[frame])
+    n_obs, n_total, _ = mean.shape
+    n_opp = n_total - n_obs
+    if n_opp <= 0:
+        return None
+    # Permute mean: [R, T] → [T, R].
+    opp_mean = mean[:, n_obs:, :2][..., [1, 0]]
+    # Permute cov: P_2d @ cov[:2,:2] @ P_2d.T over the per-pair leading axes.
+    opp_cov_rt = cov[:, n_obs:, :2, :2]
+    p = _RT_TO_PLOT_2D
+    opp_cov = np.einsum("ij,...jk,lk->...il", p, opp_cov_rt, p)
+    return opp_mean, opp_cov
+
+
 def render_frame(scene: RolloutScene, ax: Any, frame: int) -> None:
-    """Render one frame onto an existing 3D axes. Clears the axes first."""
+    """Render one frame onto an existing axes. Dispatches to the 2D or 3D
+    path based on ``scene.resolved_mode``. Clears the axes first.
+
+    The caller is responsible for creating the right axes type:
+    ``add_subplot(111, projection="3d")`` for 3D mode, plain ``add_subplot(111)``
+    for 2D. :func:`interactive_viewer` and :func:`save_animation` do this.
+    """
+    if scene.resolved_mode == "3d":
+        _render_frame_3d(scene, ax, frame)
+    else:
+        _render_frame_2d(scene, ax, frame)
+
+
+def _set_title(scene: RolloutScene, ax: Any, frame: int) -> None:
+    if scene.dt is not None:
+        elapsed = frame * scene.dt
+        title = f"{scene.title_prefix}t = {elapsed:.0f}s  (frame {frame}/{scene.n_frames - 1})"
+    else:
+        title = f"{scene.title_prefix}frame {frame}/{scene.n_frames - 1}"
+    ax.set_title(title)
+
+
+def _render_frame_3d(scene: RolloutScene, ax: Any, frame: int) -> None:
     ax.cla()
     lim = scene.axis_limit_m
     ax.set_xlim(-lim, lim)
@@ -282,28 +384,50 @@ def render_frame(scene: RolloutScene, ax: Any, frame: int) -> None:
     if scene.show_reference_marker:
         ax.scatter([0], [0], [0], marker="*", color="black", s=60, label="reference")
 
-    # Trails first so cubes overlay cleanly.
     if scene.show_trail:
         for i in range(scene._g_xyz.shape[1]):
             _draw_trail(ax, scene._g_xyz[:, i, :], _GUARD_COLORS, scene.trail_alpha, frame)
         for j in range(scene._b_xyz.shape[1]):
             _draw_trail(ax, scene._b_xyz[:, j, :], _BANDIT_COLORS, scene.trail_alpha, frame)
 
-    _render_side(scene, ax, frame, Side.GUARD)
-    _render_side(scene, ax, frame, Side.BANDIT)
+    _render_side_3d(scene, ax, frame, Side.GUARD)
+    _render_side_3d(scene, ax, frame, Side.BANDIT)
 
     if scene.show_belief and scene.belief_history is not None:
-        _render_belief(scene, ax, frame)
+        _render_belief_3d(scene, ax, frame)
 
-    if scene.dt is not None:
-        elapsed = frame * scene.dt
-        title = f"{scene.title_prefix}t = {elapsed:.0f}s  (frame {frame}/{scene.n_frames - 1})"
-    else:
-        title = f"{scene.title_prefix}frame {frame}/{scene.n_frames - 1}"
-    ax.set_title(title)
+    _set_title(scene, ax, frame)
 
 
-def _render_side(scene: RolloutScene, ax: Any, frame: int, side: Side) -> None:
+def _render_frame_2d(scene: RolloutScene, ax: Any, frame: int) -> None:
+    ax.cla()
+    lim = scene.axis_limit_m
+    ax.set_xlim(-lim, lim)
+    ax.set_ylim(-lim, lim)
+    ax.set_xlabel("T (m)")
+    ax.set_ylabel("R (m)")
+    ax.set_aspect("equal", adjustable="box")
+    ax.grid(True, alpha=0.3)
+
+    if scene.show_reference_marker:
+        ax.scatter([0], [0], marker="*", color="black", s=80, zorder=5, label="reference")
+
+    if scene.show_trail:
+        for i in range(scene._g_xyz.shape[1]):
+            _draw_trail(ax, scene._g_xyz[:, i, :], _GUARD_COLORS, scene.trail_alpha, frame)
+        for j in range(scene._b_xyz.shape[1]):
+            _draw_trail(ax, scene._b_xyz[:, j, :], _BANDIT_COLORS, scene.trail_alpha, frame)
+
+    _render_side_2d(scene, ax, frame, Side.GUARD)
+    _render_side_2d(scene, ax, frame, Side.BANDIT)
+
+    if scene.show_belief and scene.belief_history is not None:
+        _render_belief_2d(scene, ax, frame)
+
+    _set_title(scene, ax, frame)
+
+
+def _render_side_3d(scene: RolloutScene, ax: Any, frame: int, side: Side) -> None:
     if side is Side.GUARD:
         xyz = scene._g_xyz
         action = scene._g_action
@@ -358,7 +482,59 @@ def _render_side(scene: RolloutScene, ax: Any, frame: int, side: Side) -> None:
             )
 
 
-def _render_belief(scene: RolloutScene, ax: Any, frame: int) -> None:
+def _render_side_2d(scene: RolloutScene, ax: Any, frame: int, side: Side) -> None:
+    if side is Side.GUARD:
+        xyz = scene._g_xyz
+        action = scene._g_action
+        color = _GUARD_COLORS
+    else:
+        xyz = scene._b_xyz
+        action = scene._b_action
+        color = _BANDIT_COLORS
+
+    sensor_range = scene._sensor_ranges.get(side)
+
+    for i in range(xyz.shape[1]):
+        cx, cy = float(xyz[frame, i, 0]), float(xyz[frame, i, 1])
+
+        if scene.show_sensor_range and sensor_range is not None:
+            draw_circle(
+                ax,
+                np.array([cx, cy]),
+                sensor_range,
+                color=scene.sensor_range_color,
+                alpha=scene.sensor_range_alpha,
+            )
+
+        if scene.show_cubes:
+            # No 3D orientation in 2D — render the agent as a filled square
+            # marker. Quat-derived attitude is ignored for 2D scenes; project
+            # to a yaw glyph if/when an Attitude component is added.
+            ax.scatter(
+                cx, cy, marker="s", s=80, c=[color], edgecolors="black", linewidths=0.6, zorder=4
+            )
+        else:
+            ax.scatter(cx, cy, color=color, s=30, zorder=4)
+
+        if scene.show_thrust and scene._thrust_scale > 0.0:
+            dv_t, dv_r = float(action[frame, i, 0]), float(action[frame, i, 1])
+            length = (dv_t**2 + dv_r**2) ** 0.5
+            if length > 0.0:
+                ax.quiver(
+                    cx,
+                    cy,
+                    dv_t * scene._thrust_scale,
+                    dv_r * scene._thrust_scale,
+                    angles="xy",
+                    scale_units="xy",
+                    scale=1.0,
+                    color=scene.thrust_color,
+                    width=0.004,
+                    zorder=4,
+                )
+
+
+def _render_belief_3d(scene: RolloutScene, ax: Any, frame: int) -> None:
     bh = scene.belief_history
     assert bh is not None
     for side, color in ((Side.GUARD, _GUARD_COLORS), (Side.BANDIT, _BANDIT_COLORS)):
@@ -374,6 +550,27 @@ def _render_belief(scene: RolloutScene, ax: Any, frame: int) -> None:
                     covs[i, k],
                     color=color,
                     alpha=scene.belief_alpha,
+                    sigma=scene.belief_sigma,
+                )
+
+
+def _render_belief_2d(scene: RolloutScene, ax: Any, frame: int) -> None:
+    bh = scene.belief_history
+    assert bh is not None
+    for side, color in ((Side.GUARD, _GUARD_COLORS), (Side.BANDIT, _BANDIT_COLORS)):
+        block = _belief_position_block_2d(bh.get(side), frame)
+        if block is None:
+            continue
+        means, covs = block
+        for i in range(means.shape[0]):
+            for k in range(means.shape[1]):
+                draw_belief_ellipse_2d(
+                    ax,
+                    means[i, k],
+                    covs[i, k],
+                    color=color,
+                    alpha=scene.belief_alpha,
+                    sigma=scene.belief_sigma,
                 )
 
 
@@ -419,7 +616,10 @@ def interactive_viewer(scene: RolloutScene, fig: Any | None = None) -> Any:
 
     if fig is None:
         fig = plt.figure(figsize=scene.figsize)
-    ax = fig.add_subplot(111, projection="3d")
+    if scene.resolved_mode == "3d":
+        ax = fig.add_subplot(111, projection="3d")
+    else:
+        ax = fig.add_subplot(111)
     plt.tight_layout()
 
     render_frame(scene, ax, 0)
@@ -472,7 +672,10 @@ def save_animation(
 
     if fig is None:
         fig = plt.figure(figsize=scene.figsize)
-    ax = fig.add_subplot(111, projection="3d")
+    if scene.resolved_mode == "3d":
+        ax = fig.add_subplot(111, projection="3d")
+    else:
+        ax = fig.add_subplot(111)
     fig.subplots_adjust(top=0.92)
 
     def _update(frame: int):

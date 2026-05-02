@@ -209,3 +209,73 @@ def test_run_belief_rollout_shapes(range_limited_cfg_traj_belief):
     assert belief_history.guard.mean.shape == (n_frames, 1, 2, 6)
     assert belief_history.guard.cov.shape == (n_frames, 1, 2, 6, 6)
     assert belief_history.bandit.mean.shape == (n_frames, 1, 2, 6)
+
+
+def test_scene_auto_resolves_3d_for_rtn_traj(basic_cfg_and_traj):
+    _, traj = basic_cfg_and_traj
+    scene = RolloutScene(traj=traj)
+    assert scene.resolved_mode == "3d"
+
+
+def test_scene_explicit_mode_override(basic_cfg_and_traj):
+    _, traj = basic_cfg_and_traj
+    scene = RolloutScene(traj=traj, mode="2d")
+    assert scene.resolved_mode == "2d"
+    # 2D positions are (T, R) → shape (T_steps, N_actors, 2)
+    assert scene._g_xyz.shape[-1] == 2
+
+
+def test_scene_invalid_mode_raises(basic_cfg_and_traj):
+    _, traj = basic_cfg_and_traj
+    with pytest.raises(ValueError, match="mode must be"):
+        RolloutScene(traj=traj, mode="bogus")
+
+
+def test_render_frame_2d_smoke(basic_cfg_and_traj):
+    """Render a 2D frame onto a non-3D axes and confirm no errors."""
+    cfg, traj = basic_cfg_and_traj
+    scene = RolloutScene(
+        traj=traj,
+        cfg=cfg,
+        mode="2d",
+        dt=10.0,
+        show_cubes=True,
+        show_trail=True,
+        show_thrust=False,
+        show_belief=False,
+    )
+    fig = plt.figure()
+    ax = fig.add_subplot(111)  # plain 2D axes — no projection="3d"
+    from orbital_game.viz.animation import render_frame
+
+    for f in (0, scene.n_frames - 1):
+        render_frame(scene, ax, f)
+    assert ax.get_xlabel() == "T (m)"
+    assert ax.get_ylabel() == "R (m)"
+    plt.close(fig)
+
+
+def test_render_frame_2d_with_belief(range_limited_cfg_traj_belief):
+    """2D rendering with belief ellipses + sigma parameter."""
+    cfg, traj, belief_history = range_limited_cfg_traj_belief
+    scene = RolloutScene(
+        traj=traj,
+        cfg=cfg,
+        mode="2d",
+        dt=10.0,
+        show_belief=True,
+        belief_history=belief_history,
+        belief_sigma=2.0,
+    )
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    from orbital_game.viz.animation import render_frame
+
+    render_frame(scene, ax, scene.n_frames - 1)
+    plt.close(fig)
+
+
+def test_belief_sigma_is_one_by_default(basic_cfg_and_traj):
+    _, traj = basic_cfg_and_traj
+    scene = RolloutScene(traj=traj)
+    assert scene.belief_sigma == 1.0

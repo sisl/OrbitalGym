@@ -175,14 +175,14 @@ def draw_belief_ellipsoid(
     cov_3x3: np.ndarray,
     color: Any = "tab:blue",
     alpha: float = 0.15,
-    sigma: float = 2.0,
+    sigma: float = 1.0,
     n_lat: int = 12,
     n_lon: int = 18,
 ) -> Any | None:
     """Draw a Gaussian uncertainty ellipsoid for a 3D position belief.
 
     ``cov_3x3`` is the 3x3 position covariance (slice ``cov[:3, :3]`` from a
-    larger-d EKF cov). ``sigma`` is the ellipsoid scale (default 2 → 2σ).
+    larger-d EKF cov). ``sigma`` is the ellipsoid scale (default 1 → 1σ).
     Returns ``None`` if cov is non-positive (e.g. all-zero), so the caller
     can skip drawing without special-casing.
     """
@@ -217,12 +217,16 @@ def draw_belief_ellipse_2d(
     ax: Any,
     mean_xy: np.ndarray,
     cov_2x2: np.ndarray,
-    color: str = "tab:blue",
+    color: Any = "tab:blue",
     alpha: float = 0.2,
-    sigma: float = 2.0,
+    sigma: float = 1.0,
     n_pts: int = 64,
 ) -> Any | None:
-    """2D analogue of ``draw_belief_ellipsoid`` for RT/RN/TN projections."""
+    """2D analogue of ``draw_belief_ellipsoid`` for RT/RN/TN projections.
+
+    ``sigma`` defaults to 1 (1σ contour). Returns ``None`` for zero or
+    non-finite covariance so callers can skip without special-casing.
+    """
     cov = np.asarray(cov_2x2)
     if not np.all(np.isfinite(cov)) or np.linalg.norm(cov) < 1e-18:
         return None
