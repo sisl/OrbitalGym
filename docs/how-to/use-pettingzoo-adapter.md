@@ -38,10 +38,20 @@ For `n_guards=2, n_bandits=1`: `['guard_0', 'guard_1', 'bandit_0']`.
 
 ## Per-agent observations
 
-Per-pair shape `(N_self, N_total, m)` from the bundled channels means
-each agent sees its row of the per-pair tensor. See
-[In depth → Observations](../in-depth/observations.md) for the shape
-diagrams.
+Each channel returns a per-pair tensor of shape `(N_self, N_total, m)`.
+The adapter takes row `i` for agent `<side>_i` and concatenates across
+channels: agent `i` sees only the i-th observer's view of every tracked
+entity, flattened to a 1-D vector. Different agents on the same side
+see different observations.
+
+For per-vehicle channels like `OnboardGPSObservation` this gives each
+vehicle its own GPS reading. For broadcast channels like
+`FullObservation` every observer's row is identical, so all agents on
+a side end up with the same vector — consistent with the channel's
+semantics.
+
+See [In depth → Observations](../in-depth/observations.md) for the
+shape diagrams.
 
 ## Termination
 

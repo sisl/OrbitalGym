@@ -1,7 +1,7 @@
 """PettingZooAdapter — wraps OrbitalGameEnv as a pettingzoo.ParallelEnv.
 
 Agent IDs: 'guard_0', 'guard_1', ..., 'bandit_0', 'bandit_1', ...
-Per-vehicle slicing for PER_VEHICLE scope; broadcast for PER_SIDE scope.
+Each agent sees its own row of the per-pair observation tensor.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pettingzoo import ParallelEnv
 
 from orbital_game.env.core import OrbitalGameEnv
 from orbital_game.env.types import Actions, BySide
-from orbital_game.observations.types import flatten_observations
+from orbital_game.observations.types import flatten_observations_per_agent
 
 
 def _action_dim_from_dynamics(dynamics_key) -> int:
@@ -52,13 +52,13 @@ class PettingZooAdapter(ParallelEnv):
         self.possible_agents = list(self._guard_ids + self._bandit_ids)
         self.agents = list(self.possible_agents)
 
-        # Discover obs shapes via a probe reset.
+        # Discover per-agent obs shapes via a probe reset.
         probe_state, probe_outputs = env.reset(jax.random.PRNGKey(0))
-        guard_obs = flatten_observations(probe_outputs.guard.obs)
-        bandit_obs = flatten_observations(probe_outputs.bandit.obs)
+        guard_per_agent = flatten_observations_per_agent(probe_outputs.guard.obs)
+        bandit_per_agent = flatten_observations_per_agent(probe_outputs.bandit.obs)
 
-        self._guard_obs_shape = self._per_agent_obs_shape(guard_obs, n_g)
-        self._bandit_obs_shape = self._per_agent_obs_shape(bandit_obs, n_b)
+        self._guard_obs_shape = (guard_per_agent.shape[-1],)
+        self._bandit_obs_shape = (bandit_per_agent.shape[-1],)
 
         guard_obs_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=self._guard_obs_shape, dtype=np.float32
@@ -73,20 +73,6 @@ class PettingZooAdapter(ParallelEnv):
             **{aid: bandit_obs_space for aid in self._bandit_ids},
         }
         self.action_spaces = {aid: action_space for aid in self.possible_agents}
-
-    @staticmethod
-    def _per_agent_obs_shape(side_obs: jax.Array, n_side: int) -> tuple[int, ...]:
-        """Determine the per-agent obs shape from a side's obs."""
-        if side_obs.ndim >= 1 and side_obs.shape[0] == n_side and n_side > 1:
-            return tuple(side_obs.shape[1:])
-        return tuple(side_obs.shape)
-
-    @staticmethod
-    def _slice_or_broadcast(side_obs: jax.Array, n_side: int, idx: int) -> jax.Array:
-        """Slice the per-side obs to a per-agent obs (or broadcast for PER_SIDE)."""
-        if side_obs.ndim >= 1 and side_obs.shape[0] == n_side and n_side > 1:
-            return side_obs[idx]
-        return side_obs
 
     def reset(self, seed: int | None = None, options: dict | None = None):
         del options
@@ -137,18 +123,12 @@ class PettingZooAdapter(ParallelEnv):
 
     def _build_obs_dict(self, outputs: BySide) -> dict:
         d = {}
-        guard_obs = flatten_observations(outputs.guard.obs)
+        guard_per_agent = flatten_observations_per_agent(outputs.guard.obs)
         for i, aid in enumerate(self._guard_ids):
-            d[aid] = np.asarray(
-                self._slice_or_broadcast(guard_obs, self._n_guards, i),
-                dtype=np.float32,
-            )
-        bandit_obs = flatten_observations(outputs.bandit.obs)
+            d[aid] = np.asarray(guard_per_agent[i], dtype=np.float32)
+        bandit_per_agent = flatten_observations_per_agent(outputs.bandit.obs)
         for i, aid in enumerate(self._bandit_ids):
-            d[aid] = np.asarray(
-                self._slice_or_broadcast(bandit_obs, self._n_bandits, i),
-                dtype=np.float32,
-            )
+            d[aid] = np.asarray(bandit_per_agent[i], dtype=np.float32)
         return d
 
     @staticmethod

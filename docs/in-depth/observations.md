@@ -93,6 +93,22 @@ independent across channels.
 | Distance-gated measurements of opponents | `RangeLimitedObservation` |
 | Multiple of the above on the same observer | `CompositeObservation` |
 
+## How adapters consume observations
+
+Two helpers in `orbital_game.observations.types` collapse the per-pair
+tensors into the flat shapes that adapters publish:
+
+- `flatten_observations(channels)` returns a single 1-D vector for the
+  side. Used by `GymnasiumAdapter` (single-agent view of the controlled
+  side) and `POMDPAdapter` (per-side observation).
+- `flatten_observations_per_agent(channels)` returns shape
+  `(N_self, total_per_agent_dim)` — one row per observer, ready to be
+  indexed by agent. Used by `PettingZooAdapter`, where agent
+  `<side>_i` receives row `i`. Per-vehicle channels (GPS, range-limited)
+  give every agent a distinct view; broadcast channels like
+  `FullObservation` give every agent on the side the same view because
+  the channel writes the same row for every observer.
+
 ## Writing a custom channel
 
 ```python

@@ -120,15 +120,13 @@ def test_pettingzoo_adapter_under_channel(channel_name):
 
 @pytest.mark.parametrize("channel_name", list(CHANNEL_FACTORIES.keys()))
 def test_pettingzoo_per_agent_obs_consistent(channel_name):
-    """Per-agent observations within a side are either all-equal (broadcast)
-    or all-distinct (per-agent slice) — never a partial mix, which would
-    indicate a bug in the slicing logic.
+    """Per-agent observations within a side are either all-equal or all-distinct,
+    never a partial mix — that would indicate inconsistent slicing.
 
-    With a flat (single-1-D) per-side observation produced by
-    flatten_observations, the current PettingZoo adapter falls into the
-    broadcast path: every agent on a side sees the same vector. This test
-    documents that and would fail if a future change produced inconsistent
-    per-agent slices on the same side.
+    `FullObservation` broadcasts the same per-pair tensor to every observer,
+    so all agents on a side see equal observations after slicing. Per-vehicle
+    channels (`OnboardGPSObservation`, `RangeLimitedObservation`) write
+    distinct rows per observer, so agents see distinct observations.
     """
     cfg = _make_cfg(CHANNEL_FACTORIES[channel_name])
     env = PettingZooAdapter(OrbitalGameEnv(cfg), seed=0)
@@ -152,6 +150,23 @@ def test_pettingzoo_per_agent_obs_consistent(channel_name):
             f"{channel_name}/{label}: per-agent observations are partially equal "
             f"(neither all-broadcast nor all-distinct) — slicing is inconsistent"
         )
+
+
+def test_pettingzoo_onboard_gps_yields_distinct_per_agent_obs():
+    """OnboardGPSObservation writes each observer's truth into row [i, i]
+    of the per-pair tensor. After per-agent slicing, each agent sees a
+    different row — distinct per-agent observations.
+    """
+    cfg = _make_cfg(CHANNEL_FACTORIES["onboard_gps"])
+    env = PettingZooAdapter(OrbitalGameEnv(cfg), seed=0)
+    obs_dict, _ = env.reset(seed=0)
+
+    g0 = obs_dict["guard_0"]
+    g1 = obs_dict["guard_1"]
+    assert not np.array_equal(g0, g1), (
+        "guard_0 and guard_1 received identical OnboardGPS observations — "
+        "expected per-agent slicing to produce distinct rows"
+    )
 
 
 @pytest.mark.parametrize("channel_name", list(CHANNEL_FACTORIES.keys()))

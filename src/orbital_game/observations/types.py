@@ -43,10 +43,30 @@ class Observation:
 def flatten_observations(channels: tuple[Observation, ...]) -> jax.Array:
     """Concatenate every channel's `obs` array into a single 1-D vector.
 
-    Used by adapters that publish a flat observation (Gymnasium Box space,
-    PettingZoo per-agent obs). The flattened layout is deterministic for a
-    fixed observation function.
+    Used by adapters that publish a flat per-side observation (Gymnasium
+    Box space, POMDP per-side observation). The flattened layout is
+    deterministic for a fixed observation function.
     """
     if not channels:
         raise ValueError("flatten_observations requires at least one channel")
     return jnp.concatenate([c.obs.reshape(-1) for c in channels])
+
+
+def flatten_observations_per_agent(channels: tuple[Observation, ...]) -> jax.Array:
+    """Flatten per-pair observations to one row per observer.
+
+    Each channel's `obs` has shape `(N_self, N_total, m)`. This helper
+    keeps the leading observer axis intact and flattens the trailing pair
+    and feature axes, then concatenates channels along the inner axis.
+    Returns shape `(N_self, total_per_agent_dim)`. Observer i's view is
+    row i — distinct from every other observer's row.
+
+    Used by adapters that need genuine per-agent observations
+    (PettingZoo). Use `flatten_observations` instead when the consumer
+    treats the side as one unit (Gymnasium, POMDP).
+    """
+    if not channels:
+        raise ValueError("flatten_observations_per_agent requires at least one channel")
+    # Each channel: (N_self, N_total, m) → (N_self, N_total * m)
+    per_channel = [c.obs.reshape(c.obs.shape[0], -1) for c in channels]
+    return jnp.concatenate(per_channel, axis=-1)
