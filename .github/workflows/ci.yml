@@ -18,7 +18,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Sync environment
-        run: uv sync --extra dev
+        run: uv sync --extra dev --extra docs
 
       - name: Lint
         run: |
@@ -30,3 +30,6 @@ jobs:
 
       - name: Test
         run: uv run pytest -n auto -v
+
+      - name: Build docs
+        run: uv run zensical build --strict

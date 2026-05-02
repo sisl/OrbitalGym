@@ -1,0 +1,94 @@
+# Zensical configuration for orbital-game's user-facing documentation.
+#
+# Build:    uv run zensical build
+# Serve:    uv run zensical serve
+#
+# The site source lives under docs/site/. Internal artifacts (specs, plans,
+# brainstorming) live under docs/superpowers/ and are intentionally NOT part
+# of the rendered site.
+
+[project]
+
+site_name = "orbital-game"
+site_description = "JAX-native framework for guard/bandit decision-making in orbital scenarios"
+site_author = "Duncan Eddy"
+site_url = "https://github.com/duncaneddy/orbital-game"
+
+# Use docs/site/ as the content root so docs/superpowers/ stays out of the
+# rendered site.
+docs_dir = "docs/site"
+
+# Output directory for the built site (gitignored).
+site_dir = "docs/_site"
+
+copyright = """
+Copyright &copy; 2026 Duncan Eddy
+"""
+
+# Explicit navigation tree mirrors the docs/site/ layout.
+nav = [
+  { "Home" = "index.md" },
+  { "Getting started" = "getting-started.md" },
+  { "Concepts" = "concepts.md" },
+  { "Game guides" = [
+    { "Overview" = "games/index.md" },
+    { "Lady-Bandit-Guard" = "games/lady-bandit-guard.md" },
+    { "Pursuit-Evasion" = "games/pursuit-evasion.md" },
+    { "Sun-Blocking" = "games/sun-blocking.md" },
+    { "Observation-Blocking" = "games/observation-blocking.md" },
+  ] },
+  { "Adapter how-tos" = [
+    { "Overview" = "adapters/index.md" },
+    { "Gymnasium" = "adapters/gymnasium.md" },
+    { "PettingZoo" = "adapters/pettingzoo.md" },
+    { "POMDPPlanners" = "adapters/pomdp.md" },
+  ] },
+  { "Extending" = "extending/index.md" },
+  { "API reference" = [
+    { "Overview" = "api/index.md" },
+    { "Core: env, config, rollout" = "api/core.md" },
+    { "Types: Side, BySide, Actions, Trajectory" = "api/types.md" },
+    { "Games" = "api/games.md" },
+    { "Adapters" = "api/adapters.md" },
+    { "Policies, observations, rewards" = "api/pluggables.md" },
+  ] },
+  { "Architecture" = "architecture.md" },
+]
+
+# mkdocstrings — auto-generate API reference from in-code docstrings.
+# https://zensical.org/docs/setup/extensions/mkdocstrings/
+[project.plugins.mkdocstrings.handlers.python]
+inventories = ["https://docs.python.org/3/objects.inv"]
+paths = ["src"]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+docstring_style = "google"
+inherited_members = true
+show_source = false
+show_root_heading = true
+show_root_toc_entry = false
+show_signature_annotations = true
+separate_signature = true
+merge_init_into_class = true
+
+[project.theme]
+
+language = "en"
+
+features = [
+  "content.code.annotate",
+  "content.code.copy",
+  "content.code.select",
+  "content.footnote.tooltips",
+  "content.tabs.link",
+  "content.tooltips",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.tabs",
+  "navigation.tabs.sticky",
+  "navigation.top",
+  "search.highlight",
+  "search.share",
+  "search.suggest",
+  "toc.follow",
+]

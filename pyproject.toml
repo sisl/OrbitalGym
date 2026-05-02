@@ -36,6 +36,10 @@ gymnasium = [
 pettingzoo = [
     "pettingzoo>=1.24",
 ]
+docs = [
+    "zensical>=0.0.39",
+    "mkdocstrings-python>=2.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/orbital_game"]
