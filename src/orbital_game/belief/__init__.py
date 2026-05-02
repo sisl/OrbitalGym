@@ -13,9 +13,11 @@ from orbital_game.belief.kf import (
     KFFromTruthInitializer,
     KFUniformDefaultInitializer,
 )
+from orbital_game.belief.rollout import BeliefRollout
 
 __all__ = [
     "BeliefInitializer",
+    "BeliefRollout",
     "BeliefUpdater",
     "EKFBelief",
     "EKFBeliefUpdater",
