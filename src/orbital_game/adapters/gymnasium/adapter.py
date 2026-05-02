@@ -26,7 +26,6 @@ from gymnasium import spaces
 from orbital_game.env.core import OrbitalGameEnv
 from orbital_game.env.single_agent import SingleAgentView
 from orbital_game.env.types import Side
-from orbital_game.observations.types import coerce_obs_to_flat_array
 
 
 def _action_dim_from_dynamics(dynamics_key) -> int:
@@ -55,10 +54,10 @@ class GymnasiumAdapter(gym.Env):
         self._n_controlled = n_controlled
         self._action_dim = action_dim
 
-        # Probe a reset to discover observation shape.
+        # Probe a reset to discover observation shape. SingleAgentView.reset
+        # already returns a flattened jax.Array.
         probe_state, probe_obs, _ps = self.view.reset(jax.random.PRNGKey(0))
-        probe_obs_flat = coerce_obs_to_flat_array(probe_obs)
-        obs_shape = tuple(probe_obs_flat.shape)
+        obs_shape = tuple(probe_obs.shape)
 
         self.action_space = spaces.Box(
             low=-np.inf,
@@ -84,7 +83,7 @@ class GymnasiumAdapter(gym.Env):
         state, obs, opp_ps = self.view.reset(k_reset)
         self._state = state
         self._opp_ps = opp_ps
-        return np.asarray(coerce_obs_to_flat_array(obs), dtype=np.float32), {}
+        return np.asarray(obs, dtype=np.float32), {}
 
     def step(self, action):
         if self._state is None:
@@ -101,7 +100,7 @@ class GymnasiumAdapter(gym.Env):
         terminated = bool(done)
         truncated = False
         return (
-            np.asarray(coerce_obs_to_flat_array(next_obs), dtype=np.float32),
+            np.asarray(next_obs, dtype=np.float32),
             float(reward),
             terminated,
             truncated,

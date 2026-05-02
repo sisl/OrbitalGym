@@ -31,7 +31,7 @@ from orbital_game.env.types import (
     SideTrajectory,
     Trajectory,
 )
-from orbital_game.observations.types import coerce_obs_to_flat_array
+from orbital_game.observations.types import flatten_observations
 
 
 def rollout(
@@ -65,8 +65,8 @@ def rollout(
         actions = Actions(sides=BySide(guard=action_g, bandit=action_b))
         step_out = env.step(k_env, es, actions)
         next_es = step_out.state
-        next_obs_g = coerce_obs_to_flat_array(step_out.outputs.guard.obs)
-        next_obs_b = coerce_obs_to_flat_array(step_out.outputs.bandit.obs)
+        next_obs_g = flatten_observations(step_out.outputs.guard.obs)
+        next_obs_b = flatten_observations(step_out.outputs.bandit.obs)
         reward_g = step_out.outputs.guard.reward
         reward_b = step_out.outputs.bandit.reward
         done = step_out.episode_done
@@ -114,8 +114,8 @@ def rollout(
         ), logged
 
     step_keys = jax.random.split(k_scan, n_steps)
-    initial_obs_g = coerce_obs_to_flat_array(initial_outputs.guard.obs)
-    initial_obs_b = coerce_obs_to_flat_array(initial_outputs.bandit.obs)
+    initial_obs_g = flatten_observations(initial_outputs.guard.obs)
+    initial_obs_b = flatten_observations(initial_outputs.bandit.obs)
     _, stacked = jax.lax.scan(
         _step,
         (env_state, ps_g, ps_b, initial_obs_g, initial_obs_b, initial_terminated),

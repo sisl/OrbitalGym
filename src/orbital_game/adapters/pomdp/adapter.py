@@ -29,7 +29,7 @@ import jax
 
 from orbital_game.env.core import OrbitalGameEnv
 from orbital_game.env.types import Actions, BySide, Side
-from orbital_game.observations.types import coerce_obs_to_flat_array
+from orbital_game.observations.types import flatten_observations
 
 
 def _action_dim_from_dynamics(dynamics_key) -> int:
@@ -104,7 +104,7 @@ class POMDPAdapter:
         obs_fn = (
             self.env.guard_observation_fn if side is Side.GUARD else self.env.bandit_observation_fn
         )
-        return coerce_obs_to_flat_array(
+        return flatten_observations(
             obs_fn(next_state, side, self.env.config, jax.random.PRNGKey(0), next_state.t)
         )
 
