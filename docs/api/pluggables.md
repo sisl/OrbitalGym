@@ -12,8 +12,6 @@ Protocols and reference implementations for the env's swappable building blocks.
 
 ::: orbital_game.observations.base.ObservationFn
 
-::: orbital_game.observations.base.ObservationScope
-
 ::: orbital_game.observations.reference.FullObservation
 
 ## Rewards
