@@ -1,4 +1,4 @@
-"""ObservationFn protocol + scope enum.
+"""ObservationFn protocol.
 
 Each side has its own ObservationFn. The protocol's __call__ returns a tuple
 of `Observation` channels — one per sensor modality. Belief updaters consume
@@ -8,25 +8,16 @@ The `side: Side` argument lets a single implementation handle both sides
 when their sensor model is the same (just dispatching on `side`); for
 genuinely asymmetric sensor suites, wire two different classes (one per
 config field).
-
-`ObservationScope` is retained for legacy reference but is no longer used by
-the new multi-channel implementations.
 """
 
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import Any, Protocol
 
 import jax
 
 from orbital_game.env.types import Side
 from orbital_game.observations.types import Observation
-
-
-class ObservationScope(StrEnum):
-    PER_VEHICLE = "per_vehicle"
-    PER_SIDE = "per_side"
 
 
 class ObservationFn(Protocol):
