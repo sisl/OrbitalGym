@@ -1,10 +1,9 @@
 # T5 — Run on GPU / MPS
 
-**Time:** ~15 minutes.
-**You will:** install GPU- or MPS-backed JAX and vmap a rollout over a
-batch of seeds. The realistic perf win for this codebase is
-**parallel-over-seeds**, not single-rollout speedup.
-**Prerequisite:** [T1 — First rollout (RT 2D)](t1-first-rollout.md).
+Install GPU- or MPS-backed JAX and vmap a rollout over a batch of
+seeds. The realistic perf win for this codebase is parallel-over-seeds,
+not single-rollout speedup. Builds on
+[T1 — First rollout (RT 2D)](t1-first-rollout.md).
 
 ## Install
 

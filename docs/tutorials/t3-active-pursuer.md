@@ -1,12 +1,11 @@
 # T3 — Write an active-pursuer policy
 
-**Time:** ~25 minutes.
-**You will:** replace `ZeroControl` on the bandit with a policy that
-predicts the guard's next-step position and thrusts toward it. End
-with an A/B comparison showing the new policy beats `ZeroControl`
-on closest-approach distance averaged over 10 seeds.
-**Prerequisite:** [T2 — Build an RTN scenario](t2-rtn-scenario.md).
-**Reference implementation:** [`examples/policies/lead_intercept.py`](https://github.com/duncaneddy/orbital-game/blob/main/examples/policies/lead_intercept.py).
+Replace `ZeroControl` on the bandit with a policy that predicts the
+guard's next-step position and thrusts toward it, then A/B-compare it
+against `ZeroControl` on closest-approach distance averaged over 10
+seeds. Builds on [T2 — Build an RTN scenario](t2-rtn-scenario.md);
+reference implementation at
+[`examples/policies/lead_intercept.py`](https://github.com/duncaneddy/orbital-game/blob/main/examples/policies/lead_intercept.py).
 
 ## Why ZeroControl is the wrong baseline
 

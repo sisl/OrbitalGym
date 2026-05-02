@@ -3,7 +3,8 @@
 </p>
 
 <p align="center">
-  <a href="https://duncaneddy.github.io/orbital-game/"><img src="https://img.shields.io/badge/docs-latest-blue" alt="Documentation"></a>
+  <a href="https://github.com/sisl/orbital-game/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/sisl/orbital-game/ci.yml?branch=main&label=CI" alt="CI"></a>
+  <a href="https://sisl.github.io/orbital-game/"><img src="https://img.shields.io/badge/docs-latest-blue" alt="Documentation"></a>
 </p>
 
 ---

@@ -37,28 +37,8 @@ underlying game. Four scenarios ship in the box.
 - **Three adapters:** Gymnasium (single-agent RL), PettingZoo
   (multi-agent RL), and a POMDPPlanners-shape duck-typed protocol
   (belief-space planners).
-- **Four observation channels:** full state, onboard GPS, range-limited,
-  composite.
-- **Linear and extended Kalman belief updaters**, plus a `BeliefRollout`
-  helper.
 
 ## How fast
 
 A whole episode compiles to one `jax.lax.scan`, so a single rollout is
-fast. The bigger win is `vmap` over seeds: 1024 parallel rollouts on a
-single GPU run in roughly the wall time of one. See
-[T5 — GPU / MPS](tutorials/t5-acceleration.md).
-
-## What's not here
-
-- **No production planners.** [T4](tutorials/t4-short-horizon-search.md)
-  builds a teaching-quality short-horizon search planner; for serious
-  work plug into `mctx` or `pomdp-py`.
-- **No J2 / drag dynamics yet.** HCW only. Adding a perturbed dynamics
-  module is sketched in [In depth → Dynamics](in-depth/dynamics.md).
-- **No attitude control.** Vehicles are point masses with impulsive
-  thrust.
-
-These are extension targets, not gaps in the design — the
-component-and-registry architecture is built for adding them. See
-[In depth](in-depth/index.md) for the patterns.
+fast. The bigger win is `vmap` over rollouts: 1000 rollouts can be run in parallel on GPU or MPS.

@@ -1,10 +1,9 @@
 # T1 — First rollout (RT 2D)
 
-**Time:** ~5 minutes.
-**You will:** install `orbital-game`, run a planar (2D) HCW rollout
-with zero control on both sides, and read off three pieces of data
-from the resulting `Trajectory`.
-**Companion notebook:** [`examples/workflow_2d_rt.ipynb`](https://github.com/duncaneddy/orbital-game/blob/main/examples/workflow_2d_rt.ipynb).
+Install `orbital-game`, run a planar (2D) HCW rollout with zero control
+on both sides, and read three pieces of data off the resulting
+`Trajectory`. A companion notebook lives at
+[`examples/workflow_2d_rt.ipynb`](https://github.com/duncaneddy/orbital-game/blob/main/examples/workflow_2d_rt.ipynb).
 
 ## Install
 

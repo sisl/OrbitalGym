@@ -1,12 +1,12 @@
 # T4 — Plan with short-horizon search
 
-**Time:** ~30 minutes.
-**You will:** wire `POMDPAdapter` to a small random-shooting planner
-that simulates candidate action sequences forward through the env and
-picks the best by cumulative reward. End with one planned step from
-a sampled initial state.
-**Prerequisite:** [T3 — Write an active-pursuer policy](t3-active-pursuer.md).
-**Reference implementation:** [`examples/planners/receding_horizon.py`](https://github.com/duncaneddy/orbital-game/blob/main/examples/planners/receding_horizon.py).
+Wire `POMDPAdapter` to a small random-shooting planner that simulates
+candidate action sequences forward through the env and picks the best
+by cumulative reward, ending with one planned step from a sampled
+initial state. Builds on
+[T3 — Write an active-pursuer policy](t3-active-pursuer.md); reference
+implementation at
+[`examples/planners/receding_horizon.py`](https://github.com/duncaneddy/orbital-game/blob/main/examples/planners/receding_horizon.py).
 
 ## What this is and isn't
 
