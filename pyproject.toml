@@ -28,6 +28,13 @@ dev = [
     "pytest-xdist>=3.5",
     "ruff>=0.5",
     "pyrefly>=0.1",
+    "pettingzoo>=1.24",
+]
+gymnasium = [
+    "gymnasium>=1.0",
+]
+pettingzoo = [
+    "pettingzoo>=1.24",
 ]
 
 [tool.hatch.build.targets.wheel]

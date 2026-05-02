@@ -916,10 +916,17 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "pettingzoo" },
     { name = "pyrefly" },
     { name = "pytest" },
     { name = "pytest-xdist" },
     { name = "ruff" },
+]
+gymnasium = [
+    { name = "gymnasium" },
+]
+pettingzoo = [
+    { name = "pettingzoo" },
 ]
 
 [package.metadata]
@@ -927,18 +934,21 @@ requires-dist = [
     { name = "astrojax" },
     { name = "chex", specifier = ">=0.1.85" },
     { name = "flax", specifier = ">=0.8.0" },
+    { name = "gymnasium", marker = "extra == 'gymnasium'", specifier = ">=1.0" },
     { name = "gymnax", specifier = ">=0.0.8" },
     { name = "h5py", specifier = ">=3.10" },
     { name = "jax", specifier = ">=0.4.30" },
     { name = "jaxlib", specifier = ">=0.4.30" },
     { name = "matplotlib", specifier = ">=3.8" },
+    { name = "pettingzoo", marker = "extra == 'dev'", specifier = ">=1.24" },
+    { name = "pettingzoo", marker = "extra == 'pettingzoo'", specifier = ">=1.24" },
     { name = "pyrefly", marker = "extra == 'dev'", specifier = ">=0.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "scienceplots", specifier = ">=2.1" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "gymnasium", "pettingzoo"]
 
 [[package]]
 name = "packaging"
@@ -999,6 +1009,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e4/a5/2f6ed612056819de445a433ca1f2821ac3dab7f150d569a59e9cc105de1d/pandas-3.0.2-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:734be7551687c00fbd760dc0522ed974f82ad230d4a10f54bf51b80d44a08702", size = 11815274, upload-time = "2026-03-31T06:48:22.695Z" },
     { url = "https://files.pythonhosted.org/packages/00/2f/b622683e99ec3ce00b0854bac9e80868592c5b051733f2cf3a868e5fea26/pandas-3.0.2-cp314-cp314t-win_amd64.whl", hash = "sha256:57a07209bebcbcf768d2d13c9b78b852f9a15978dac41b9e6421a81ad4cdd276", size = 10888530, upload-time = "2026-03-31T06:48:25.806Z" },
     { url = "https://files.pythonhosted.org/packages/cb/2b/f8434233fab2bd66a02ec014febe4e5adced20e2693e0e90a07d118ed30e/pandas-3.0.2-cp314-cp314t-win_arm64.whl", hash = "sha256:5371b72c2d4d415d08765f32d689217a43227484e81b2305b52076e328f6f482", size = 9455341, upload-time = "2026-03-31T06:48:28.418Z" },
+]
+
+[[package]]
+name = "pettingzoo"
+version = "1.26.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "gymnasium" },
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/df/a6/b92fbff8dc3aabc0fcbd9ad26073b36161f96ab3bb8fa96ee1f907ea8431/pettingzoo-1.26.1.tar.gz", hash = "sha256:1bae0c7d3c51bf032f2e2abb589b211feec786de76cbbff87f8189ad51649820", size = 695464, upload-time = "2026-04-27T00:38:40.162Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/95/da/89907ebf66f435ad36395ec25af4a79e5f9a58821314811f33649959162d/pettingzoo-1.26.1-py3-none-any.whl", hash = "sha256:f4715dde696bf159d68bb1d3f764ff5083eb7e0cc32ac31a748e81ae530181dd", size = 805499, upload-time = "2026-04-27T00:38:38.377Z" },
 ]
 
 [[package]]
