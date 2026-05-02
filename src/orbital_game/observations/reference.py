@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from orbital_game.observations.base import ObservationScope
 from orbital_game.registry import ObservationFnKey, register
 
 
@@ -13,13 +14,13 @@ from orbital_game.registry import ObservationFnKey, register
 class FullObservation:
     """Return StateLayout.flatten(env_state.guards, env_state.bandits).
 
-    The no-partial-observability baseline. Same behavior regardless of which
-    side invokes it; asymmetric observation models use separate
-    `FullObservation`-shaped implementations per side.
+    Side-agnostic by construction — both sides see the same full flat state.
+    Realistic asymmetric models would use two different classes per side.
     """
 
     layout: Any  # StateLayout
+    scope: ObservationScope = ObservationScope.PER_SIDE
 
-    def __call__(self, env_state, params, key, t):
-        del params, key, t
+    def __call__(self, env_state, side, params, key, t):
+        del side, params, key, t
         return self.layout.flatten(env_state.guards, env_state.bandits)

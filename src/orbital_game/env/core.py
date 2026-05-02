@@ -1,9 +1,9 @@
-"""OrbitalGameEnv — the composed environment.
+"""OrbitalGameEnv — symmetric multi-agent core.
 
-Wires together: state classes (per scenario), dynamics, actuators, bandit policy,
-observation fn, reward fn, termination fn, IC sampler. Exposes reset / step with
-a lightweight API. Strict gymnax Environment inheritance is deferred (see spec
-§Known gaps).
+Wires together: state classes (per scenario), dynamics, actuators,
+observation fns, reward fn, termination fn, IC sampler. Exposes reset / step
+with a symmetric API — both sides run identical machinery. Callers (typically
+SingleAgentView) supply both sides' actions.
 
 EnvState is defined here (not in canonical types) because its per-scenario pytree
 structure depends on the assembled GuardState / BanditState classes.
@@ -20,12 +20,10 @@ import jax.numpy as jnp
 from orbital_game.actuators.impulsive import ImpulsiveActuator
 from orbital_game.config import ScenarioConfig
 from orbital_game.dynamics.hcw import hcw_rt_step, hcw_rtn_step
-from orbital_game.observations.reference import FullObservation
-from orbital_game.policies.bandit import ZeroControlBandit
+from orbital_game.env.types import Actions, BySide, Side, SideOutput, StepOutput
 from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.reference_orbit import mean_motion as _ref_mean_motion
 from orbital_game.registry import ActuatorKey, DynamicsKey, StateComponentKey
-from orbital_game.rewards.reference import DistanceToReferenceOrbit
 from orbital_game.state.assemble import build_state_class
 from orbital_game.state.components import (
     Attitude,
@@ -36,7 +34,6 @@ from orbital_game.state.components import (
     RTState,
 )
 from orbital_game.state.layout import StateLayout
-from orbital_game.termination.reference import MaxStepsOrBreach
 
 _COMP_LOOKUP = {
     StateComponentKey.RT: RTState,
@@ -81,10 +78,6 @@ class EnvState:
     # Defaults to True so legacy construction sites (and tests that build
     # EnvState without rejection sampling) get a sensible value.
     ic_valid: jax.Array = flax.struct.field(default_factory=lambda: jnp.asarray(True))
-
-
-def _dyn_action_dim(dyn_key: DynamicsKey) -> int:
-    return 2 if dyn_key == DynamicsKey.HCW_RT else 3
 
 
 def _make_actuator(key: ActuatorKey, track_mass: bool):
@@ -149,8 +142,6 @@ class OrbitalGameEnv:
         self.guard_params = _build_per_side_params(config.guard_params, self.mean_motion)
         self.bandit_params = _build_per_side_params(config.bandit_params, self.mean_motion)
 
-        # For bootstrap, construct reference pluggables directly. Registry-driven
-        # resolution is a follow-up (noted in spec §Known gaps).
         guard_track_mass = Mass in guard_comps
         bandit_track_mass = Mass in bandit_comps
         self.guard_actuator = _make_actuator(config.guard_actuator, guard_track_mass)
@@ -159,28 +150,20 @@ class OrbitalGameEnv:
         self.truth_dynamics = _DYN_LOOKUP[config.truth_dynamics]
         self.planning_dynamics = _DYN_LOOKUP[config.planning_dynamics]
 
-        self.bandit_policy = ZeroControlBandit(
-            n_bandits=config.n_bandits,
-            action_dim=_dyn_action_dim(config.truth_dynamics),
-        )
-        # Separate observation functions per side. Currently both resolve to the
-        # same FullObservation reference, but they are independent objects so a
-        # realistic scenario can swap guard-side for a masked/noisy sensor
-        # model while leaving the bandit-side omniscient (or vice versa).
-        self.guard_observation_fn = FullObservation(layout=self.layout)
-        self.bandit_observation_fn = FullObservation(layout=self.layout)
-        self.reward_fn = DistanceToReferenceOrbit()
-        self.termination_fn = MaxStepsOrBreach(max_steps=config.max_steps, breach_distance_m=10.0)
+        # Typed-instance pluggables come directly from the config (populated by
+        # ScenarioConfig.__post_init__ defaults or overridden by the caller).
+        self.guard_observation_fn = config.guard_observation_fn
+        self.bandit_observation_fn = config.bandit_observation_fn
+        self.reward_fn = config.reward_fn
+        self.termination_fn = config.termination_fn
         # IC sampler comes from the scenario config — the user picks nominals,
         # sigmas, and (in the future) the sampler variant. The env just holds
         # the reference.
         self.ic_sampler = config.ic_sampler
 
-    def reset(self, key: jax.Array) -> tuple[EnvState, jax.Array]:
-        # Split so IC sampling and the initial observation use independent keys.
-        # Currently the reference pluggables ignore the observation key, but
-        # noisy observation models will consume it; keep them uncoupled from IC.
-        k_ic, k_obs = jax.random.split(key, 2)
+    def reset(self, key: jax.Array) -> tuple[EnvState, BySide]:
+        """Reset returns (env_state, BySide(guard=SideOutput, bandit=SideOutput))."""
+        k_ic, k_obs_g, k_obs_b = jax.random.split(key, 3)
         guards, bandits, ok = self._reset_with_icspec(k_ic)
         state = EnvState(
             t=jnp.asarray(0.0),
@@ -190,8 +173,14 @@ class OrbitalGameEnv:
             reference_orbit=self.config.reference_orbit,
             ic_valid=ok,
         )
-        obs = self.guard_observation_fn(state, None, k_obs, state.t)
-        return state, obs
+        obs_g = self.guard_observation_fn(state, Side.GUARD, self.config, k_obs_g, state.t)
+        obs_b = self.bandit_observation_fn(state, Side.BANDIT, self.config, k_obs_b, state.t)
+        initial_done = jnp.asarray(False)
+        initial_outputs = BySide(
+            guard=SideOutput(obs=obs_g, reward=jnp.asarray(0.0), done=initial_done),
+            bandit=SideOutput(obs=obs_b, reward=jnp.asarray(0.0), done=initial_done),
+        )
+        return state, initial_outputs
 
     def _reset_with_icspec(self, k_ic: jax.Array):
         """Rejection-sampling reset for ICSpec configurations.
@@ -245,54 +234,63 @@ class OrbitalGameEnv:
         _, guards, bandits, ok = jax.lax.while_loop(_cond, _body, init_carry)
         return guards, bandits, ok
 
-    def step(self, key: jax.Array, state: EnvState, action: jax.Array):
-        # Separate keys for bandit obs+action, dynamics (if stochastic), and
-        # terminal guard obs. Reference implementations ignore the keys, but
-        # stochastic observation / dynamics models would produce correlated
-        # noise if the keys were shared.
-        k_bandit, k_dyn, k_obs = jax.random.split(key, 3)
+    def step(self, key: jax.Array, state: EnvState, actions: Actions) -> StepOutput:
+        """Symmetric step. Both sides run through identical machinery."""
+        k_dyn, k_obs_g, k_obs_b = jax.random.split(key, 3)
+        del k_dyn  # reserved for stochastic dynamics
+        guard_action = actions.sides.guard
+        bandit_action = actions.sides.bandit
 
-        # Bandit observes + acts via its own (independent) observation fn.
-        obs_bandit = self.bandit_observation_fn(state, None, k_bandit, state.t)
-        bandit_action = self.bandit_policy(obs_bandit, k_bandit, state.t)
-
-        # Actuators: command -> applied control + propellant delta (zeros if track_mass=False).
-        applied_guard, delta_propellant_guard = self.guard_actuator.apply(
-            action, state.guards, self.guard_params, self.config.dt
+        # Symmetric per-side dynamics step.
+        applied_guard, dprop_guard = self.guard_actuator.apply(
+            guard_action, state.guards, self.guard_params, self.config.dt
         )
-        applied_bandit, delta_propellant_bandit = self.bandit_actuator.apply(
+        applied_bandit, dprop_bandit = self.bandit_actuator.apply(
             bandit_action, state.bandits, self.bandit_params, self.config.dt
         )
-
-        # Truth dynamics on the raw rtn/rt state array.
-        new_guard_state = self.truth_dynamics(
+        new_guard_dyn = self.truth_dynamics(
             _get_dynamics_state(state.guards),
             applied_guard.dv,
             self.guard_params,
             self.config.dt,
         )
-        new_bandit_state = self.truth_dynamics(
+        new_bandit_dyn = self.truth_dynamics(
             _get_dynamics_state(state.bandits),
             applied_bandit.dv,
             self.bandit_params,
             self.config.dt,
         )
-        del k_dyn  # reserved for stochastic dynamics (unused by HCW)
-        next_guard = _set_dynamics_state(state.guards, new_guard_state)
-        next_bandit = _set_dynamics_state(state.bandits, new_bandit_state)
-
-        # Apply propellant deltas if Mass is tracked.
-        next_guard = _apply_propellant(next_guard, delta_propellant_guard)
-        next_bandit = _apply_propellant(next_bandit, delta_propellant_bandit)
+        next_guards = _set_dynamics_state(state.guards, new_guard_dyn)
+        next_bandits = _set_dynamics_state(state.bandits, new_bandit_dyn)
+        next_guards = _apply_propellant(next_guards, dprop_guard)
+        next_bandits = _apply_propellant(next_bandits, dprop_bandit)
 
         next_state = state.replace(  # pyrefly: ignore[missing-attribute]
             t=state.t + self.config.dt,
             step=state.step + 1,
-            guards=next_guard,
-            bandits=next_bandit,
+            guards=next_guards,
+            bandits=next_bandits,
         )
 
-        reward = self.reward_fn(state, action, next_state, None, state.t)
-        done = self.termination_fn(next_state, None, next_state.t)
-        obs = self.guard_observation_fn(next_state, None, k_obs, next_state.t)
-        return next_state, obs, reward, done, {}
+        # Per-side observations + rewards.
+        obs_g = self.guard_observation_fn(
+            next_state, Side.GUARD, self.config, k_obs_g, next_state.t
+        )
+        obs_b = self.bandit_observation_fn(
+            next_state, Side.BANDIT, self.config, k_obs_b, next_state.t
+        )
+        reward_g = self.reward_fn(state, actions, next_state, Side.GUARD, self.config, state.t)
+        reward_b = self.reward_fn(state, actions, next_state, Side.BANDIT, self.config, state.t)
+
+        episode_done = self.termination_fn(next_state, self.config, next_state.t)
+
+        # Per-side done is the scalar broadcast (shape uniformity for adapters).
+        return StepOutput(
+            state=next_state,
+            outputs=BySide(
+                guard=SideOutput(obs=obs_g, reward=reward_g, done=episode_done),
+                bandit=SideOutput(obs=obs_b, reward=reward_b, done=episode_done),
+            ),
+            episode_done=episode_done,
+            info={},
+        )

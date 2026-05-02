@@ -18,7 +18,7 @@ _set_astrojax_dtype(jnp.float64)
 # Imports below intentionally follow the dtype configuration: orbital_game
 # submodules import astrojax helpers, and we want them to see float64.
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec  # noqa: E402
-from orbital_game.env.environment import EnvState, OrbitalGameEnv  # noqa: E402
+from orbital_game.env.core import EnvState, OrbitalGameEnv  # noqa: E402
 from orbital_game.logging.reader import load_run  # noqa: E402
 from orbital_game.logging.writer import save_run  # noqa: E402
 from orbital_game.reference_orbit import ReferenceOrbitState  # noqa: E402

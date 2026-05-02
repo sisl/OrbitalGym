@@ -1,31 +1,44 @@
-"""ObservationFn protocol — structural contract for observation functions.
+"""ObservationFn protocol + scope enum.
 
-Guards and bandits get their own independent observation functions —
-they are not constrained to share sensor suites, masking patterns, or noise
-models. `OrbitalGameEnv` wires a `guard_observation_fn` and a
-`bandit_observation_fn` separately, both satisfying this same protocol.
+Each side has its own ObservationFn. The protocol carries a `scope`
+attribute that determines output shape:
+  PER_VEHICLE: returns (N_side, obs_dim) — one observation per vehicle
+  PER_SIDE:    returns (obs_dim,)        — one shared observation per side
+
+The `side: Side` argument lets a single implementation handle both sides
+when their sensor model is the same (just dispatching on `side`); for
+genuinely asymmetric sensor suites, wire two different classes (one per
+config field).
 """
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any, Protocol
 
 import jax
+
+from orbital_game.env.types import Side
+
+
+class ObservationScope(StrEnum):
+    PER_VEHICLE = "per_vehicle"
+    PER_SIDE = "per_side"
 
 
 class ObservationFn(Protocol):
     """Structural protocol for an observation function.
 
-    Receives the full ground-truth env_state and returns what the caller
-    (guard or bandit — the env decides by which attribute it invokes)
-    is allowed to see. Reference implementation returns the full flat state;
-    realistic implementations mask, slice, or add noise per their sensor model.
+    Concrete implementations declare a `scope` class/instance attribute.
     """
+
+    scope: ObservationScope
 
     def __call__(
         self,
         env_state: Any,
+        side: Side,
         params: Any,
         key: jax.Array,
         t: jax.Array,
-    ) -> Any: ...
+    ) -> jax.Array: ...

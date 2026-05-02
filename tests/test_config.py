@@ -118,3 +118,38 @@ def test_config_round_trips_with_relative_ellipse_ic():
 def test_vehicle_params_spec_no_longer_has_propellant_mass_kg():
     spec = VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0)
     assert not hasattr(spec, "propellant_mass_kg")
+
+
+def test_default_typed_pluggables_are_instances():
+    """typed-instance fields are populated as object instances, not enum keys."""
+    from orbital_game.observations.reference import FullObservation
+    from orbital_game.rewards.reference import DistanceToReferenceOrbit
+    from orbital_game.termination.reference import MaxStepsOrBreach
+    cfg = make_config()
+    assert isinstance(cfg.guard_observation_fn, FullObservation)
+    assert isinstance(cfg.bandit_observation_fn, FullObservation)
+    assert isinstance(cfg.reward_fn, DistanceToReferenceOrbit)
+    assert isinstance(cfg.termination_fn, MaxStepsOrBreach)
+
+
+def test_default_scripted_policies_are_zero_control():
+    from orbital_game.policies.library import ZeroControl
+    cfg = make_config()
+    assert isinstance(cfg.guard_scripted_policy, ZeroControl)
+    assert isinstance(cfg.bandit_scripted_policy, ZeroControl)
+
+
+def test_default_controlled_side_is_guard():
+    from orbital_game.env.types import Side
+    cfg = make_config()
+    assert cfg.controlled_side is Side.GUARD
+
+
+def test_roundtrip_typed_pluggables():
+    from examples.reference_scenario import build_config
+    cfg = build_config()
+    s = cfg.to_json()
+    cfg2 = ScenarioConfig.from_json(s)
+    assert type(cfg.reward_fn) is type(cfg2.reward_fn)
+    assert type(cfg.guard_observation_fn) is type(cfg2.guard_observation_fn)
+    assert cfg.controlled_side == cfg2.controlled_side

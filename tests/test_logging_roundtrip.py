@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.env.environment import OrbitalGameEnv
+from orbital_game.env.core import OrbitalGameEnv
 from orbital_game.logging.reader import load_run
 from orbital_game.logging.writer import save_run
 from orbital_game.reference_orbit import ReferenceOrbitState
@@ -47,12 +47,20 @@ def _make_cfg() -> ScenarioConfig:
 
 def test_hdf5_save_load_roundtrip(tmp_path):
     """Save a rollout + config to HDF5, load it back, and verify key fields match."""
+    from orbital_game.env.types import BySide
+
     cfg = _make_cfg()
     env = OrbitalGameEnv(cfg)
     traj = rollout(
         env,
-        lambda ps, obs, k, t: (jnp.zeros((1, 3)), ps),
-        lambda c, es, k: None,
+        BySide(
+            guard=lambda ps, obs, k, t: (jnp.zeros((1, 3)), ps),
+            bandit=lambda ps, obs, k, t: (jnp.zeros((1, 3)), ps),
+        ),
+        BySide(
+            guard=lambda c, es, k: None,
+            bandit=lambda c, es, k: None,
+        ),
         jax.random.PRNGKey(0),
         n_steps=10,
     )
@@ -64,10 +72,11 @@ def test_hdf5_save_load_roundtrip(tmp_path):
     assert loaded_cfg.dt == cfg.dt
     assert loaded_cfg.max_horizon_s == cfg.max_horizon_s
     # Reward and action survive byte-equal through the round-trip.
-    assert jnp.allclose(loaded_traj["reward"], traj.reward)
-    assert jnp.allclose(loaded_traj["action"], traj.action)
-    # Done bool array round-trips too.
-    assert jnp.array_equal(loaded_traj["done"], traj.done)
+    # New Trajectory stores per-side fields under "sides.guard.*" keys.
+    assert jnp.allclose(loaded_traj["sides.guard.reward"], traj.sides.guard.reward)
+    assert jnp.allclose(loaded_traj["sides.guard.action"], traj.sides.guard.action)
+    # Done bool array round-trips too (episode_done is the canonical latched flag).
+    assert jnp.array_equal(loaded_traj["episode_done"], traj.episode_done)
 
 
 def test_hdf5_rejects_unknown_schema_version(tmp_path):

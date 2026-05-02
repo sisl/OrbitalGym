@@ -1,10 +1,11 @@
-"""Tests for env/environment.py — OrbitalGameEnv reset/step determinism + shape contract."""
+"""Tests for env/core.py — OrbitalGameEnv reset/step determinism + shape contract."""
 
 import jax
 import jax.numpy as jnp
 
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.env.environment import OrbitalGameEnv
+from orbital_game.env.core import OrbitalGameEnv
+from orbital_game.env.types import Actions, BySide
 from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.registry import DynamicsKey, StateComponentKey
 from orbital_game.sampling.mass import ConstantMass
@@ -42,36 +43,46 @@ def _make_cfg() -> ScenarioConfig:
     )
 
 
+def _make_actions(cfg: ScenarioConfig, guard_action: jnp.ndarray) -> Actions:
+    return Actions(sides=BySide(
+        guard=guard_action,
+        bandit=jnp.zeros((cfg.n_bandits, 3)),
+    ))
+
+
 def test_env_reset_is_deterministic_under_same_key():
     env = OrbitalGameEnv(_make_cfg())
     key = jax.random.PRNGKey(42)
-    s_a, obs_a = env.reset(key)
-    s_b, obs_b = env.reset(key)
+    s_a, outputs_a = env.reset(key)
+    s_b, outputs_b = env.reset(key)
     assert jnp.allclose(s_a.guards.rtn, s_b.guards.rtn)
-    assert jnp.allclose(obs_a, obs_b)
+    assert jnp.allclose(outputs_a.guard.obs, outputs_b.guard.obs)
 
 
 def test_env_step_is_deterministic_under_same_key():
-    env = OrbitalGameEnv(_make_cfg())
+    cfg = _make_cfg()
+    env = OrbitalGameEnv(cfg)
     key = jax.random.PRNGKey(42)
     s0, _ = env.reset(key)
-    action = jnp.zeros((1, 3))
+    actions = _make_actions(cfg, jnp.zeros((1, 3)))
     step_key = jax.random.PRNGKey(99)
-    s1_a, obs_a, r_a, d_a, _ = env.step(step_key, s0, action)
-    s1_b, obs_b, r_b, d_b, _ = env.step(step_key, s0, action)
-    assert jnp.allclose(s1_a.guards.rtn, s1_b.guards.rtn)
-    assert jnp.isclose(r_a, r_b)
+    out_a = env.step(step_key, s0, actions)
+    out_b = env.step(step_key, s0, actions)
+    assert jnp.allclose(out_a.state.guards.rtn, out_b.state.guards.rtn)
+    assert jnp.isclose(out_a.outputs.guard.reward, out_b.outputs.guard.reward)
 
 
 def test_env_step_increments_step_counter_and_time():
-    env = OrbitalGameEnv(_make_cfg())
+    cfg = _make_cfg()
+    env = OrbitalGameEnv(cfg)
     key = jax.random.PRNGKey(0)
     s0, _ = env.reset(key)
     assert int(s0.step) == 0
     assert float(s0.t) == 0.0
-    s1, _, _, _, _ = env.step(jax.random.PRNGKey(1), s0, jnp.zeros((1, 3)))
-    assert int(s1.step) == 1
-    assert float(s1.t) == 10.0  # dt
+    actions = _make_actions(cfg, jnp.zeros((1, 3)))
+    step_out = env.step(jax.random.PRNGKey(1), s0, actions)
+    assert int(step_out.state.step) == 1
+    assert float(step_out.state.t) == 10.0  # dt
 
 
 def test_env_runs_end_to_end_with_rt_2d_dynamics():
@@ -105,11 +116,15 @@ def test_env_runs_end_to_end_with_rt_2d_dynamics():
         planning_dynamics=DynamicsKey.HCW_RT,
     )
     env = OrbitalGameEnv(cfg)
-    s0, obs0 = env.reset(jax.random.PRNGKey(0))
+    s0, outputs0 = env.reset(jax.random.PRNGKey(0))
     assert s0.guards.rt.shape == (1, 4)
     assert s0.bandits.rt.shape == (1, 4)
     # Guard action is 2D in RT scenarios.
-    s1, obs1, r1, d1, _ = env.step(jax.random.PRNGKey(1), s0, jnp.zeros((1, 2)))
-    assert s1.guards.rt.shape == (1, 4)
-    assert jnp.isfinite(r1)
-    assert bool(d1) in (True, False)  # termination is a bool scalar
+    actions = Actions(sides=BySide(
+        guard=jnp.zeros((1, 2)),
+        bandit=jnp.zeros((1, 2)),
+    ))
+    step_out = env.step(jax.random.PRNGKey(1), s0, actions)
+    assert step_out.state.guards.rt.shape == (1, 4)
+    assert jnp.isfinite(step_out.outputs.guard.reward)
+    assert bool(step_out.episode_done) in (True, False)  # termination is a bool scalar

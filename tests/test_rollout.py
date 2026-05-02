@@ -4,10 +4,11 @@ import jax
 import jax.numpy as jnp
 
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.env.environment import OrbitalGameEnv
+from orbital_game.env.core import OrbitalGameEnv
+from orbital_game.env.types import BySide, SideTrajectory, Trajectory
 from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.registry import StateComponentKey
-from orbital_game.rollout import Trajectory, episode_mask, rollout
+from orbital_game.rollout import episode_mask, rollout
 from orbital_game.sampling.mass import ConstantMass
 from orbital_game.sampling.side import RelativeEllipse
 from orbital_game.sampling.spec import ICSpec
@@ -47,40 +48,52 @@ def _make_env(max_horizon_s: float = 2000.0) -> OrbitalGameEnv:
     return OrbitalGameEnv(_make_cfg(max_horizon_s=max_horizon_s))
 
 
-def _zero_policy(policy_state, obs, key, t):
-    del obs, key, t
-    return jnp.zeros((1, 3)), policy_state
+def _zero_policies(n_guards: int = 1, n_bandits: int = 1) -> BySide:
+    def guard_policy(policy_state, obs, key, t):
+        del obs, key, t
+        return jnp.zeros((n_guards, 3)), policy_state
+
+    def bandit_policy(policy_state, obs, key, t):
+        del obs, key, t
+        return jnp.zeros((n_bandits, 3)), policy_state
+
+    return BySide(guard=guard_policy, bandit=bandit_policy)
 
 
-def _null_init_policy_state(config, env_state, key):
-    del config, env_state, key
-    return None
+def _null_init_fns() -> BySide:
+    def init_none(config, env_state, key):
+        del config, env_state, key
+        return None
+
+    return BySide(guard=init_none, bandit=init_none)
 
 
 def test_rollout_returns_trajectory_with_leading_T_axis():  # noqa: N802
     env = _make_env()
-    traj = rollout(env, _zero_policy, _null_init_policy_state, jax.random.PRNGKey(0), n_steps=20)
-    assert traj.reward.shape == (20,)
-    assert traj.action.shape == (20, 1, 3)
-    assert traj.done.shape == (20,)
+    traj = rollout(env, _zero_policies(), _null_init_fns(), jax.random.PRNGKey(0), n_steps=20)
+    assert traj.sides.guard.reward.shape == (20,)
+    assert traj.sides.guard.action.shape == (20, 1, 3)
+    assert traj.episode_done.shape == (20,)
 
 
 def test_rollout_is_deterministic_under_same_key():
     env = _make_env()
     key = jax.random.PRNGKey(7)
-    t1 = rollout(env, _zero_policy, _null_init_policy_state, key, n_steps=10)
-    t2 = rollout(env, _zero_policy, _null_init_policy_state, key, n_steps=10)
-    assert jnp.allclose(t1.reward, t2.reward)
+    t1 = rollout(env, _zero_policies(), _null_init_fns(), key, n_steps=10)
+    t2 = rollout(env, _zero_policies(), _null_init_fns(), key, n_steps=10)
+    assert jnp.allclose(t1.sides.guard.reward, t2.sides.guard.reward)
 
 
 def test_vmap_rollout_over_seeds_produces_batched_trajectories():
     env = _make_env()
     keys = jax.random.split(jax.random.PRNGKey(0), 4)
-    batched = jax.vmap(lambda k: rollout(env, _zero_policy, _null_init_policy_state, k, n_steps=10))
+    batched = jax.vmap(
+        lambda k: rollout(env, _zero_policies(), _null_init_fns(), k, n_steps=10)
+    )
     t = batched(keys)
-    assert t.reward.shape == (4, 10)
+    assert t.sides.guard.reward.shape == (4, 10)
     # Different seeds → different rewards (sanity check that the vmap axis is real).
-    assert not jnp.allclose(t.reward[0], t.reward[1])
+    assert not jnp.allclose(t.sides.guard.reward[0], t.sides.guard.reward[1])
 
 
 def test_rollout_freezes_state_and_zeros_reward_after_termination():
@@ -90,7 +103,9 @@ def test_rollout_freezes_state_and_zeros_reward_after_termination():
     onward, the rollout freezes: logged env_state.step stays at 3, reward 0,
     done latched True."""
     env = _make_env(max_horizon_s=30.0)  # max_steps = 3
-    traj = rollout(env, _zero_policy, _null_init_policy_state, jax.random.PRNGKey(0), n_steps=10)
+    traj = rollout(
+        env, _zero_policies(), _null_init_fns(), jax.random.PRNGKey(0), n_steps=10
+    )
 
     # Logged env_state.step at each scan index (pre-step input state):
     # [0, 1, 2, 3, 3, 3, 3, 3, 3, 3]
@@ -98,42 +113,56 @@ def test_rollout_freezes_state_and_zeros_reward_after_termination():
     assert jnp.array_equal(traj.env_state.step, expected_step)
 
     # Done first fires at scan_index=2 (where env.step #3 produces state.step=3).
-    assert not traj.done[0]
-    assert not traj.done[1]
-    assert traj.done[2]
+    assert not traj.episode_done[0]
+    assert not traj.episode_done[1]
+    assert traj.episode_done[2]
     # Done latched True from scan_index=2 onward.
-    assert jnp.all(traj.done[2:])
+    assert jnp.all(traj.episode_done[2:])
 
     # Reward at the terminating step (scan_index=2) is the actual value; zeros
     # from scan_index=3 onward.
-    assert jnp.all(traj.reward[3:] == 0.0)
+    assert jnp.all(traj.sides.guard.reward[3:] == 0.0)
+
+
+def _make_dummy_traj(done: jax.Array) -> Trajectory:
+    """Build a minimal Trajectory for episode_mask tests."""
+    n_t = done.shape[-1]
+    # Handle batched (B, T) shape
+    if done.ndim == 2:
+        n_b = done.shape[0]
+        side = SideTrajectory(
+            obs=jnp.zeros((n_b, n_t, 1)),
+            action=jnp.zeros((n_b, n_t, 1, 3)),
+            reward=jnp.zeros((n_b, n_t)),
+            done=done,
+            policy_state=None,
+        )
+    else:
+        side = SideTrajectory(
+            obs=jnp.zeros((n_t, 1)),
+            action=jnp.zeros((n_t, 1, 3)),
+            reward=jnp.zeros((n_t,)),
+            done=done,
+            policy_state=None,
+        )
+    return Trajectory(
+        env_state=None,
+        sides=BySide(guard=side, bandit=side),
+        episode_done=done,
+    )
 
 
 def test_episode_mask_marks_steps_up_to_and_including_first_termination():
     """mask[t] = True iff no done has occurred at any step < t."""
     done = jnp.array([False, False, True, True, True, True, True, True, True, True])
-    traj = Trajectory(
-        env_state=None,
-        action=jnp.zeros((10, 1, 3)),
-        reward=jnp.zeros((10,)),
-        done=done,
-        obs=jnp.zeros((10, 1)),
-        policy_state=None,
-    )
+    traj = _make_dummy_traj(done)
     expected = jnp.array([True, True, True, False, False, False, False, False, False, False])
     assert jnp.array_equal(episode_mask(traj), expected)
 
 
 def test_episode_mask_is_all_true_when_no_termination():
     done = jnp.zeros((10,), dtype=bool)
-    traj = Trajectory(
-        env_state=None,
-        action=jnp.zeros((10, 1, 3)),
-        reward=jnp.zeros((10,)),
-        done=done,
-        obs=jnp.zeros((10, 1)),
-        policy_state=None,
-    )
+    traj = _make_dummy_traj(done)
     assert jnp.all(episode_mask(traj))
 
 
@@ -146,14 +175,7 @@ def test_episode_mask_works_under_vmap():
             [False, False, False, False, False],
         ]
     )
-    traj = Trajectory(
-        env_state=None,
-        action=jnp.zeros((3, 5, 1, 3)),
-        reward=jnp.zeros((3, 5)),
-        done=done,
-        obs=jnp.zeros((3, 5, 1)),
-        policy_state=None,
-    )
+    traj = _make_dummy_traj(done)
     expected = jnp.array(
         [
             [True, True, True, False, False],

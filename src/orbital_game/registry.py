@@ -34,8 +34,10 @@ class ActuatorKey(StrEnum):
     IMPULSIVE = "impulsive"
 
 
-class BanditPolicyKey(StrEnum):
-    ZERO_CONTROL = "zero_control_bandit"
+class PolicyKey(StrEnum):
+    """Role-agnostic policy registry key. Same key serves any side."""
+
+    ZERO_CONTROL = "zero_control"
 
 
 class ObservationFnKey(StrEnum):

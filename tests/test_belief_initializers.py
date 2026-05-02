@@ -7,6 +7,7 @@ from orbital_game.belief.gaussian import (
     GaussianFromTruthInitializer,
     GaussianUniformDefaultInitializer,
 )
+from orbital_game.env.types import Side
 
 
 class _Layout:
@@ -23,7 +24,7 @@ class _Env:
 
 def test_gaussian_from_truth_uses_env_state_as_mean():
     init = GaussianFromTruthInitializer(layout=_Layout(), variance_diag=jnp.ones(4))
-    belief = init(config=None, env_state=_Env(), key=jax.random.PRNGKey(0))
+    belief = init(env_state=_Env(), side=Side.GUARD, key=jax.random.PRNGKey(0))
     assert jnp.allclose(belief.mean, jnp.array([1.0, 2.0, 3.0, 4.0]))
     assert jnp.allclose(belief.cov, jnp.eye(4))
 
@@ -33,6 +34,6 @@ def test_gaussian_uniform_default_ignores_env_state():
         default_mean=jnp.array([10.0, 20.0, 30.0, 40.0]),
         variance_diag=jnp.array([1.0, 2.0, 3.0, 4.0]),
     )
-    belief = init(config=None, env_state=_Env(), key=jax.random.PRNGKey(0))
+    belief = init(env_state=_Env(), side=Side.GUARD, key=jax.random.PRNGKey(0))
     assert jnp.allclose(belief.mean, jnp.array([10.0, 20.0, 30.0, 40.0]))
     assert jnp.allclose(belief.cov, jnp.diag(jnp.array([1.0, 2.0, 3.0, 4.0])))

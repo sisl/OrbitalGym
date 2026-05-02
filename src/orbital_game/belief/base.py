@@ -1,17 +1,33 @@
-"""Belief protocols."""
+"""BeliefInitializer / BeliefUpdater protocols — side-aware."""
 
 from __future__ import annotations
 
 from typing import Any, Protocol
 
+import jax
 
-class Belief(Protocol):
-    """Marker — concrete beliefs are typed pytrees."""
+from orbital_game.env.types import Side
 
 
 class BeliefInitializer(Protocol):
-    def __call__(self, config, env_state, key) -> Any: ...
+    """Initialize a belief state from the env's ground-truth state."""
+
+    def __call__(
+        self,
+        env_state: Any,
+        side: Side,
+        key: jax.Array,
+    ) -> Any: ...
 
 
 class BeliefUpdater(Protocol):
-    def __call__(self, belief, action, observation, params, dt, key) -> Any: ...
+    """Update a belief given a new observation."""
+
+    def __call__(
+        self,
+        belief: Any,
+        obs: jax.Array,
+        action: jax.Array,
+        side: Side,
+        key: jax.Array,
+    ) -> Any: ...

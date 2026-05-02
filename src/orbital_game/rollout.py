@@ -1,154 +1,173 @@
-"""jax.lax.scan-based rollout driving an OrbitalGameEnv for n_steps.
+"""jax.lax.scan-based rollout for the symmetric core.
 
-Design notes:
-  - The rollout uses the observation returned by env.reset / env.step directly;
-    no extra call to env.guard_observation_fn is needed. The scan carry
-    threads (env_state, policy_state, obs, terminated) so the policy at step t
-    sees the observation from step t-1 (or env.reset for step 0).
-  - **Freeze-on-done.** Once `done=True` fires at step k, subsequent steps
-    freeze: env_state / obs / policy_state hold at step-k's values, reward is
-    zero, done stays True. The scan still runs for `n_steps` (JAX requires a
-    static length) but post-termination outputs are semantically clean.
-  - Deterministic under a single master PRNGKey. Seed-parallel rollouts come
-    from `jax.vmap(rollout, in_axes=(None, None, None, 0, None))` over a batch
-    of keys. Different batch elements can terminate at different times — the
-    freeze-on-done logic handles heterogeneous termination uniformly.
-  - `episode_mask(trajectory)` returns a boolean mask over valid (pre+at
-    termination) steps — see §A in the docstring below.
+Both sides have policies; the scan threads (env_state, BySide[policy_state],
+BySide[obs], terminated_flag). Each step:
+
+  1. For each side, policy maps (ps_s, obs_s, key, t) → (action_s, ps_s').
+  2. Bundle actions as Actions; call env.step → StepOutput.
+  3. Apply freeze-on-done logic per side (state/obs/ps held; reward zeroed).
+
+For single-agent runs, callers typically use rollout_single_agent which
+wraps SingleAgentView.
+
+Key-split note: the top-level split uses split(key, 3) → (k_reset, k_init,
+k_scan) to preserve byte-identical numerical output with the Phase-0 baseline
+fixture. k_init is further split into (k_init_g, k_init_b). Since all current
+observation functions and the dynamics step are deterministic (keys discarded),
+only k_reset affects numerical output via IC sampling.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
-import flax.struct
 import jax
 import jax.numpy as jnp
 
-
-@flax.struct.dataclass
-class Trajectory:
-    """Time-stacked record of a rollout. Each field has leading axis (T,)
-    (or (B, T, ...) after vmap over seeds).
-
-    Once an episode terminates (first done=True at some step k):
-      - env_state / obs / policy_state at step > k hold at step-k values (frozen)
-      - reward at step > k is zero (the terminating step k still gets its reward)
-      - done stays True from step k onwards (latched)
-    Use `episode_mask(traj)` to get a boolean mask over valid steps.
-    """
-
-    env_state: Any  # EnvState pytree, leading T axis per leaf
-    action: jax.Array  # (T, N_guards, action_dim)
-    reward: jax.Array  # (T,)
-    done: jax.Array  # (T,) boolean — latched True after first termination
-    obs: jax.Array  # (T, obs_dim) — guard obs the policy saw at step t
-    policy_state: Any  # policy_state pytree at each step, leading T axis
+from orbital_game.env.types import (
+    Actions,
+    BySide,
+    Side,
+    SideTrajectory,
+    Trajectory,
+)
 
 
 def rollout(
     env,
-    guard_policy: Callable,
-    init_policy_state_fn: Callable,
+    policies: BySide,                # BySide[Policy] — one policy per side
+    init_policy_state_fns: BySide,   # BySide[Callable(config, env_state, key) -> ps]
     key: jax.Array,
     n_steps: int,
 ) -> Trajectory:
-    """Run a deterministic seed-driven rollout for n_steps, with freeze-on-done.
+    """Symmetric rollout. Both sides driven by their own policies.
 
-    Order:
-      1. Split key into (k_reset, k_init_ps, k_scan).
-      2. env.reset(k_reset) -> (env_state, initial_obs).
-      3. init_policy_state_fn(env.config, env_state, k_init_ps) -> policy_state.
-      4. scan n_steps: policy(ps, obs) -> action; env.step -> (next_es, next_obs, r, d).
-         If already terminated coming in, freeze state/obs/ps and zero reward.
+    Returns a Trajectory with sides.guard / sides.bandit each carrying
+    (T, N_side, ...) leading-axis arrays, plus episode_done (T,) latched.
 
-    Args:
-      env: OrbitalGameEnv
-      guard_policy: (policy_state, obs, key, t) -> (action, next_policy_state)
-      init_policy_state_fn: (config, env_state, key) -> policy_state
-      key: master PRNGKey for the rollout
-      n_steps: scan length (fixed; jax.lax.scan requires a static loop count)
+    Key split: k_reset, k_init, k_scan = split(key, 3) to preserve byte
+    identity with the Phase-0 baseline (only k_reset → k_ic → IC sampling
+    matters; all other keys are discarded by deterministic callables).
     """
-    k_reset, k_init_ps, k_scan = jax.random.split(key, 3)
-    env_state, initial_obs = env.reset(k_reset)
-    policy_state = init_policy_state_fn(env.config, env_state, k_init_ps)
+    k_reset, k_init, k_scan = jax.random.split(key, 3)
+    k_init_g, k_init_b = jax.random.split(k_init, 2)
+    env_state, initial_outputs = env.reset(k_reset)
+    ps_g = init_policy_state_fns.guard(env.config, env_state, k_init_g)
+    ps_b = init_policy_state_fns.bandit(env.config, env_state, k_init_b)
     initial_terminated = jnp.asarray(False)
 
     def _step(carry, step_key):
-        es, ps, obs, terminated = carry
-        k_act, k_env = jax.random.split(step_key, 2)
-        action, next_ps = guard_policy(ps, obs, k_act, es.t)
-        next_es, next_obs, reward, done, _ = env.step(k_env, es, action)
-
+        es, ps_g, ps_b, obs_g, obs_b, terminated = carry
+        k_act_g, k_act_b, k_env = jax.random.split(step_key, 3)
+        action_g, next_ps_g = policies.guard(ps_g, obs_g, k_act_g, es.t)
+        action_b, next_ps_b = policies.bandit(ps_b, obs_b, k_act_b, es.t)
+        actions = Actions(sides=BySide(guard=action_g, bandit=action_b))
+        step_out = env.step(k_env, es, actions)
+        next_es = step_out.state
+        next_obs_g = step_out.outputs.guard.obs
+        next_obs_b = step_out.outputs.bandit.obs
+        reward_g = step_out.outputs.guard.reward
+        reward_b = step_out.outputs.bandit.reward
+        done = step_out.episode_done
         next_terminated = terminated | done
 
-        # If ALREADY terminated coming into this step, hold state/obs/ps at
-        # their current (frozen) values. Otherwise advance normally. The
-        # terminating step itself (the first step with done=True) logs real
-        # values and its next_es becomes the frozen reference for later steps.
+        # Freeze-on-done: hold previous state/obs/ps if already terminated entering this step.
         advance_es = jax.tree_util.tree_map(
             lambda cur, nxt: jnp.where(terminated, cur, nxt), es, next_es
         )
-        advance_obs = jax.tree_util.tree_map(
-            lambda cur, nxt: jnp.where(terminated, cur, nxt), obs, next_obs
+        advance_obs_g = jax.tree_util.tree_map(
+            lambda cur, nxt: jnp.where(terminated, cur, nxt), obs_g, next_obs_g
         )
-        advance_ps = jax.tree_util.tree_map(
-            lambda cur, nxt: jnp.where(terminated, cur, nxt), ps, next_ps
+        advance_obs_b = jax.tree_util.tree_map(
+            lambda cur, nxt: jnp.where(terminated, cur, nxt), obs_b, next_obs_b
+        )
+        advance_ps_g = jax.tree_util.tree_map(
+            lambda cur, nxt: jnp.where(terminated, cur, nxt), ps_g, next_ps_g
+        )
+        advance_ps_b = jax.tree_util.tree_map(
+            lambda cur, nxt: jnp.where(terminated, cur, nxt), ps_b, next_ps_b
         )
 
-        # Zero reward AFTER termination. The terminating step itself accrues
-        # its natural reward (terminated was False coming in).
-        out_reward = jnp.where(terminated, jnp.zeros_like(reward), reward)
+        out_reward_g = jnp.where(terminated, jnp.zeros_like(reward_g), reward_g)
+        out_reward_b = jnp.where(terminated, jnp.zeros_like(reward_b), reward_b)
 
         logged = {
             "env_state": es,
-            "action": action,
-            "reward": out_reward,
-            "done": next_terminated,
-            "obs": obs,
-            "policy_state": ps,
+            "guard_action": action_g,
+            "bandit_action": action_b,
+            "guard_reward": out_reward_g,
+            "bandit_reward": out_reward_b,
+            "episode_done": next_terminated,
+            "guard_obs": obs_g,
+            "bandit_obs": obs_b,
+            "guard_ps": ps_g,
+            "bandit_ps": ps_b,
         }
-        return (advance_es, advance_ps, advance_obs, next_terminated), logged
+        return (
+            advance_es, advance_ps_g, advance_ps_b,
+            advance_obs_g, advance_obs_b, next_terminated,
+        ), logged
 
     step_keys = jax.random.split(k_scan, n_steps)
+    initial_obs_g = initial_outputs.guard.obs
+    initial_obs_b = initial_outputs.bandit.obs
     _, stacked = jax.lax.scan(
         _step,
-        (env_state, policy_state, initial_obs, initial_terminated),
+        (env_state, ps_g, ps_b, initial_obs_g, initial_obs_b, initial_terminated),
         step_keys,
     )
 
     return Trajectory(
         env_state=stacked["env_state"],
-        action=stacked["action"],
-        reward=stacked["reward"],
-        done=stacked["done"],
-        obs=stacked["obs"],
-        policy_state=stacked["policy_state"],
+        sides=BySide(
+            guard=SideTrajectory(
+                obs=stacked["guard_obs"],
+                action=stacked["guard_action"],
+                reward=stacked["guard_reward"],
+                done=stacked["episode_done"],
+                policy_state=stacked["guard_ps"],
+            ),
+            bandit=SideTrajectory(
+                obs=stacked["bandit_obs"],
+                action=stacked["bandit_action"],
+                reward=stacked["bandit_reward"],
+                done=stacked["episode_done"],
+                policy_state=stacked["bandit_ps"],
+            ),
+        ),
+        episode_done=stacked["episode_done"],
+        controlled_side=getattr(env.config, "controlled_side", Side.GUARD),
     )
 
 
-def episode_mask(traj: Trajectory) -> jax.Array:
-    """Return a boolean mask marking steps up to and including the terminating
-    step (False for post-terminal steps).
+def rollout_single_agent(
+    view,
+    controlled_policy: Callable,
+    init_controlled_ps_fn: Callable,
+    key: jax.Array,
+    n_steps: int,
+) -> Trajectory:
+    """Convenience wrapper for SingleAgentView-style runs.
 
-    Shape matches `traj.done` (either `(T,)` or `(B, T)` under vmap). Semantics:
-
-      mask[t] = True  iff no `done=True` occurred at any step < t
-                      (equivalently: step t is before OR AT the first termination)
-
-    Example — traj.done = [F, F, T, T, T]:
-      mask   = [T, T, T, F, F]   (step 2 is the terminating step — still valid)
-
-    Useful cases:
-      - Episode length: `jnp.sum(mask)` (along the time axis).
-      - Masking action/obs/env_state for analysis: freeze-on-done zeros reward
-        and freezes state/obs, but `action` is logged verbatim — use the mask
-        when you want action statistics over valid steps only.
-      - Working with trajectories from rollouts that do NOT use freeze-on-done.
+    Pulls the opponent's scripted policy from `view.opponent_policy` and
+    threads only the controlled side's policy state externally.
     """
-    done = traj.done
-    # Shift done right by one step along the time axis (prepend False).
+    if view.controlled_side is Side.GUARD:
+        policies = BySide(guard=controlled_policy, bandit=view.opponent_policy)
+        init_fns = BySide(guard=init_controlled_ps_fn, bandit=lambda c, s, k: None)
+    else:
+        policies = BySide(guard=view.opponent_policy, bandit=controlled_policy)
+        init_fns = BySide(guard=lambda c, s, k: None, bandit=init_controlled_ps_fn)
+    return rollout(view.env, policies, init_fns, key, n_steps)
+
+
+def episode_mask(traj: Trajectory) -> jax.Array:
+    """Boolean mask True up to and including the terminating step.
+
+    Same semantics as Phase 0's episode_mask but reads from the new
+    Trajectory shape's `episode_done` field.
+    """
+    done = traj.episode_done
     shifted = jnp.concatenate(
         [jnp.zeros_like(done[..., :1]), done[..., :-1]],
         axis=-1,

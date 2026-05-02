@@ -13,6 +13,7 @@ import flax.struct
 import jax
 import jax.numpy as jnp
 
+from orbital_game.env.types import Side
 from orbital_game.registry import BeliefInitializerKey, BeliefUpdaterKey, register
 
 
@@ -77,15 +78,14 @@ class GaussianKalmanUpdater:
     def __call__(
         self,
         belief: GaussianBelief,
+        obs: jax.Array,
         action: jax.Array,
-        observation: jax.Array,
-        params,
-        dt: float,
+        side: Side,
         key,
     ) -> GaussianBelief:
-        del params, dt, key
+        del side, key  # updater is currently side-symmetric; signature parity for protocol
         predicted = self.predict(belief, action)
-        return self.correct(predicted, observation)
+        return self.correct(predicted, obs)
 
 
 @register(BeliefInitializerKey.GAUSSIAN_FROM_TRUTH)
@@ -102,8 +102,8 @@ class GaussianFromTruthInitializer:
     layout: Any
     variance_diag: jax.Array
 
-    def __call__(self, config, env_state, key) -> GaussianBelief:
-        del config, key
+    def __call__(self, env_state, side: Side, key) -> GaussianBelief:
+        del side, key
         mean = self.layout.flatten(env_state.guards, env_state.bandits)
         cov = jnp.diag(self.variance_diag)
         return GaussianBelief(mean=mean, cov=cov)
@@ -121,6 +121,6 @@ class GaussianUniformDefaultInitializer:
     default_mean: jax.Array
     variance_diag: jax.Array
 
-    def __call__(self, config, env_state, key) -> GaussianBelief:
-        del config, env_state, key
+    def __call__(self, env_state, side: Side, key) -> GaussianBelief:
+        del env_state, side, key
         return GaussianBelief(mean=self.default_mean, cov=jnp.diag(self.variance_diag))

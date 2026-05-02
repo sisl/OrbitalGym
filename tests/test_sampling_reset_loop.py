@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.env.environment import OrbitalGameEnv
+from orbital_game.env.core import OrbitalGameEnv
 from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.registry import StateComponentKey
 from orbital_game.sampling.mass import ConstantMass

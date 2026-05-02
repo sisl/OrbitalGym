@@ -14,7 +14,9 @@ import jax
 import jax.numpy as jnp
 
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.env.environment import OrbitalGameEnv
+from orbital_game.env.core import OrbitalGameEnv
+from orbital_game.env.types import BySide
+from orbital_game.policies.library import ZeroControl
 from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.registry import StateComponentKey
 from orbital_game.rollout import rollout
@@ -66,18 +68,23 @@ def run() -> None:
     cfg = build_config()
     env = OrbitalGameEnv(cfg)
 
-    def policy(ps, obs, key, t):
-        del obs, key, t
-        return jnp.zeros((cfg.n_guards, 3)), ps
+    guard_policy = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
+    bandit_policy = ZeroControl(n_vehicles=cfg.n_bandits, action_dim=3)
 
-    def init_ps(config, env_state, key):
-        del config, env_state, key
+    def init_none(c, s, k):
+        del c, s, k
         return None
 
     # Seed-parallel: 64 lanes
     keys = jax.random.split(jax.random.PRNGKey(cfg.seed), 64)
     batched_rollout = jax.vmap(
-        lambda k: rollout(env, policy, init_ps, k, n_steps=cfg.max_steps)
+        lambda k: rollout(
+            env,
+            BySide(guard=guard_policy, bandit=bandit_policy),
+            BySide(guard=init_none, bandit=init_none),
+            k,
+            n_steps=cfg.max_steps,
+        )
     )
     traj = batched_rollout(keys)
 

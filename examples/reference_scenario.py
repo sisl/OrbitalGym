@@ -12,11 +12,13 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.env.environment import OrbitalGameEnv
+from orbital_game.env.core import OrbitalGameEnv
+from orbital_game.env.single_agent import SingleAgentView
 from orbital_game.logging.writer import save_run
+from orbital_game.policies.library import ZeroControl
 from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.registry import StateComponentKey
-from orbital_game.rollout import rollout
+from orbital_game.rollout import rollout_single_agent
 from orbital_game.sampling.mass import ConstantMass
 from orbital_game.sampling.side import RelativeEllipse
 from orbital_game.sampling.spec import ICSpec
@@ -73,21 +75,23 @@ def run(hdf5_path: Path, plots_dir: Path) -> None:
     """Execute the scenario and write HDF5 + PNG outputs."""
     cfg = build_config()
     env = OrbitalGameEnv(cfg)
+    view = SingleAgentView(env)
 
-    # Zero-control guard; null placeholder policy state.
-    def policy(ps, obs, key, t):
-        del obs, key, t
-        return jnp.zeros((cfg.n_guards, 3)), ps
+    # Controlled side's policy (zero-control guard for this reference scenario)
+    controlled_policy = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
 
-    def init_ps(config, env_state, key):
-        del config, env_state, key
+    def init_none(c, s, k):
+        del c, s, k
         return None
 
-    traj = rollout(env, policy, init_ps, jax.random.PRNGKey(cfg.seed), n_steps=cfg.max_steps)
+    traj = rollout_single_agent(
+        view, controlled_policy, init_none,
+        jax.random.PRNGKey(cfg.seed), n_steps=cfg.max_steps,
+    )
 
     save_run(hdf5_path, cfg, traj)
 
-    # Guard RTN trajectory: shape (T, N_guards, 6)
+    # Defender RTN trajectory: shape (T, N_guards, 6)
     guard_rtn = traj.env_state.guards.rtn
 
     ax3d = plot_rtn_3d(guard_rtn)
@@ -95,7 +99,7 @@ def run(hdf5_path: Path, plots_dir: Path) -> None:
     plt.close(ax3d.figure)
 
     fig, ax = plt.subplots()
-    plot_reward_curve(traj.reward, ax=ax)
+    plot_reward_curve(traj.sides.guard.reward, ax=ax)
     fig.savefig(plots_dir / "reward.png", dpi=120)
     plt.close(fig)
 
