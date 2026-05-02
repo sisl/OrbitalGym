@@ -69,6 +69,10 @@ show_signature_annotations = true
 separate_signature = true
 merge_init_into_class = true
 
+[project.markdown_extensions]
+"pymdownx.snippets" = { base_path = ["."] }
+"pymdownx.superfences" = {}
+
 [project.theme]
 
 language = "en"
