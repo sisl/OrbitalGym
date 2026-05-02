@@ -19,6 +19,7 @@ from typing import Any
 
 import jax.numpy as jnp
 
+from orbital_game.games.base import Game, NoGame
 from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.registry import (
     ActuatorKey,
@@ -92,6 +93,9 @@ class ScenarioConfig:
     guard_scripted_policy: Any = None    # Policy
     bandit_scripted_policy: Any = None
 
+    # Game catalog (typed knob bundle; default NoGame for custom scenarios)
+    game: Any = None  # populated in __post_init__
+
     @property
     def max_steps(self) -> int:
         """Derived step count: ceil(max_horizon_s / dt)."""
@@ -156,6 +160,10 @@ class ScenarioConfig:
         if self.bandit_scripted_policy is None:
             from orbital_game.policies.library import ZeroControl
             object.__setattr__(self, "bandit_scripted_policy", ZeroControl())
+
+        # Default game = NoGame
+        if self.game is None:
+            object.__setattr__(self, "game", NoGame())
 
     def to_json(self) -> str:
         return json.dumps(_config_to_primitive(self), sort_keys=True)
@@ -231,6 +239,8 @@ def _config_to_primitive(cfg: ScenarioConfig) -> dict[str, Any]:
                 d[f.name] = {"_key": key_value}
             else:
                 d[f.name] = serializable_to_primitive(v)
+        elif f.name == "game":
+            d[f.name] = _game_to_primitive(v)
         else:
             d[f.name] = v
     return d
@@ -272,6 +282,8 @@ def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> Scen
         elif f.name == "controlled_side":
             from orbital_game.env.types import Side as _Side
             kwargs[f.name] = _Side(v)
+        elif f.name == "game":
+            kwargs[f.name] = _game_from_primitive(v)
         else:
             kwargs[f.name] = v
     return cls(**kwargs)
@@ -286,6 +298,38 @@ def _ic_spec_to_primitive(spec: ICSpec) -> dict:
         "validators": [serializable_to_primitive(v) for v in spec.validators],
         "max_attempts": spec.max_attempts,
     }
+
+
+def _game_to_primitive(g: Game) -> dict:
+    """Serialize a Game subclass instance to a JSON-friendly dict.
+
+    Only init=True fields are included — computed fields (init=False, e.g.
+    target_ecef_m on ObservationBlocking) are excluded since they are derived
+    from the init fields in __post_init__ and are not JSON-serializable.
+    """
+    from dataclasses import fields as _fields
+
+    from orbital_game.registry import resolve_game_class_to_key
+
+    key = resolve_game_class_to_key(type(g))
+    payload = {f.name: getattr(g, f.name) for f in _fields(g) if f.init}
+    return {"_key": key.value, **payload}
+
+
+def _game_from_primitive(d: dict) -> Game:
+    from dataclasses import fields as _fields
+
+    from orbital_game.registry import GameKey, resolve_game
+    payload = dict(d)
+    key_value = payload.pop("_key")
+    key = GameKey(key_value)
+    cls = resolve_game(key)
+    # Game subclasses with init=False fields (e.g. ObservationBlocking.target_ecef_m
+    # in future tasks) need those omitted from kwargs since they're computed in
+    # __post_init__.
+    init_field_names = {f.name for f in _fields(cls) if f.init}
+    kwargs = {k: v for k, v in payload.items() if k in init_field_names}
+    return cls(**kwargs)
 
 
 def _ic_spec_from_primitive(d: dict) -> ICSpec:

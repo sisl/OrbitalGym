@@ -46,10 +46,14 @@ class ObservationFnKey(StrEnum):
 
 class RewardFnKey(StrEnum):
     DISTANCE_TO_REFERENCE_ORBIT = "distance_to_reference_orbit"
+    PURSUIT_EVASION = "pursuit_evasion_reward"
+    SUN_BLOCKING = "sun_blocking_reward"
+    OBSERVATION_BLOCKING = "observation_blocking_reward"  # added Phase 2 Task 5
 
 
 class TerminationFnKey(StrEnum):
     MAX_STEPS_OR_BREACH = "max_steps_or_breach"
+    PURSUIT_EVASION = "pursuit_evasion_termination"
 
 
 class SideSamplerKey(StrEnum):
@@ -74,6 +78,16 @@ class BeliefInitializerKey(StrEnum):
 
 class BeliefUpdaterKey(StrEnum):
     GAUSSIAN_KALMAN = "gaussian_kalman"
+
+
+class GameKey(StrEnum):
+    """Game catalog key. NoGame is the default for custom scenarios."""
+
+    NONE = "no_game"
+    LADY_BANDIT_GUARD = "lady_bandit_guard"
+    PURSUIT_EVASION = "pursuit_evasion"
+    SUN_BLOCKING = "sun_blocking"
+    OBSERVATION_BLOCKING = "observation_blocking"
 
 
 _REGISTRY: dict[Enum, Callable] = {}
@@ -119,7 +133,36 @@ def resolve_class_to_key(cls: Callable) -> tuple[str, type[Enum]]:
     return _REVERSE[cls]
 
 
+_GAME_REGISTRY: dict[GameKey, type] = {}
+_GAME_REVERSE: dict[type, GameKey] = {}
+
+
+def register_game(key: GameKey) -> Callable[[type], type]:
+    """Decorator: @register_game(GameKey.LADY_BANDIT_GUARD) class LadyBanditGuard(Game): ..."""
+
+    def decorator(cls: type) -> type:
+        _GAME_REGISTRY[key] = cls
+        _GAME_REVERSE[cls] = key
+        return cls
+
+    return decorator
+
+
+def resolve_game(key: GameKey) -> type:
+    if key not in _GAME_REGISTRY:
+        raise KeyError(f"No game class registered for {key!r}")
+    return _GAME_REGISTRY[key]
+
+
+def resolve_game_class_to_key(cls: type) -> GameKey:
+    if cls not in _GAME_REVERSE:
+        raise KeyError(f"Game class {cls.__qualname__} is not registered")
+    return _GAME_REVERSE[cls]
+
+
 def _clear_registry_for_tests() -> None:
     """Test-only hook to reset the registry between test cases."""
     _REGISTRY.clear()
     _REVERSE.clear()
+    _GAME_REGISTRY.clear()
+    _GAME_REVERSE.clear()
