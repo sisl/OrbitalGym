@@ -26,4 +26,13 @@ from orbital_game import make_game, GameKey
 cfg = make_game(GameKey.OBSERVATION_BLOCKING, target_lat_deg=37.4, target_lon_deg=-122.2)
 ```
 
-`ScenarioConfig.to_json()` / `from_json()` round-trip every game, including derived fields like `ObservationBlocking.target_ecef_m` (recomputed in `__post_init__` on load).
+For a tutorial walkthrough that uses each game, see [Tutorials](../tutorials/index.md):
+
+- [T1](../tutorials/t1-first-rollout.md) uses Lady-Bandit-Guard.
+- [T2](../tutorials/t2-rtn-scenario.md), [T3](../tutorials/t3-active-pursuer.md), and
+  [T4](../tutorials/t4-short-horizon-search.md) use Pursuit-Evasion.
+
+`ScenarioConfig.to_json()` / `from_json()` round-trip every game,
+including derived fields like `ObservationBlocking.target_ecef_m`
+(recomputed in `__post_init__` on load). See
+[Round-trip config to JSON](../how-to/json-roundtrip-config.md).

@@ -1,5 +1,22 @@
 # Lady-Bandit-Guard
 
+## Quickstart
+
+```python
+import jax
+from orbital_game import OrbitalGameEnv, SingleAgentView, make_lady_bandit_guard
+from orbital_game.policies.library import ZeroControl
+from orbital_game.rollout import rollout_single_agent
+
+cfg = make_lady_bandit_guard()
+view = SingleAgentView(OrbitalGameEnv(cfg))
+guard = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
+traj = rollout_single_agent(view, guard, lambda c, s, k: None,
+                            jax.random.PRNGKey(0), n_steps=cfg.max_steps)
+```
+
+For a full walkthrough see [T1 — First rollout](../tutorials/t1-first-rollout.md).
+
 The guard protects the reference orbit — the "Lady", currently virtual — from the bandit. This is a station-keeping / protection scenario: the guard's job is to stay near a protected asset while the bandit threatens to breach it.
 
 ## What the reward shapes
@@ -24,10 +41,27 @@ cfg = make_lady_bandit_guard(
 
 Defaults match the reference scenario: a 1 km radial-ellipse co-orbit with the guard at phase 0 and the bandit at phase π, 200 steps at 10 s each.
 
-For knob details, see `LadyBanditGuard` in the [API reference](../api/games.md).
+## Knobs at a glance
+
+| Field | Type | Default | What it does |
+|---|---|---|---|
+| `n_guards` | `int` | `1` | Number of guard vehicles. |
+| `n_bandits` | `int` | `1` | Number of bandit vehicles. |
+| `breach_distance_m` | `float` | `10.0` | Episode terminates when any guard is within this radius of the reference origin. |
+| `max_horizon_s` | `float` | `2000.0` | Total episode duration in seconds. |
+| `dt` | `float` | `10.0` | Step size in seconds. |
+| `seed` | `int` | `0` | PRNG seed for IC sampling. |
+
+For the full field list see [API → `LadyBanditGuard`](../api/games.md).
 
 ## Suggested experiments
 
 - **Sanity baseline.** Run with zero control on both sides — no breach occurs, the episode ends at `max_steps`. This is what `examples/reference_scenario.py` does.
 - **Bandit attack.** Replace `cfg.bandit_scripted_policy` with a heuristic that maneuvers toward the reference origin; the zero-control guard should eventually lose.
 - **Guard station-keeping.** Train a guard policy to minimize the negative reward (stay close to the reference orbit) under bandit perturbations.
+
+## Where to next
+
+- **Tutorial:** [T1 — First rollout](../tutorials/t1-first-rollout.md).
+- **API:** [`LadyBanditGuard`](../api/games.md).
+- **In depth:** [Symmetric core](../in-depth/symmetric-core.md), [State layout](../in-depth/state-layout.md).

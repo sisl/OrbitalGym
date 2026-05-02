@@ -1,5 +1,22 @@
 # Observation-Blocking
 
+## Quickstart
+
+```python
+import jax
+from orbital_game import OrbitalGameEnv, BySide, make_observation_blocking
+from orbital_game.policies.library import ZeroControl
+from orbital_game.rollout import rollout
+
+cfg = make_observation_blocking()
+env = OrbitalGameEnv(cfg)
+guard = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
+bandit = ZeroControl(n_vehicles=cfg.n_bandits, action_dim=3)
+traj = rollout(env, BySide(guard=guard, bandit=bandit),
+               BySide(guard=lambda c, s, k: None, bandit=lambda c, s, k: None),
+               jax.random.PRNGKey(0), n_steps=cfg.max_steps)
+```
+
 The bandit blocks the guard's view of an Earth surface target — but only when the target is observable in the first place. This models a spaceborne ISR-denial scenario: the guard satellite is tasked with observing a fixed lat/lon target, and the bandit positions itself to occlude that line of sight whenever the target is actually visible from the guard.
 
 ## What the reward shapes
@@ -39,10 +56,28 @@ cfg = make_observation_blocking(
 )
 ```
 
-For knob details, see `ObservationBlocking` in the [API reference](../api/games.md).
+## Knobs at a glance
+
+| Field | Type | Default | What it does |
+|---|---|---|---|
+| `n_guards` | `int` | `1` | Observer count. |
+| `n_bandits` | `int` | `1` | Blocker count. |
+| `target_lat_deg` | `float` | `37.4` | Target latitude. |
+| `target_lon_deg` | `float` | `-122.2` | Target longitude. |
+| `target_alt_m` | `float` | `0.0` | Target altitude. |
+| `min_elevation_deg` | `float` | `5.0` | Visibility gate threshold. |
+| `angle_sigma_deg` | `float` | `5.0` | Gaussian sharpness on collinearity. |
+| `max_horizon_s` | `float` | `5400.0` | Total duration. |
+| `dt` | `float` | `10.0` | Step size. |
+| `seed` | `int` | `0` | PRNG seed. |
 
 ## Suggested experiments
 
 - **Target latitude sweep.** Vary `target_lat_deg` from −60° to +60° to study how target latitude relative to orbit inclination affects observability windows and bandit difficulty.
 - **Elevation gate study.** Vary `min_elevation_deg` from 5° (relaxed) to 30° (strict). Higher thresholds shorten visibility windows and harden the bandit problem.
 - **Coordinated guards.** Extend to `n_guards > 1` and test whether multiple guards spread along the orbit can keep target observability above some threshold.
+
+## Where to next
+
+- **API:** [`ObservationBlocking`](../api/games.md).
+- **In depth:** [Symmetric core](../in-depth/symmetric-core.md), [Observations](../in-depth/observations.md).
