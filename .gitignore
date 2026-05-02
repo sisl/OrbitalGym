@@ -4,6 +4,7 @@
 .vscode/
 refs/
 .worktrees/
+superpowers/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

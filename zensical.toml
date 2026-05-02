@@ -3,9 +3,9 @@
 # Build:    uv run zensical build
 # Serve:    uv run zensical serve
 #
-# The site source lives under docs/site/. Internal artifacts (specs, plans,
-# brainstorming) live under docs/superpowers/ and are intentionally NOT part
-# of the rendered site.
+# The site source lives under docs/. Build output goes to docs/_site/
+# (gitignored). Internal artifacts (specs, plans, brainstorming) live
+# outside docs/ at /superpowers/ and are not part of the rendered site.
 
 [project]
 
@@ -14,9 +14,7 @@ site_description = "JAX-native framework for guard/bandit decision-making in orb
 site_author = "Duncan Eddy"
 site_url = "https://github.com/duncaneddy/orbital-game"
 
-# Use docs/site/ as the content root so docs/superpowers/ stays out of the
-# rendered site.
-docs_dir = "docs/site"
+docs_dir = "docs"
 
 # Output directory for the built site (gitignored).
 site_dir = "docs/_site"
