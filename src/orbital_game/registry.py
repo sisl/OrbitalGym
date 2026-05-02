@@ -72,12 +72,12 @@ class ValidatorKey(StrEnum):
 
 
 class BeliefInitializerKey(StrEnum):
-    GAUSSIAN_FROM_TRUTH = "gaussian_from_truth"
-    GAUSSIAN_UNIFORM_DEFAULT = "gaussian_uniform_default"
+    KF_FROM_TRUTH = "kf_from_truth"
+    KF_UNIFORM_DEFAULT = "kf_uniform_default"
 
 
 class BeliefUpdaterKey(StrEnum):
-    GAUSSIAN_KALMAN = "gaussian_kalman"
+    KF = "kf"
 
 
 class GameKey(StrEnum):

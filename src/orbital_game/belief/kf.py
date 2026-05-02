@@ -1,4 +1,4 @@
-"""Gaussian belief + linear Kalman filter.
+"""KF belief + linear Kalman updater.
 
 Predict and correct are exposed separately for testability; the combined
 __call__ runs predict-then-correct.
@@ -18,14 +18,14 @@ from orbital_game.registry import BeliefInitializerKey, BeliefUpdaterKey, regist
 
 
 @flax.struct.dataclass
-class GaussianBelief:
+class KFBelief:
     mean: jax.Array  # (D,) or (N_guards, D) for decentralized
     cov: jax.Array  # (D, D) or (N_guards, D, D)
 
 
-@register(BeliefUpdaterKey.GAUSSIAN_KALMAN)
+@register(BeliefUpdaterKey.KF)
 @dataclass(frozen=True)
-class GaussianKalmanUpdater:
+class KFBeliefUpdater:
     """Linear Kalman filter.
 
     Predict: x' = F x + B u,   P' = F P Fᵀ + Q
@@ -52,12 +52,12 @@ class GaussianKalmanUpdater:
     obs_noise: jax.Array  # R, (M, M)
     use_joseph_form: bool = True
 
-    def predict(self, belief: GaussianBelief, action: jax.Array) -> GaussianBelief:
+    def predict(self, belief: KFBelief, action: jax.Array) -> KFBelief:
         mean = self.stm @ belief.mean + self.control_matrix @ action
         cov = self.stm @ belief.cov @ self.stm.T + self.process_noise
-        return GaussianBelief(mean=mean, cov=cov)
+        return KFBelief(mean=mean, cov=cov)
 
-    def correct(self, belief: GaussianBelief, observation: jax.Array) -> GaussianBelief:
+    def correct(self, belief: KFBelief, observation: jax.Array) -> KFBelief:
         H = self.obs_matrix  # noqa: N806
         R = self.obs_noise  # noqa: N806
         P = belief.cov  # noqa: N806
@@ -73,24 +73,24 @@ class GaussianKalmanUpdater:
             cov = i_minus_kh @ P @ i_minus_kh.T + K @ R @ K.T
         else:
             cov = (identity - K @ H) @ P
-        return GaussianBelief(mean=mean, cov=cov)
+        return KFBelief(mean=mean, cov=cov)
 
     def __call__(
         self,
-        belief: GaussianBelief,
+        belief: KFBelief,
         obs: jax.Array,
         action: jax.Array,
         side: Side,
         key,
-    ) -> GaussianBelief:
+    ) -> KFBelief:
         del side, key  # updater is currently side-symmetric; signature parity for protocol
         predicted = self.predict(belief, action)
         return self.correct(predicted, obs)
 
 
-@register(BeliefInitializerKey.GAUSSIAN_FROM_TRUTH)
+@register(BeliefInitializerKey.KF_FROM_TRUTH)
 @dataclass(frozen=True)
-class GaussianFromTruthInitializer:
+class KFFromTruthInitializer:
     """Initial belief centered on the sampled ground-truth env_state.
 
     Mean = layout.flatten(env_state.guards, env_state.bandits).
@@ -102,16 +102,16 @@ class GaussianFromTruthInitializer:
     layout: Any
     variance_diag: jax.Array
 
-    def __call__(self, env_state, side: Side, key) -> GaussianBelief:
+    def __call__(self, env_state, side: Side, key) -> KFBelief:
         del side, key
         mean = self.layout.flatten(env_state.guards, env_state.bandits)
         cov = jnp.diag(self.variance_diag)
-        return GaussianBelief(mean=mean, cov=cov)
+        return KFBelief(mean=mean, cov=cov)
 
 
-@register(BeliefInitializerKey.GAUSSIAN_UNIFORM_DEFAULT)
+@register(BeliefInitializerKey.KF_UNIFORM_DEFAULT)
 @dataclass(frozen=True)
-class GaussianUniformDefaultInitializer:
+class KFUniformDefaultInitializer:
     """Uninformed initial belief — ignores env_state and uses a configured mean + diag cov.
 
     Models "the guard starts with a prior that is not informed by ground truth."
@@ -121,6 +121,6 @@ class GaussianUniformDefaultInitializer:
     default_mean: jax.Array
     variance_diag: jax.Array
 
-    def __call__(self, env_state, side: Side, key) -> GaussianBelief:
+    def __call__(self, env_state, side: Side, key) -> KFBelief:
         del env_state, side, key
-        return GaussianBelief(mean=self.default_mean, cov=jnp.diag(self.variance_diag))
+        return KFBelief(mean=self.default_mean, cov=jnp.diag(self.variance_diag))
