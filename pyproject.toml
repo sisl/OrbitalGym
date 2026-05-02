@@ -29,6 +29,8 @@ dev = [
     "ruff>=0.5",
     "pyrefly>=0.1",
     "pettingzoo>=1.24",
+    "nbconvert>=7.0",
+    "ipykernel>=6.0",
 ]
 gymnasium = [
     "gymnasium>=1.0",

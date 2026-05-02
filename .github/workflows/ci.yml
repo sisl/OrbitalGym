@@ -31,5 +31,13 @@ jobs:
       - name: Test
         run: uv run pytest -n auto -v
 
+      - name: Execute example notebooks
+        run: |
+          for nb in examples/*.ipynb; do
+            echo "::group::$nb"
+            uv run jupyter nbconvert --to notebook --execute --output-dir /tmp "$nb"
+            echo "::endgroup::"
+          done
+
       - name: Build docs
         run: uv run zensical build --strict
