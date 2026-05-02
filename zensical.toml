@@ -26,8 +26,14 @@ Copyright &copy; 2026 Duncan Eddy
 # Explicit navigation tree mirrors the docs/site/ layout.
 nav = [
   { "Home" = "index.md" },
-  { "Getting started" = "getting-started.md" },
-  { "Concepts" = "concepts.md" },
+  { "Tutorials" = [
+    { "Overview" = "tutorials/index.md" },
+    { "T1 — First rollout (RT 2D)" = "tutorials/t1-first-rollout.md" },
+    { "T2 — Build an RTN scenario" = "tutorials/t2-rtn-scenario.md" },
+    { "T3 — Active-pursuer policy" = "tutorials/t3-active-pursuer.md" },
+    { "T4 — Short-horizon search" = "tutorials/t4-short-horizon-search.md" },
+    { "T5 — GPU / MPS" = "tutorials/t5-acceleration.md" },
+  ] },
   { "Game guides" = [
     { "Overview" = "games/index.md" },
     { "Lady-Bandit-Guard" = "games/lady-bandit-guard.md" },
@@ -35,13 +41,26 @@ nav = [
     { "Sun-Blocking" = "games/sun-blocking.md" },
     { "Observation-Blocking" = "games/observation-blocking.md" },
   ] },
-  { "Adapter how-tos" = [
-    { "Overview" = "adapters/index.md" },
-    { "Gymnasium" = "adapters/gymnasium.md" },
-    { "PettingZoo" = "adapters/pettingzoo.md" },
-    { "POMDPPlanners" = "adapters/pomdp.md" },
+  { "How-to" = [
+    { "Overview" = "how-to/index.md" },
+    { "Use the Gymnasium adapter" = "how-to/use-gymnasium-adapter.md" },
+    { "Use the PettingZoo adapter" = "how-to/use-pettingzoo-adapter.md" },
+    { "Use the POMDP adapter" = "how-to/use-pomdp-adapter.md" },
+    { "Customize the scripted opponent" = "how-to/customize-scripted-opponent.md" },
+    { "Switch the controlled side" = "how-to/switch-controlled-side.md" },
+    { "Save and load runs" = "how-to/save-load-runs.md" },
+    { "vmap rollouts over seeds" = "how-to/vmap-rollouts.md" },
+    { "Round-trip config to JSON" = "how-to/json-roundtrip-config.md" },
+    { "Pick an observation channel" = "how-to/pick-observation-channel.md" },
   ] },
-  { "Extending" = "extending/index.md" },
+  { "In depth" = [
+    { "Overview" = "in-depth/index.md" },
+    { "Symmetric core & data shapes" = "in-depth/symmetric-core.md" },
+    { "State layout & adding a Power component" = "in-depth/state-layout.md" },
+    { "Dynamics" = "in-depth/dynamics.md" },
+    { "Observations" = "in-depth/observations.md" },
+    { "Belief" = "in-depth/belief.md" },
+  ] },
   { "API reference" = [
     { "Overview" = "api/index.md" },
     { "Core: env, config, rollout" = "api/core.md" },
@@ -50,7 +69,6 @@ nav = [
     { "Adapters" = "api/adapters.md" },
     { "Policies, observations, rewards" = "api/pluggables.md" },
   ] },
-  { "Architecture" = "architecture.md" },
 ]
 
 # mkdocstrings — auto-generate API reference from in-code docstrings.
