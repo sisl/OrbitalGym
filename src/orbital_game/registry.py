@@ -42,6 +42,9 @@ class PolicyKey(StrEnum):
 
 class ObservationFnKey(StrEnum):
     FULL = "full_observation"
+    ONBOARD_GPS = "onboard_gps_observation"
+    RANGE_LIMITED = "range_limited_observation"
+    COMPOSITE = "composite_observation"
 
 
 class RewardFnKey(StrEnum):
