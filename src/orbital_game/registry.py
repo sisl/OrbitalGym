@@ -77,10 +77,13 @@ class ValidatorKey(StrEnum):
 class BeliefInitializerKey(StrEnum):
     KF_FROM_TRUTH = "kf_from_truth"
     KF_UNIFORM_DEFAULT = "kf_uniform_default"
+    EKF_FROM_TRUTH = "ekf_from_truth"
+    EKF_UNIFORM_DEFAULT = "ekf_uniform_default"
 
 
 class BeliefUpdaterKey(StrEnum):
     KF = "kf"
+    EKF = "ekf"
 
 
 class GameKey(StrEnum):
