@@ -39,8 +39,9 @@ def _side_colors(n: int, side: Side) -> list[Any]:
 def _position_array(side_state: Any) -> np.ndarray:
     """Pull a ``(T, N, 3)`` position array out of a guard/bandit state.
 
-    Supports both RTN (6-dim) and RT (4-dim, padded with zeros for N).
-    Returns numpy (caller will hand to matplotlib).
+    Returns positions in RTN order (``[R, T, N]``) — the original storage
+    convention. Used by 2D panel projections (RT/RN/TN) and by the 3D
+    helper which permutes to plot order at its own boundary.
     """
     if hasattr(side_state, "rtn"):
         rtn = np.asarray(side_state.rtn)
@@ -72,42 +73,48 @@ def plot_rollout_3d(
     show_endpoints: bool = True,
     legend: bool = True,
 ) -> Any:
-    """Plot all guard + bandit trajectories of a single rollout in 3D RTN."""
+    """Plot all guard + bandit trajectories of a single rollout in 3D RTN.
+
+    Axis convention: x=T (along-track), y=N (cross-track), z=R (radial,
+    vertical). The data is stored in RTN order; positions are permuted to
+    plot order at the matplotlib call site so R is shown vertically.
+    """
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection="3d")
 
-    g_xyz = _position_array(traj.env_state.guards)  # (T, n_guards, 3)
-    b_xyz = _position_array(traj.env_state.bandits)  # (T, n_bandits, 3)
+    g_xyz = _position_array(traj.env_state.guards)  # (T, n_guards, 3) in [R,T,N]
+    b_xyz = _position_array(traj.env_state.bandits)
 
     g_colors = _side_colors(g_xyz.shape[1], Side.GUARD)
     b_colors = _side_colors(b_xyz.shape[1], Side.BANDIT)
 
     for i in range(g_xyz.shape[1]):
+        # x=T (col 1), y=N (col 2), z=R (col 0)
         ax.plot(
-            g_xyz[:, i, 0],
             g_xyz[:, i, 1],
             g_xyz[:, i, 2],
+            g_xyz[:, i, 0],
             color=g_colors[i],
             label=f"guard {i}",
         )
         if show_endpoints:
-            _draw_endpoints_3d(ax, g_xyz[:, i, :], g_colors[i])
+            _draw_endpoints_3d(ax, g_xyz[:, i, :][:, [1, 2, 0]], g_colors[i])
 
     for j in range(b_xyz.shape[1]):
         ax.plot(
-            b_xyz[:, j, 0],
             b_xyz[:, j, 1],
             b_xyz[:, j, 2],
+            b_xyz[:, j, 0],
             color=b_colors[j],
             label=f"bandit {j}",
         )
         if show_endpoints:
-            _draw_endpoints_3d(ax, b_xyz[:, j, :], b_colors[j])
+            _draw_endpoints_3d(ax, b_xyz[:, j, :][:, [1, 2, 0]], b_colors[j])
 
-    ax.set_xlabel("R (m)")
-    ax.set_ylabel("T (m)")
-    ax.set_zlabel("N (m)")
+    ax.set_xlabel("T (m)")
+    ax.set_ylabel("N (m)")
+    ax.set_zlabel("R (m)")
     if legend:
         ax.legend(loc="best", fontsize=8)
     return ax

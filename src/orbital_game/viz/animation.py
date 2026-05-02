@@ -31,19 +31,51 @@ from orbital_game.viz.glyphs import (
     quat_to_rotation_matrix,
 )
 
+# Permutation matrix mapping the data's RTN axis order to matplotlib's plot
+# axis order (x=T, y=N, z=R). For positions and Δv vectors we use
+# ``arr[..., [1, 2, 0]]``; for covariance matrices we use ``P @ cov @ P.T``.
+_RTN_TO_PLOT = np.array(
+    [
+        [0.0, 1.0, 0.0],  # plot x = T
+        [0.0, 0.0, 1.0],  # plot y = N
+        [1.0, 0.0, 0.0],  # plot z = R
+    ]
+)
+
 
 def _positions_xyz(side_state: Any) -> np.ndarray:
-    """Extract a ``(T, N, 3)`` position array from a guard/bandit state.
+    """Extract a ``(T_steps, N_actors, 3)`` position array in *plot* axis order.
 
-    Handles both ``rtn`` (6-dim) and ``rt`` (4-dim, padded with zero N).
+    The underlying state stores positions in RTN order (``[R, T, N]``); this
+    helper permutes them so matplotlib's ``(x, y, z)`` axes correspond to
+    ``(T, N, R)`` — i.e. R is vertical, the orbital-mechanics convention.
+    Handles both ``rtn`` (6-dim) and ``rt`` (4-dim, N filled with zero).
     """
     if hasattr(side_state, "rtn"):
-        return np.asarray(side_state.rtn[..., :3])
+        rtn = np.asarray(side_state.rtn[..., :3])
+        return rtn[..., [1, 2, 0]]  # [R, T, N] → [T, N, R]
     if hasattr(side_state, "rt"):
-        rt = np.asarray(side_state.rt)
-        rn = np.zeros(rt.shape[:-1] + (1,), dtype=rt.dtype)
-        return np.concatenate([rt[..., :2], rn], axis=-1)
+        rt = np.asarray(side_state.rt)  # [R, T] (last axis dim 2+)
+        t_col = rt[..., 1:2]
+        r_col = rt[..., 0:1]
+        zeros = np.zeros_like(t_col)
+        return np.concatenate([t_col, zeros, r_col], axis=-1)  # [T, 0, R]
     raise AttributeError("Side state has no `rtn` or `rt` field.")
+
+
+def _action_to_plot(action: np.ndarray) -> np.ndarray:
+    """Permute an action array's last axis from RTN-Δv to plot order.
+
+    For 3-dim actions (``[dvR, dvT, dvN]``) returns ``[dvT, dvN, dvR]``.
+    For 2-dim RT actions (``[dvR, dvT]``) returns ``[dvT, 0, dvR]``.
+    """
+    if action.shape[-1] >= 3:
+        return action[..., [1, 2, 0]]
+    # 2-dim RT case
+    t_col = action[..., 1:2]
+    r_col = action[..., 0:1]
+    zeros = np.zeros_like(t_col)
+    return np.concatenate([t_col, zeros, r_col], axis=-1)
 
 
 def _quat_history(side_state: Any) -> np.ndarray | None:
@@ -131,8 +163,10 @@ class RolloutScene:
         self._b_xyz = _positions_xyz(self.traj.env_state.bandits)
         self._g_quat = _quat_history(self.traj.env_state.guards)
         self._b_quat = _quat_history(self.traj.env_state.bandits)
-        self._g_action = np.asarray(self.traj.sides.guard.action)
-        self._b_action = np.asarray(self.traj.sides.bandit.action)
+        # Actions are stored in RTN order; permute once to plot order so the
+        # thrust quivers align with the (now-permuted) plot axes.
+        self._g_action = _action_to_plot(np.asarray(self.traj.sides.guard.action))
+        self._b_action = _action_to_plot(np.asarray(self.traj.sides.bandit.action))
         self._n_frames = self._g_xyz.shape[0]
 
         # Auto axis limit: max |coord| across all guards + bandits over all time.
@@ -212,18 +246,24 @@ def _belief_position_block(belief: Any, frame: int) -> tuple[np.ndarray, np.ndar
 
     Belief shape: ``mean (T, N_obs, N_total, d)``, ``cov (T, N_obs, N_total, d, d)``.
     We only render belief about the *other* side (own-side belief mirrors truth).
-    Returns position-only slices: ``(N_obs, N_opp, 3)`` and ``(N_obs, N_opp, 3, 3)``.
+    Returns position-only slices in *plot* axis order: ``(N_obs, N_opp, 3)`` for
+    means (RTN→[T,N,R] permuted) and ``(N_obs, N_opp, 3, 3)`` for covariance
+    (similarity transform ``P @ cov[:3,:3] @ P.T``).
     """
     if belief is None:
         return None
-    mean = np.asarray(belief.mean[frame])  # (N_obs, N_total, d)
-    cov = np.asarray(belief.cov[frame])  # (N_obs, N_total, d, d)
+    mean = np.asarray(belief.mean[frame])  # (N_obs, N_total, d) in RTN
+    cov = np.asarray(belief.cov[frame])  # (N_obs, N_total, d, d) in RTN
     n_obs, n_total, _ = mean.shape
     n_opp = n_total - n_obs
     if n_opp <= 0:
         return None
-    opp_mean = mean[:, n_obs:, :3]
-    opp_cov = cov[:, n_obs:, :3, :3]
+    # Permute mean: position columns [R, T, N] → [T, N, R].
+    opp_mean = mean[:, n_obs:, :3][..., [1, 2, 0]]
+    # Permute cov: P @ cov[:3,:3] @ P.T over the per-pair leading axes.
+    opp_cov_rtn = cov[:, n_obs:, :3, :3]
+    p = _RTN_TO_PLOT
+    opp_cov = np.einsum("ij,...jk,lk->...il", p, opp_cov_rtn, p)
     return opp_mean, opp_cov
 
 
@@ -234,9 +274,9 @@ def render_frame(scene: RolloutScene, ax: Any, frame: int) -> None:
     ax.set_xlim(-lim, lim)
     ax.set_ylim(-lim, lim)
     ax.set_zlim(-lim, lim)
-    ax.set_xlabel("R (m)")
-    ax.set_ylabel("T (m)")
-    ax.set_zlabel("N (m)")
+    ax.set_xlabel("T (m)")
+    ax.set_ylabel("N (m)")
+    ax.set_zlabel("R (m)")
     ax.view_init(elev=scene.elev, azim=scene.azim)
 
     if scene.show_reference_marker:
@@ -290,7 +330,11 @@ def _render_side(scene: RolloutScene, ax: Any, frame: int, side: Side) -> None:
             )
 
         if scene.show_cubes:
-            R = quat_to_rotation_matrix(quat[frame, i]) if quat is not None else None  # noqa: N806
+            # Quat is body→RTN; the plot frame is permuted from RTN, so
+            # body→plot = P @ R_rtn.
+            R = (  # noqa: N806
+                _RTN_TO_PLOT @ quat_to_rotation_matrix(quat[frame, i]) if quat is not None else None
+            )
             draw_cube(
                 ax,
                 center,
@@ -344,9 +388,32 @@ def interactive_viewer(scene: RolloutScene, fig: Any | None = None) -> Any:
     Returns the figure; the widget control bar is displayed via
     ``IPython.display.display``.
 
+    .. warning::
+        Requires a *live* matplotlib backend such as ``%matplotlib widget``
+        (provided by ``ipympl``) or ``%matplotlib notebook``. With the
+        default ``%matplotlib inline`` backend the figure is rendered as a
+        static PNG and the slider will appear to advance the frame counter
+        without redrawing the figure. This function emits a warning if the
+        active backend doesn't support live updates.
+
     Outside Jupyter (no ``ipywidgets`` / no display), use
     :func:`save_animation` instead.
     """
+    import warnings
+
+    import matplotlib
+
+    backend = matplotlib.get_backend().lower()
+    if "ipympl" not in backend and "nbagg" not in backend and "widget" not in backend:
+        warnings.warn(
+            f"interactive_viewer needs a live matplotlib backend (e.g. "
+            f"'%matplotlib widget'), but the active backend is "
+            f"'{matplotlib.get_backend()}'. The slider may advance without "
+            f"redrawing the figure. Install ipympl and run "
+            f"'%matplotlib widget' before constructing the viewer.",
+            stacklevel=2,
+        )
+
     import ipywidgets as widgets  # pyrefly: ignore[missing-import]
     from IPython.display import display  # pyrefly: ignore[missing-import]
 

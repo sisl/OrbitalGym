@@ -145,6 +145,11 @@ def plot_rtn_3d(
 ):
     """3D RTN view per vehicle.
 
+    Axis convention: x=T (along-track), y=N (cross-track), z=R (radial,
+    vertical). The input array stores positions in RTN order ``[R, T, N]``;
+    they are permuted to plot order at the matplotlib call site so R is
+    shown vertically (orbital-mechanics standard).
+
     If `ax` is None, a new Figure with a 3D subplot is created. Otherwise the
     given `ax` (which must be a 3D-projection axes) is reused — letting you
     overlay multiple rollouts with their own labels and endpoint markers.
@@ -156,13 +161,14 @@ def plot_rtn_3d(
         ax = fig.add_subplot(111, projection="3d")
     n = traj.shape[1]
     for i in range(n):
-        xs = traj[:, i, 0]
-        ys = traj[:, i, 1]
-        zs = traj[:, i, 2]
+        # Permute (R, T, N) → (T, N, R) for matplotlib (x, y, z).
+        xs = traj[:, i, 1]  # T
+        ys = traj[:, i, 2]  # N
+        zs = traj[:, i, 0]  # R
         (line,) = ax.plot(xs, ys, zs, label=_label_for(label, i, n))
         if show_endpoints:
             _draw_endpoints_3d(ax, xs, ys, zs, line.get_color())
-    ax.set_xlabel("R (m)")
-    ax.set_ylabel("T (m)")
-    ax.set_zlabel("N (m)")
+    ax.set_xlabel("T (m)")
+    ax.set_ylabel("N (m)")
+    ax.set_zlabel("R (m)")
     return ax
