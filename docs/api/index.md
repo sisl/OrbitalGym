@@ -10,4 +10,4 @@ Auto-generated from in-code docstrings via mkdocstrings.
 | [Adapters](adapters.md) | `GymnasiumAdapter`, `PettingZooAdapter`, `POMDPAdapter` |
 | [Pluggables](pluggables.md) | `Policy`, `ObservationFn`, `RewardFn`, `TerminationFn`, `BeliefInitializer`, `BeliefUpdater` + reference impls |
 
-For conceptual treatment, see [Concepts](../concepts.md). For per-game prose with knob discussion and suggested experiments, see [Game Guides](../games/index.md).
+For conceptual treatment, see [In depth → Symmetric core](../in-depth/symmetric-core.md). For per-game prose with knob discussion and suggested experiments, see [Game Guides](../games/index.md).
