@@ -1,6 +1,6 @@
-# Getting Started
+# Getting started
 
-A 5-minute path from zero to a rendered RTN trajectory plot.
+This page walks from a fresh checkout to a rendered RTN trajectory plot of a 1v1 Lady-Bandit-Guard rollout. Allow about five minutes.
 
 ## Install
 
@@ -10,81 +10,61 @@ A 5-minute path from zero to a rendered RTN trajectory plot.
 uv sync --extra dev
 ```
 
-This installs the core dependencies (JAX, flax, astrojax, h5py, matplotlib) plus the dev tooling (pytest, ruff, pyrefly).
-
-For the Gymnasium and PettingZoo adapters, install the matching extras:
+The Gymnasium and PettingZoo adapters live behind extras (the POMDP adapter has no external dependency and is always importable):
 
 ```bash
-uv add orbital-game --extra gymnasium
-uv add orbital-game --extra pettingzoo
+uv sync --extra gymnasium --extra pettingzoo
 ```
 
-The `POMDPAdapter` has no external dependency and is always importable.
-
 ## Run the reference scenario
-
-The reference scenario is the bootstrap acceptance test — a 1-guard / 1-bandit Lady-Bandit-Guard rollout with zero-control policies on both sides:
 
 ```bash
 uv run python -m examples.reference_scenario
 ```
 
-This prints the path to a temp directory containing:
-- `run.h5` — full trajectory in HDF5
-- `guard_rtn_3d.png` — 3D RTN trajectory plot
-- `reward.png` — guard's reward time series
-- `guard_mass.png` — guard propellant mass over time
+The script builds a 1-guard / 1-bandit Lady-Bandit-Guard, rolls it out for 200 steps with zero control on both sides, and prints a path to a temp directory holding the trajectory log (`run.h5`), a 3D RTN trajectory plot, the reward time series, and the guard's propellant mass over time. Open `guard_rtn_3d.png`: with both sides at zero thrust, the guard's relative motion traces a closed ellipse around the reference orbit.
 
-## A minimal Python example
+## Build it yourself
+
+The same scenario in code:
 
 ```python
 import jax
-import jax.numpy as jnp
-
-from orbital_game import (
-    OrbitalGameEnv,
-    SingleAgentView,
-    make_lady_bandit_guard,
-)
+from orbital_game import OrbitalGameEnv, SingleAgentView, make_lady_bandit_guard
 from orbital_game.policies.library import ZeroControl
 from orbital_game.rollout import rollout_single_agent
 
-# Build the scenario via the Lady-Bandit-Guard preset.
-cfg = make_lady_bandit_guard(
-    n_guards=1,
-    n_bandits=1,
-    breach_distance_m=10.0,
-    max_horizon_s=2000.0,
-    dt=10.0,
-    seed=0,
-)
-
-# Construct env + single-agent view (guard is the controlled side; bandit
-# is scripted via the default ZeroControl in cfg.bandit_scripted_policy).
+cfg = make_lady_bandit_guard()
 env = OrbitalGameEnv(cfg)
 view = SingleAgentView(env)
 
-# Define the guard's policy — here just zero-control as a placeholder.
 guard_policy = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
-
-def init_none(c, s, k):
-    return None
-
-# Roll out for cfg.max_steps timesteps.
 traj = rollout_single_agent(
-    view, guard_policy, init_none,
+    view, guard_policy, lambda c, s, k: None,
     jax.random.PRNGKey(0), n_steps=cfg.max_steps,
 )
 
-# Inspect: per-side trajectory has the same shape for guard and bandit.
-print("guard reward sum:", float(jnp.sum(traj.sides.guard.reward)))
-print("episode steps until done:", int(jnp.argmax(traj.episode_done)) + 1)
-print("guard final RTN position:", traj.env_state.guards.rtn[-1, 0, :3])
+print("guard reward sum:", float(traj.sides.guard.reward.sum()))
+print("episode length:", int(traj.episode_done.argmax()) + 1)
 ```
 
-## What's next
+`rollout_single_agent` runs a `jax.lax.scan` under the hood, so the whole episode compiles down to one JAX call.
 
-- [Concepts](concepts.md) — the data model: `Side`, `BySide`, `Actions`, `StepOutput`, axis ordering
-- [Game Guides](games/index.md) — pick a game and learn its reward shape
-- [Adapter How-Tos](adapters/index.md) — drive the env from Gymnasium, PettingZoo, or POMDPPlanners-shape consumers
-- [Extending](extending/index.md) — write your own policies, observations, rewards, or games
+## Try a different game
+
+Swap to Pursuit-Evasion by changing one line:
+
+```python
+from orbital_game import make_pursuit_evasion
+
+cfg = make_pursuit_evasion(capture_distance_m=20.0)
+```
+
+The same `OrbitalGameEnv` / `SingleAgentView` / `rollout_single_agent` pipeline runs it. Pursuit-Evasion is zero-sum, so `traj.sides.guard.reward + traj.sides.bandit.reward` is zero at every step.
+
+## Where to next
+
+- [Concepts](concepts.md) for the data model behind `BySide`, `Actions`, and `StepOutput`.
+- [Game guides](games/index.md) for what each scenario rewards and the knobs that shape it.
+- [Adapter how-tos](adapters/index.md) to drive the env from Gymnasium, PettingZoo, or a POMDP planner.
+- [Extending](extending/index.md) to write your own observations, rewards, policies, or games.

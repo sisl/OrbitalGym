@@ -1,12 +1,10 @@
 # Extending orbital-game
 
-`orbital-game` is built around composable pluggable types — observation functions, reward functions, termination conditions, policies, IC samplers, validators, dynamics, actuators, and games are all swappable.
-
-The pattern is uniform: each pluggable is a `@register(<Key>.<MEMBER>) @dataclass(frozen=True)` class that is simultaneously the user-facing config (typed knobs) and the JAX-traceable runtime callable (`__call__`).
+Almost every component of the env is swappable. Observation functions, reward functions, termination conditions, policies, IC samplers, validators, dynamics, actuators, and games are all pluggables — uniform `@register(<Key>.<MEMBER>) @dataclass(frozen=True)` classes that double as user-facing typed config and JAX-traceable runtime callable.
 
 ## Pluggable types
 
-| Type | Role | Protocol | Example reference impl |
+| Type | Role | Protocol | Reference impl |
 |---|---|---|---|
 | `Dynamics` | Per-step state propagator | `(state, dv, params, dt) → next_state` | `hcw_rt_step`, `hcw_rtn_step` |
 | `Actuator` | Action → applied control + propellant | `apply(action, state, params, dt)` | `ImpulsiveActuator` |
@@ -20,67 +18,43 @@ The pattern is uniform: each pluggable is a `@register(<Key>.<MEMBER>) @dataclas
 | `Validator` | Post-sample IC check | `(config, guards, bandits) → bool` | `MinSeparation`, `MaxRange` |
 | `Game` | Typed game-specific knob bundle | (just a dataclass) | `LadyBanditGuard`, `PursuitEvasion` |
 
-## Pluggable convention
+## The convention
+
+Every pluggable follows the same shape: a frozen dataclass that registers itself under an enum key. The dataclass fields are the user-facing knobs; `__call__` is the JAX-traceable runtime body.
 
 ```python
 from dataclasses import dataclass
 from orbital_game.registry import RewardFnKey, register
 from orbital_game.rewards.base import RewardScope
 
-
-@register(RewardFnKey.MY_REWARD)   # adds an enum member to RewardFnKey
+@register(RewardFnKey.MY_REWARD)   # adds the enum member
 @dataclass(frozen=True)
 class MyReward:
-    """Concise docstring of what this reward measures."""
+    """One-line description of what this reward measures."""
 
-    # User knobs:
     weight: float = 1.0
     cutoff_m: float = 100.0
-    # No env-populated fields needed for rewards (those are policy-only).
 
     scope: RewardScope = RewardScope.PER_SIDE
 
     def __call__(self, prev_state, action, next_state, side, params, t):
-        # Read game knobs off params.game if needed:
-        # if not isinstance(params.game, MyGame):
-        #     raise TypeError(...)
-        # Compute and return scope-shaped reward.
+        # Read game-specific knobs off params.game if the reward is game-coupled:
+        #   if not isinstance(params.game, MyGame):
+        #       raise TypeError(...)
+        # Return a scope-shaped reward.
         ...
 ```
 
-Any class registered with `@register(<Key>.<MEMBER>)` round-trips through `ScenarioConfig.to_json()` / `from_json()` automatically. The enum value is the type discriminator; `dataclasses.asdict` walks the knob fields.
+Any class registered with `@register(<Key>.<MEMBER>)` automatically round-trips through `ScenarioConfig.to_json()` / `from_json()`. The enum value is the type discriminator on serialization; `dataclasses.asdict` walks the knob fields. Game subclasses use `@register_game(<GameKey>.<MEMBER>)` instead — same pattern, separate registry.
+
+Registration is only required if you need JSON round-trip. In-memory composition works without it.
 
 ## Worked examples
 
-The bootstrap reference implementations are good templates:
+The bundled reference implementations are good templates:
 
-- **Custom observation function**: see `src/orbital_game/observations/reference.py:FullObservation`. Replace the body to mask/noise/slice the state.
-- **Custom reward**: see `src/orbital_game/rewards/reference.py:DistanceToReferenceOrbit` and `src/orbital_game/games/pursuit_evasion.py:PursuitEvasionReward`. The latter shows the `isinstance(params.game, ...)` guard pattern.
-- **Custom termination**: see `src/orbital_game/termination/reference.py:MaxStepsOrBreach` and `src/orbital_game/games/pursuit_evasion.py:PursuitEvasionTermination`.
-- **Custom policy**: see `src/orbital_game/policies/library.py:ZeroControl`. The `n_vehicles`/`action_dim` fields default to 0 and are populated by the env at construction.
-- **Custom game**: see all four `src/orbital_game/games/*.py` modules. Each game is `(Game subtype) + (Reward) + (Termination if needed) + (builder)`.
-
-## Topics
-
-Full per-topic pages are work-in-progress. The patterns above are what to follow until the dedicated pages land:
-
-- Custom observation functions
-- Custom reward functions
-- Custom termination conditions
-- Custom IC samplers and validators
-- Custom dynamics
-- Custom actuators
-- Custom state components
-- Custom games
-- Custom policies (stateless, stateful, MPC, learned)
-- Registry mechanics
-
-## Registry mechanics
-
-`@register(<Key>.<MEMBER>)` populates two dicts:
-- forward: `<Key>.<MEMBER> → class` for deserialization
-- reverse: `class → (<Key>.<MEMBER>.value, <Key>)` for serialization
-
-For Game subclasses, use `@register_game(<GameKey>.<MEMBER>)` instead — same pattern with separate `_GAME_REGISTRY`/`_GAME_REVERSE` dicts.
-
-Register only when you need JSON round-trip. In-memory composition doesn't require registration.
+- **Custom observation function** — `src/orbital_game/observations/reference.py:FullObservation`. Replace the body to mask, noise, or slice the state.
+- **Custom reward** — `src/orbital_game/rewards/reference.py:DistanceToReferenceOrbit` for a simple game-agnostic case; `src/orbital_game/games/pursuit_evasion.py:PursuitEvasionReward` for the `isinstance(params.game, ...)` guard pattern when a reward is coupled to a specific game.
+- **Custom termination** — `src/orbital_game/termination/reference.py:MaxStepsOrBreach`, and again the per-game variant in `pursuit_evasion.py`.
+- **Custom policy** — `src/orbital_game/policies/library.py:ZeroControl`. The `n_vehicles` and `action_dim` fields default to 0 and are populated by the env at construction via `dataclasses.replace`.
+- **Custom game** — all four `src/orbital_game/games/*.py` modules. Each game is a tuple of `(Game subtype, Reward, Termination if game-specific, builder)`.

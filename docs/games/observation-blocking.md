@@ -1,50 +1,28 @@
 # Observation-Blocking
 
-The Bandit blocks the Guard's view of an Earth surface target — but only when the target is observable (Guard above `min_elevation_deg` from the target).
+The bandit blocks the guard's view of an Earth surface target — but only when the target is observable in the first place. This models a spaceborne ISR-denial scenario: the guard satellite is tasked with observing a fixed lat/lon target, and the bandit positions itself to occlude that line of sight whenever the target is actually visible from the guard.
 
-## What this game models
+## What the reward shapes
 
-A spaceborne ISR (intelligence, surveillance, reconnaissance) denial scenario. The Guard satellite is tasked with observing a specific Earth surface target (e.g. a lat/lon location). The Bandit's job is to position itself to occlude the Guard's line-of-sight to the target — but only when the target is actually visible from the Guard. If the target is below the horizon (low elevation), the Bandit gets no reward regardless of geometry.
+Three conditions are checked each step:
 
-## Reward formula
+1. The target is **visible** from the guard — the elevation angle from target to guard exceeds `min_elevation_deg`. Below that threshold, the target is below the horizon and reward is zero regardless of geometry.
+2. The bandit is **collinear** with the target-to-guard line, scored as a Gaussian on the angle.
+3. The bandit is **in front** of the guard from the target's perspective — closer to the bandit than to the target itself, so light from the target to the guard would have to pass through it.
 
-`scope = PER_SIDE`, zero-sum:
+When all three hold, the bandit gets `exp(-angle² / 2σ²)`; otherwise zero. The game is zero-sum.
 
-```text
-elevation = elevation of (guard → target)              # degrees
-visible = elevation >= min_elevation_deg
+The visibility gate is the meaningful difference from Sun-Blocking — there is no point rewarding occlusion of a target the guard could not see anyway.
 
-angle = ∠(target→guard, target→bandit)
-in_front = |bandit - target| > |guard - target|
+## Implementation notes
 
-bandit_reward = exp(-angle² / 2σ²)   if visible AND in_front else 0
-guard_reward  = -bandit_reward
-```
+The Earth target's ECEF position is precomputed once in `Game.__post_init__` from `(target_lat_deg, target_lon_deg, target_alt_m)` via `astrojax.position_geodetic_to_ecef`. The `target_ecef_m` field is `init=False` and survives JSON round-trip — only the user-provided lat/lon/alt knobs are serialized; the ECEF cache is rederived on load.
 
-The Gaussian peaks when the Bandit lies on the Target → Guard line, on the side opposite the target (so light from the target to the guard would have to pass through the Bandit). The `visible` gate is the new piece versus Sun-Blocking — no reward when the guard can't see the target anyway.
-
-## Implementation
-
-- **Earth target ECEF** is precomputed once at `Game.__post_init__` via `astrojax.position_geodetic_to_ecef(lat, lon, alt)`. Cached on the `target_ecef_m` field (shape `(3,)`).
-- **Per-step ECI**: `astrojax.rotation_ecef_to_eci(epoch)` rotates ECEF → ECI via GMST.
-- **Vehicle ECI**: same RTN→ECI helper as Sun-Blocking (`games/_frames.py`).
-- **Elevation**: angle between local-up-at-target and the (observer - target) direction.
-
-## Knobs
-
-| Knob | Default | Description |
-|---|---|---|
-| `target_lat_deg` | `37.4` | WGS84 latitude (degrees) of the Earth surface target |
-| `target_lon_deg` | `-122.2` | WGS84 longitude (degrees) |
-| `target_alt_m` | `0.0` | WGS84 altitude (meters above ellipsoid) |
-| `min_elevation_deg` | `5.0` | Visibility threshold — reward gated to 0 below this |
-| `angle_sigma_deg` | `5.0` | Gaussian width on the collinearity angle |
-
-`target_ecef_m` is `init=False` and computed in `__post_init__`. It survives serialization round-trip — the user knobs (`lat`, `lon`, `alt`) round-trip through JSON, and the deserialization re-derives `target_ecef_m`.
+Per step, ECEF is rotated to ECI via GMST, vehicle RTN is converted to ECI via the same frame helper as Sun-Blocking, and the elevation angle is computed between local-up at the target and the target-to-observer direction.
 
 ## Termination
 
-`MaxStepsOrBreach` with `breach_distance_m=0.0` — termination on `max_steps` only.
+`max_steps` only.
 
 ## Builder
 
@@ -57,18 +35,14 @@ cfg = make_observation_blocking(
     min_elevation_deg=10.0,
     angle_sigma_deg=3.0,
     max_horizon_s=5400.0,
-    dt=10.0,
     seed=0,
 )
 ```
 
+For knob details, see `ObservationBlocking` in the [API reference](../api/games.md).
+
 ## Suggested experiments
 
-- **Target sweep**: vary `target_lat_deg` from −60° to +60° to study how target latitude relative to orbit inclination affects observability windows and bandit positioning difficulty.
-- **Elevation gate study**: vary `min_elevation_deg` from 5° (relaxed visibility) to 30° (strict). Higher thresholds mean shorter visibility windows → harder bandit problem.
-- **Coordinated guards**: extend to `n_guards > 1` and test whether multiple Guards spread across the orbit can keep target observability above some threshold.
-
-## Source
-
-- Game subtype + reward + builder: [`src/orbital_game/games/observation_blocking.py`](https://github.com/duncaneddy/orbital-game/blob/main/src/orbital_game/games/observation_blocking.py)
-- Tests: [`tests/test_game_observation_blocking.py`](https://github.com/duncaneddy/orbital-game/blob/main/tests/test_game_observation_blocking.py)
+- **Target latitude sweep.** Vary `target_lat_deg` from −60° to +60° to study how target latitude relative to orbit inclination affects observability windows and bandit difficulty.
+- **Elevation gate study.** Vary `min_elevation_deg` from 5° (relaxed) to 30° (strict). Higher thresholds shorten visibility windows and harden the bandit problem.
+- **Coordinated guards.** Extend to `n_guards > 1` and test whether multiple guards spread along the orbit can keep target observability above some threshold.

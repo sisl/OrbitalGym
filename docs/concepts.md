@@ -1,159 +1,70 @@
 # Concepts
 
-The mental model behind `orbital-game`'s symmetric core.
+The mental model behind `orbital-game`'s symmetric core. This page explains what the types mean and why they exist; for call signatures see the [API reference](api/index.md).
 
 ## Sides
 
-`Side` is a Python-level enum (a `StrEnum`, never a traced JAX array):
+Every game is symmetric in two roles: a **guard** and a **bandit**. The naming comes from the Lady-Bandit-Guard taxonomy and applies across all four bundled games — in Pursuit-Evasion the guard is the evader and the bandit is the pursuer; in Sun-Blocking and Observation-Blocking the guard is the observer and the bandit is the blocker.
 
-```python
-from orbital_game import Side
-
-Side.GUARD       # the protected/observing asset
-Side.BANDIT      # the adversarial actor
-Side.GUARD.opposite() == Side.BANDIT
-```
-
-The naming is from the Lady-Bandit-Guard taxonomy and applies across all four games:
-
-| Game | Guard | Bandit |
-|---|---|---|
-| Lady-Bandit-Guard | protector | threat |
-| Pursuit-Evasion | evader | pursuer |
-| Sun-Blocking | observer | blocker |
-| Observation-Blocking | observer | blocker |
+`Side` is a Python-level `StrEnum`, never a traced JAX array. That distinction matters: side identity is a static structural property of the computation graph, not data flowing through it.
 
 ## `BySide[T]`
 
-The universal one-per-side container — itself a JAX pytree, so `vmap` / `lax.scan` / `tree.map` traverse it transparently:
+A universal one-per-side container, registered as a JAX pytree so `vmap`, `lax.scan`, and `tree.map` traverse it transparently. Anywhere a value is naturally per-side — actions, observations, rewards, beliefs, scripted policies — the type is `BySide[T]`.
 
 ```python
-from orbital_game import BySide, Side
-
 bs = BySide(guard=42.0, bandit=-1.0)
-bs.guard            # 42.0
-bs.bandit           # -1.0
-bs.get(Side.GUARD)  # 42.0  (static-key access)
 bs.map(lambda x: x * 2)             # BySide(guard=84.0, bandit=-2.0)
-for side, value in bs.items(): ...  # iterate over both sides
 ```
-
-`BySide` shows up wherever a value is naturally one-per-side: actions, side outputs, observations, scripted policies, beliefs.
 
 ## Actions and step output
 
-`env.step` takes a single `Actions` container (per-side stacked arrays) and returns a single `StepOutput` (per-side outputs + episode-level metadata):
+`env.step` takes a single `Actions` container (per-side stacked arrays) and returns a single `StepOutput` carrying:
 
-```python
-from orbital_game import Actions, BySide, OrbitalGameEnv
-import jax, jax.numpy as jnp
+- `state` — the next `EnvState`
+- `outputs.guard` and `outputs.bandit` — per-side `(obs, reward, done)` bundles
+- `episode_done` — a scalar bool indicating episode termination
 
-env = OrbitalGameEnv(cfg)
-state, _outputs = env.reset(jax.random.PRNGKey(0))
-
-actions = Actions(sides=BySide(
-    guard=jnp.zeros((cfg.n_guards, action_dim)),
-    bandit=jnp.zeros((cfg.n_bandits, action_dim)),
-))
-
-step_out = env.step(jax.random.PRNGKey(1), state, actions)
-step_out.state                        # next EnvState
-step_out.outputs.guard.obs            # guard's observation
-step_out.outputs.guard.reward         # guard's reward
-step_out.outputs.bandit.obs           # bandit's observation
-step_out.outputs.bandit.reward        # bandit's reward
-step_out.episode_done                 # scalar bool — episode termination
-step_out.outputs.guard.done           # broadcast of episode_done (shape uniformity)
-```
+The per-side `done` field is a broadcast of `episode_done`, kept on each side so per-side trajectories have uniform shape.
 
 ## Single-agent vs multi-agent framing
 
-The same env supports both styles:
+The same env supports both styles. In multi-agent framing, callers pass actions for both sides and read both sides' outputs — this is what the PettingZoo adapter and the symmetric `rollout` use.
 
-- **Symmetric (multi-agent)** — call `env.step(...)` directly with both sides' actions. The PettingZoo adapter and the per-side `rollout` use this path.
-- **Single-agent** — `SingleAgentView` reads `cfg.controlled_side` (default `Side.GUARD`) and the *opposite* side's scripted policy from `cfg.<side>_scripted_policy`. The view's `step` takes only the controlled side's action; the opponent runs internally:
+In single-agent framing, `SingleAgentView` reads `cfg.controlled_side` (default `Side.GUARD`) and runs the opposite side's scripted policy internally. The view's `step` takes only the controlled side's action and returns only the controlled side's reward and observation. The Gymnasium adapter wraps this view.
 
-```python
-from orbital_game import SingleAgentView
-
-view = SingleAgentView(env)        # reads cfg.controlled_side + scripted policy
-state, obs, opp_ps = view.reset(key)
-next_state, obs, reward, done, opp_ps, info = view.step(
-    key, state, controlled_action, opp_ps
-)
-```
-
-The Gymnasium adapter wraps `SingleAgentView`.
+The "agent perspective" is therefore a property of the *adapter*, not the core. The core is always symmetric.
 
 ## Scope: per-vehicle vs per-side
 
 Observations and rewards declare a `scope` attribute that determines output shape:
 
-| Scope | Observation shape | Reward shape |
-|---|---|---|
-| `PER_VEHICLE` | `(N_side, obs_dim)` | `(N_side,)` |
-| `PER_SIDE` | `(obs_dim,)` | `()` |
+- `PER_VEHICLE` is the Dec-POMDP framing: every vehicle on a side gets its own observation and reward. Shapes are `(N_side, obs_dim)` and `(N_side,)`.
+- `PER_SIDE` is the team framing: one observation and reward shared across the side. Shapes are `(obs_dim,)` and `()`.
 
-`PER_VEHICLE` is the Dec-POMDP framing — every vehicle gets its own observation. `PER_SIDE` is a shared/team framing — one observation broadcast to all vehicles on the side.
-
-The default `FullObservation` is `PER_SIDE`. The default `DistanceToReferenceOrbit` reward is `PER_SIDE`. Custom implementations declare their own scope.
+The bundled `FullObservation` and `DistanceToReferenceOrbit` are both `PER_SIDE`. Custom implementations declare their own scope and are responsible for emitting the right shape.
 
 ## Axis ordering
 
-Outer-to-inner: `BATCH → TIME → VEHICLE → FEATURE`
+Outer to inner: **batch → time → vehicle → feature**.
 
 | Axis | When present |
 |---|---|
-| `B` (batch) | Only when caller wraps with `jax.vmap` over seeds/configs |
-| `T` (time) | Only on `Trajectory` leaves (added by `jax.lax.scan` in `rollout`) |
+| `B` (batch) | Only when the caller wraps with `jax.vmap` over seeds or configs |
+| `T` (time) | Only on `Trajectory` leaves (added by `lax.scan` in `rollout`) |
 | `N_side` (vehicle) | Always present per side, even if `N=1` |
-| feature dims | Innermost (e.g. `action_dim=3`, `obs_dim`, RTN's 6) |
+| feature | Innermost (e.g. `action_dim=3`, RTN's `6`) |
 
-For a vmapped rollout over `(B,)` seeds: `Trajectory.sides.guard.action.shape == (B, T, N_g, 3)`.
+For a vmapped rollout over `(B,)` seeds, `traj.sides.guard.action` has shape `(B, T, N_g, 3)`.
 
 ## Trajectory shape
 
-```python
-traj.env_state                       # full pytree, leading T axis on every leaf
-traj.sides.guard.obs                 # (T, [N_g,] obs_dim) per scope
-traj.sides.guard.action              # (T, N_g, action_dim)
-traj.sides.guard.reward              # (T, [N_g])
-traj.sides.guard.done                # (T,) bool, latched
-traj.sides.bandit.obs / .action / .reward / .done  # mirror of guard
-traj.episode_done                    # (T,) bool — same scalar broadcast
-traj.controlled_side                 # Side enum (Python-level, not traced)
-```
+A `Trajectory` is what `rollout` returns: an `env_state` pytree with a leading time axis on every leaf, plus `BySide[SideTrajectory]` carrying per-side `(obs, action, reward, done)` time series. `episode_done` is a `(T,)` bool latched after termination, and `controlled_side` is preserved as a Python-level enum so single-agent consumers know which side the trajectory was generated for.
 
-`episode_mask(traj)` returns a `(T,)` bool mask True up to and including the terminating step, useful for masking analysis to valid steps.
+`episode_mask(traj)` returns a `(T,)` bool mask covering steps up to and including termination — useful for restricting analysis to valid steps.
 
 ## Scripted policies
 
-Both sides' scripted policies live on `ScenarioConfig`:
+Both sides carry a scripted policy on `ScenarioConfig` (`guard_scripted_policy`, `bandit_scripted_policy`, both default to `ZeroControl`). `SingleAgentView` reads the *opposite* side's scripted policy at construction; multi-agent adapters ignore both fields.
 
-```python
-cfg.controlled_side                  # Side enum, default Side.GUARD
-cfg.guard_scripted_policy            # Policy instance, default ZeroControl()
-cfg.bandit_scripted_policy           # Policy instance, default ZeroControl()
-```
-
-`SingleAgentView` reads the *opposite* side's scripted policy at construction; the multi-agent adapters ignore both fields.
-
-A `Policy` is role-agnostic — the same `ZeroControl` class works as guard scripted-opponent, bandit scripted-opponent, or learned controlled-side fallback. Dimensions (`n_vehicles`, `action_dim`) are populated by the env at construction via `dataclasses.replace`.
-
-## Game catalog
-
-A `Game` is a typed knob bundle attached to `cfg.game`:
-
-```python
-from orbital_game import LadyBanditGuard, PursuitEvasion, SunBlocking, ObservationBlocking
-
-cfg.game = LadyBanditGuard(breach_distance_m=10.0)
-cfg.game = PursuitEvasion(capture_distance_m=10.0)
-cfg.game = SunBlocking(angle_sigma_deg=5.0)
-cfg.game = ObservationBlocking(target_lat_deg=37.4, target_lon_deg=-122.2,
-                               min_elevation_deg=5.0, angle_sigma_deg=5.0)
-```
-
-Game-specific reward/termination implementations check `cfg.game` via `isinstance` and read knobs from there. The `make_<game>(...)` builders wire matching reward + termination automatically.
-
-See [Game Guides](games/index.md) for per-game details.
+A `Policy` is role-agnostic: the same class can serve as a guard scripted opponent, a bandit scripted opponent, or a learned controlled-side fallback. Per-side dimensions (`n_vehicles`, `action_dim`) are populated by the env at construction.

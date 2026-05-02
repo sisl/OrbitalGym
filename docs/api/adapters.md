@@ -1,6 +1,6 @@
 # Adapters
 
-Optional-extra framework adapters at the host-array boundary.
+Optional-extra framework adapters that wrap `OrbitalGameEnv` for Gymnasium, PettingZoo, and POMDPPlanners-shape consumers.
 
 ## Gymnasium
 
