@@ -1,7 +1,13 @@
-"""KF belief + linear Kalman updater.
+"""KF belief + linear Kalman updater (per-observer-per-target shape).
 
-Predict and correct are exposed separately for testability; the combined
-__call__ runs predict-then-correct.
+Belief shape:
+  mean: (N_obs, N_total, d)
+  cov:  (N_obs, N_total, d, d)
+
+Updater consumes a tuple of Observation channels. One predict step is
+applied to all (observer, tracked) pairs; B @ action[i] is added only for
+the self-pair (k == i). Each channel's correction is then folded
+sequentially, gated by the channel's per-pair `visible` mask.
 """
 
 from __future__ import annotations
@@ -13,114 +19,152 @@ import flax.struct
 import jax
 import jax.numpy as jnp
 
+from orbital_game.belief._common import (
+    _truth_arrays_for_side,
+    build_initial_mean_from_truth,
+    build_uniform_cov,
+    build_uniform_mean,
+)
 from orbital_game.env.types import Side
+from orbital_game.observations.types import Observation
 from orbital_game.registry import BeliefInitializerKey, BeliefUpdaterKey, register
 
 
 @flax.struct.dataclass
 class KFBelief:
-    mean: jax.Array  # (D,) or (N_guards, D) for decentralized
-    cov: jax.Array  # (D, D) or (N_guards, D, D)
+    mean: jax.Array  # (N_obs, N_total, d)
+    cov: jax.Array  # (N_obs, N_total, d, d)
+
+
+def _single_pair_correct(
+    mean: jax.Array,  # (d,)
+    cov: jax.Array,  # (d, d)
+    obs: jax.Array,  # (m,)
+    H: jax.Array,  # (m, d)  # noqa: N803
+    R: jax.Array,  # (m, m)  # noqa: N803
+    use_joseph_form: bool,
+) -> tuple[jax.Array, jax.Array]:
+    S = H @ cov @ H.T + R  # noqa: N806
+    K = cov @ H.T @ jnp.linalg.inv(S)  # noqa: N806
+    innovation = obs - H @ mean
+    new_mean = mean + K @ innovation
+    identity = jnp.eye(cov.shape[0])
+    if use_joseph_form:
+        i_minus_kh = identity - K @ H
+        new_cov = i_minus_kh @ cov @ i_minus_kh.T + K @ R @ K.T
+    else:
+        new_cov = (identity - K @ H) @ cov
+    return new_mean, new_cov
 
 
 @register(BeliefUpdaterKey.KF)
 @dataclass(frozen=True)
 class KFBeliefUpdater:
-    """Linear Kalman filter.
+    """Linear Kalman filter, per-(observer, target) block-diagonal.
 
-    Predict: x' = F x + B u,   P' = F P Fᵀ + Q
-    Correct: y = z - H x',     S = H P' Hᵀ + R, K = P' Hᵀ S⁻¹
-             x'' = x' + K y
-             P'' = (I - K H) P (I - K H)ᵀ + K R Kᵀ   (Joseph form, default)
-             P'' = (I - K H) P                        (simple form, opt-in)
-
-    All matrices are constants set at scenario build time (STM derived from
-    planning_dynamics, B from actuator Jacobian, H from observation linearization,
-    Q and R from user-supplied noise models).
-
-    `use_joseph_form` defaults to True because the two forms are
-    equivalent but Joseph structurally preserves symmetry and positive
-    semi-definiteness under floating-point error accumulation over long rollouts.
-    Pay the cost of two extra matrix multiplies per correction; get robust
-    long-horizon behaviour in return.
+    `stm`, `control_matrix`, `process_noise` are uniform across all tracked
+    entities. Per-pair correction matrices `H` and `R` come from each
+    Observation channel (different sensors may have different m, H, R).
     """
 
-    stm: jax.Array  # F, (D, D)
-    control_matrix: jax.Array  # B, (D, U)
-    process_noise: jax.Array  # Q, (D, D)
-    obs_matrix: jax.Array  # H, (M, D)
-    obs_noise: jax.Array  # R, (M, M)
+    stm: jax.Array  # F, (d, d)
+    control_matrix: jax.Array  # B, (d, u_dim)
+    process_noise: jax.Array  # Q, (d, d)
     use_joseph_form: bool = True
-
-    def predict(self, belief: KFBelief, action: jax.Array) -> KFBelief:
-        mean = self.stm @ belief.mean + self.control_matrix @ action
-        cov = self.stm @ belief.cov @ self.stm.T + self.process_noise
-        return KFBelief(mean=mean, cov=cov)
-
-    def correct(self, belief: KFBelief, observation: jax.Array) -> KFBelief:
-        H = self.obs_matrix  # noqa: N806
-        R = self.obs_noise  # noqa: N806
-        P = belief.cov  # noqa: N806
-        S = H @ P @ H.T + R  # noqa: N806
-        K = P @ H.T @ jnp.linalg.inv(S)  # noqa: N806
-        innovation = observation - H @ belief.mean
-        mean = belief.mean + K @ innovation
-        identity = jnp.eye(P.shape[0])
-        # Python bool on a frozen dataclass — static branch at trace time, no
-        # dynamic branching in the jit-compiled path.
-        if self.use_joseph_form:
-            i_minus_kh = identity - K @ H
-            cov = i_minus_kh @ P @ i_minus_kh.T + K @ R @ K.T
-        else:
-            cov = (identity - K @ H) @ P
-        return KFBelief(mean=mean, cov=cov)
 
     def __call__(
         self,
         belief: KFBelief,
-        obs: jax.Array,
-        action: jax.Array,
+        observations: tuple[Observation, ...],
+        action: jax.Array,  # (N_obs, u_dim)
         side: Side,
-        key,
+        key: jax.Array,
     ) -> KFBelief:
-        del side, key  # updater is currently side-symmetric; signature parity for protocol
-        predicted = self.predict(belief, action)
-        return self.correct(predicted, obs)
+        del side, key
+        for ch in observations:
+            if ch.obs_fn is not None:
+                raise TypeError(
+                    "KFBeliefUpdater rejects Observation channels with obs_fn set; "
+                    "use EKFBeliefUpdater for nonlinear measurement models."
+                )
+
+        n_obs, n_total, d = belief.mean.shape
+        F = self.stm  # noqa: N806
+        B = self.control_matrix  # noqa: N806
+        Q = self.process_noise  # noqa: N806
+
+        # ---- Predict ----
+        # mean_pred[i, k] = F @ mean[i, k]  (apply F to each (i, k) state vector)
+        # @ broadcasts: (n_obs, n_total, d) @ (d, d).T → (n_obs, n_total, d)
+        mean_pred = belief.mean @ F.T
+        # B @ action[i] applies only to self-pair (k == i).
+        bu_per_obs = action @ B.T  # (n_obs, d)
+        eye = jnp.eye(n_obs, n_total)  # (n_obs, n_total) — 1 at (i, i), 0 else
+        mean_pred = mean_pred + bu_per_obs[:, None, :] * eye[:, :, None]
+
+        # cov_pred[i, k] = F @ cov[i, k] @ F.T + Q
+        cov_pred = F @ belief.cov @ F.T + Q
+
+        # ---- Correct (one channel at a time) ----
+        mean_cur, cov_cur = mean_pred, cov_pred
+        for ch in observations:
+            mean_cur, cov_cur = self._apply_channel(mean_cur, cov_cur, ch)
+
+        return KFBelief(mean=mean_cur, cov=cov_cur)
+
+    def _apply_channel(
+        self,
+        mean: jax.Array,  # (N_obs, N_total, d)
+        cov: jax.Array,  # (N_obs, N_total, d, d)
+        ch: Observation,
+    ) -> tuple[jax.Array, jax.Array]:
+        def _pair(m: jax.Array, c: jax.Array, o: jax.Array) -> tuple[jax.Array, jax.Array]:
+            return _single_pair_correct(m, c, o, ch.obs_matrix, ch.obs_noise, self.use_joseph_form)
+
+        per_pair = jax.vmap(jax.vmap(_pair, in_axes=(0, 0, 0)), in_axes=(0, 0, 0))
+        new_mean, new_cov = per_pair(mean, cov, ch.obs)
+        visible_mean = ch.visible[:, :, None]  # (N_obs, N_total, 1)
+        visible_cov = ch.visible[:, :, None, None]  # (N_obs, N_total, 1, 1)
+        out_mean = jnp.where(visible_mean, new_mean, mean)
+        out_cov = jnp.where(visible_cov, new_cov, cov)
+        return out_mean, out_cov  # pyrefly: ignore[bad-return]
 
 
 @register(BeliefInitializerKey.KF_FROM_TRUTH)
 @dataclass(frozen=True)
 class KFFromTruthInitializer:
-    """Initial belief centered on the sampled ground-truth env_state.
+    """Initial belief: per-observer mean = truth of every tracked entity.
 
-    Mean = layout.flatten(env_state.guards, env_state.bandits).
-    Cov  = diag(variance_diag).
-
-    Models "the guard starts with a noisy fix on the true initial state."
+    Layout requirements: must expose `n_guards`, `n_bandits`,
+    `dynamics_state_dim` attributes.
     """
 
-    layout: Any
-    variance_diag: jax.Array
+    layout: Any  # has n_guards, n_bandits, dynamics_state_dim
+    variance_diag: jax.Array  # (d,)
 
     def __call__(self, env_state, side: Side, key) -> KFBelief:
-        del side, key
-        mean = self.layout.flatten(env_state.guards, env_state.bandits)
-        cov = jnp.diag(self.variance_diag)
+        del key
+        own_truth, opp_truth = _truth_arrays_for_side(env_state, side.value)
+        mean = build_initial_mean_from_truth(own_truth, opp_truth)
+        n_obs, n_total, d = mean.shape
+        cov = build_uniform_cov(n_obs, n_total, self.variance_diag)
         return KFBelief(mean=mean, cov=cov)
 
 
 @register(BeliefInitializerKey.KF_UNIFORM_DEFAULT)
 @dataclass(frozen=True)
 class KFUniformDefaultInitializer:
-    """Uninformed initial belief — ignores env_state and uses a configured mean + diag cov.
+    """Uninformed initial belief: every (observer, tracked) pair gets the same prior."""
 
-    Models "the guard starts with a prior that is not informed by ground truth."
-    Useful as a harder baseline than the from-truth version.
-    """
-
-    default_mean: jax.Array
-    variance_diag: jax.Array
+    layout: Any  # has n_guards, n_bandits
+    default_mean: jax.Array  # (d,)
+    variance_diag: jax.Array  # (d,)
 
     def __call__(self, env_state, side: Side, key) -> KFBelief:
-        del env_state, side, key
-        return KFBelief(mean=self.default_mean, cov=jnp.diag(self.variance_diag))
+        del env_state, key
+        n_self = self.layout.n_guards if side is Side.GUARD else self.layout.n_bandits
+        n_tgt = self.layout.n_bandits if side is Side.GUARD else self.layout.n_guards
+        n_total = n_self + n_tgt
+        mean = build_uniform_mean(n_self, n_total, self.default_mean)
+        cov = build_uniform_cov(n_self, n_total, self.variance_diag)
+        return KFBelief(mean=mean, cov=cov)
