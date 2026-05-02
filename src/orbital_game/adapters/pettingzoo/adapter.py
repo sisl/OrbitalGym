@@ -16,6 +16,7 @@ from pettingzoo import ParallelEnv
 
 from orbital_game.env.core import OrbitalGameEnv
 from orbital_game.env.types import Actions, BySide
+from orbital_game.observations.types import coerce_obs_to_flat_array
 
 
 def _action_dim_from_dynamics(dynamics_key) -> int:
@@ -53,8 +54,8 @@ class PettingZooAdapter(ParallelEnv):
 
         # Discover obs shapes via a probe reset.
         probe_state, probe_outputs = env.reset(jax.random.PRNGKey(0))
-        guard_obs = probe_outputs.guard.obs
-        bandit_obs = probe_outputs.bandit.obs
+        guard_obs = coerce_obs_to_flat_array(probe_outputs.guard.obs)
+        bandit_obs = coerce_obs_to_flat_array(probe_outputs.bandit.obs)
 
         self._guard_obs_shape = self._per_agent_obs_shape(guard_obs, n_g)
         self._bandit_obs_shape = self._per_agent_obs_shape(bandit_obs, n_b)
@@ -136,13 +137,13 @@ class PettingZooAdapter(ParallelEnv):
 
     def _build_obs_dict(self, outputs: BySide) -> dict:
         d = {}
-        guard_obs = outputs.guard.obs
+        guard_obs = coerce_obs_to_flat_array(outputs.guard.obs)
         for i, aid in enumerate(self._guard_ids):
             d[aid] = np.asarray(
                 self._slice_or_broadcast(guard_obs, self._n_guards, i),
                 dtype=np.float32,
             )
-        bandit_obs = outputs.bandit.obs
+        bandit_obs = coerce_obs_to_flat_array(outputs.bandit.obs)
         for i, aid in enumerate(self._bandit_ids):
             d[aid] = np.asarray(
                 self._slice_or_broadcast(bandit_obs, self._n_bandits, i),

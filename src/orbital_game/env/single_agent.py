@@ -17,6 +17,7 @@ import jax
 
 from orbital_game.env.core import EnvState, OrbitalGameEnv
 from orbital_game.env.types import Actions, BySide, Side
+from orbital_game.observations.types import coerce_obs_to_flat_array
 from orbital_game.policies.library import ZeroControl
 
 
@@ -62,7 +63,7 @@ class SingleAgentView:
     def reset(self, key: jax.Array):
         """Returns (env_state, obs_controlled, opponent_policy_state)."""
         state, outputs = self.env.reset(key)
-        obs_controlled = outputs.get(self.controlled_side).obs
+        obs_controlled = coerce_obs_to_flat_array(outputs.get(self.controlled_side).obs)
         # ZeroControl is stateless; richer policies overload init_policy_state.
         opp_policy_state = None
         return state, obs_controlled, opp_policy_state
@@ -82,7 +83,8 @@ class SingleAgentView:
             if self.opponent_side is Side.BANDIT
             else self.env.guard_observation_fn
         )
-        opp_obs = opp_obs_fn(state, self.opponent_side, self.config, k_opp, state.t)
+        opp_obs_raw = opp_obs_fn(state, self.opponent_side, self.config, k_opp, state.t)
+        opp_obs = coerce_obs_to_flat_array(opp_obs_raw)
         opp_action, next_opp_ps = self.opponent_policy(opp_policy_state, opp_obs, k_opp, state.t)
         if self.controlled_side is Side.GUARD:
             actions = Actions(sides=BySide(guard=controlled_action, bandit=opp_action))
@@ -92,7 +94,7 @@ class SingleAgentView:
         controlled_output = step_out.outputs.get(self.controlled_side)
         return (
             step_out.state,
-            controlled_output.obs,
+            coerce_obs_to_flat_array(controlled_output.obs),
             controlled_output.reward,
             step_out.episode_done,
             next_opp_ps,

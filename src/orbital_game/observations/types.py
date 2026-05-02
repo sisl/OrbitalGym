@@ -50,3 +50,15 @@ def flatten_observations(channels: tuple[Observation, ...]) -> jax.Array:
     if not channels:
         raise ValueError("flatten_observations requires at least one channel")
     return jnp.concatenate([c.obs.reshape(-1) for c in channels])
+
+
+def coerce_obs_to_flat_array(obs: jax.Array | tuple[Observation, ...]) -> jax.Array:
+    """Coerce an obs payload to a flat jax.Array.
+
+    Transitional helper used by adapters during the migration to multi-channel
+    observations. After all observation fns return tuple[Observation, ...],
+    callers should switch to `flatten_observations` directly.
+    """
+    if isinstance(obs, tuple):
+        return flatten_observations(obs)
+    return obs
