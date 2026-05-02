@@ -69,9 +69,39 @@ show_signature_annotations = true
 separate_signature = true
 merge_init_into_class = true
 
+# Markdown extensions — mirror zensical's bootstrap defaults so admonitions,
+# attribute lists, code highlighting, emoji shortcodes, and tabs all keep
+# working, then layer pymdownx.snippets on top so docs pages can include
+# tested code regions from tests/docs/*.py via:
+#
+#   --8<-- "tests/docs/test_xxx.py:region-label"
+#
+# Defining this block disables zensical's auto-defaults; if you add a new
+# extension, add it here.
 [project.markdown_extensions]
+abbr = {}
+admonition = {}
+attr_list = {}
+def_list = {}
+footnotes = {}
+md_in_html = {}
+toc = { permalink = true }
+"pymdownx.arithmatex" = { generic = true }
+"pymdownx.betterem" = {}
+"pymdownx.caret" = {}
+"pymdownx.details" = {}
+"pymdownx.emoji" = { emoji_generator = "zensical.extensions.emoji.to_svg", emoji_index = "zensical.extensions.emoji.twemoji" }
+"pymdownx.highlight" = { anchor_linenums = true, line_spans = "__span", pygments_lang_class = true }
+"pymdownx.inlinehilite" = {}
+"pymdownx.keys" = {}
+"pymdownx.magiclink" = {}
+"pymdownx.mark" = {}
+"pymdownx.smartsymbols" = {}
 "pymdownx.snippets" = { base_path = ["."] }
 "pymdownx.superfences" = {}
+"pymdownx.tabbed" = { alternate_style = true, combine_header_slug = true }
+"pymdownx.tasklist" = { custom_checkbox = true }
+"pymdownx.tilde" = {}
 
 [project.theme]
 
