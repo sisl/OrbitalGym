@@ -38,6 +38,7 @@ def _action_dim_from_dynamics(dynamics_key) -> int:
     Mirrors env/core.py's _dyn_action_dim: HCW_RT → 2, HCW_RTN → 3.
     """
     from orbital_game.registry import DynamicsKey
+
     return 2 if dynamics_key is DynamicsKey.HCW_RT else 3
 
 
@@ -54,15 +55,9 @@ class SingleAgentView:
         self.config = env.config
         self.controlled_side: Side = getattr(env.config, "controlled_side", Side.GUARD)
         self.opponent_side: Side = self.controlled_side.opposite()
-        opp_n = (
-            env.config.n_guards
-            if self.opponent_side is Side.GUARD
-            else env.config.n_bandits
-        )
+        opp_n = env.config.n_guards if self.opponent_side is Side.GUARD else env.config.n_bandits
         action_dim = _action_dim_from_dynamics(env.config.truth_dynamics)
-        self.opponent_policy = _resolve_scripted(
-            env.config, self.opponent_side, opp_n, action_dim
-        )
+        self.opponent_policy = _resolve_scripted(env.config, self.opponent_side, opp_n, action_dim)
 
     def reset(self, key: jax.Array):
         """Returns (env_state, obs_controlled, opponent_policy_state)."""

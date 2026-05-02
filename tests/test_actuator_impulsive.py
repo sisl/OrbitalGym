@@ -12,9 +12,7 @@ class _State:
 
 
 def test_impulsive_tracked_mass_delta_matches_rocket_equation():
-    params = VehicleParamsSpec(
-        dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0
-    )
+    params = VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0)
     state = _State(propellant_mass=jnp.array([10.0]))
     command = jnp.array([[3.0, 4.0, 0.0]])  # |dv| = 5 m/s
     act = ImpulsiveActuator(track_mass=True)
@@ -28,9 +26,7 @@ def test_impulsive_tracked_mass_delta_matches_rocket_equation():
 
 
 def test_impulsive_untracked_mass_returns_zeros():
-    params = VehicleParamsSpec(
-        dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0
-    )
+    params = VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0)
     state = _State(propellant_mass=jnp.zeros((3,)))
     command = jnp.array([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 3.0]])
     act = ImpulsiveActuator(track_mass=False)

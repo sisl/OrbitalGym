@@ -31,6 +31,7 @@ from orbital_game.env.types import Side
 def _action_dim_from_dynamics(dynamics_key) -> int:
     """Mirror env/core.py's _dyn_action_dim — HCW_RT → 2, HCW_RTN → 3."""
     from orbital_game.registry import DynamicsKey
+
     return 2 if dynamics_key is DynamicsKey.HCW_RT else 3
 
 
@@ -48,9 +49,7 @@ class GymnasiumAdapter(gym.Env):
         self._opp_ps: Any = None
 
         controlled = self.view.controlled_side
-        n_controlled = (
-            env.config.n_guards if controlled is Side.GUARD else env.config.n_bandits
-        )
+        n_controlled = env.config.n_guards if controlled is Side.GUARD else env.config.n_bandits
         action_dim = _action_dim_from_dynamics(env.config.truth_dynamics)
         self._n_controlled = n_controlled
         self._action_dim = action_dim

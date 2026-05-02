@@ -16,6 +16,7 @@ def _config(n_guards=1, velocity_y_mps=7546.05):
     """Build a minimal scenario config. Default velocity is circular at r=7000km;
     pass a different value to construct an elliptical reference orbit."""
     from orbital_game.sampling.spec import ICSpec
+
     return ScenarioConfig(
         n_guards=n_guards,
         n_bandits=1,
@@ -88,6 +89,7 @@ def _propagate_max_excursion(cfg, sampler, n_periods=10):
 
     class _Params:
         pass
+
     _Params.mean_motion = float(n)
 
     state = out.rtn

@@ -41,10 +41,12 @@ def test_pe_reward_is_zero_sum():
     cfg = make_pursuit_evasion()
     env = OrbitalGameEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
-    actions = Actions(sides=BySide(
-        guard=jnp.zeros((cfg.n_guards, 3)),
-        bandit=jnp.zeros((cfg.n_bandits, 3)),
-    ))
+    actions = Actions(
+        sides=BySide(
+            guard=jnp.zeros((cfg.n_guards, 3)),
+            bandit=jnp.zeros((cfg.n_bandits, 3)),
+        )
+    )
     out = env.step(jax.random.PRNGKey(1), state, actions)
     r_g = float(out.outputs.guard.reward)
     r_b = float(out.outputs.bandit.reward)
@@ -79,6 +81,7 @@ def test_pe_reward_rejects_wrong_game():
 
 def test_pe_termination_rejects_wrong_game():
     """PE termination raises TypeError when cfg.game is not PursuitEvasion."""
+
     class _Cfg:
         game = NoGame()
 

@@ -87,9 +87,7 @@ def test_rollout_is_deterministic_under_same_key():
 def test_vmap_rollout_over_seeds_produces_batched_trajectories():
     env = _make_env()
     keys = jax.random.split(jax.random.PRNGKey(0), 4)
-    batched = jax.vmap(
-        lambda k: rollout(env, _zero_policies(), _null_init_fns(), k, n_steps=10)
-    )
+    batched = jax.vmap(lambda k: rollout(env, _zero_policies(), _null_init_fns(), k, n_steps=10))
     t = batched(keys)
     assert t.sides.guard.reward.shape == (4, 10)
     # Different seeds → different rewards (sanity check that the vmap axis is real).
@@ -103,9 +101,7 @@ def test_rollout_freezes_state_and_zeros_reward_after_termination():
     onward, the rollout freezes: logged env_state.step stays at 3, reward 0,
     done latched True."""
     env = _make_env(max_horizon_s=30.0)  # max_steps = 3
-    traj = rollout(
-        env, _zero_policies(), _null_init_fns(), jax.random.PRNGKey(0), n_steps=10
-    )
+    traj = rollout(env, _zero_policies(), _null_init_fns(), jax.random.PRNGKey(0), n_steps=10)
 
     # Logged env_state.step at each scan index (pre-step input state):
     # [0, 1, 2, 3, 3, 3, 3, 3, 3, 3]

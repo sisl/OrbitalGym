@@ -23,9 +23,11 @@ def test_trajectory_axis_order():
     b_pol = ZeroControl(n_vehicles=cfg.n_bandits, action_dim=3)
 
     traj = rollout(
-        env, BySide(guard=g_pol, bandit=b_pol),
+        env,
+        BySide(guard=g_pol, bandit=b_pol),
         BySide(guard=_init_none, bandit=_init_none),
-        jax.random.PRNGKey(0), n_steps=cfg.max_steps,
+        jax.random.PRNGKey(0),
+        n_steps=cfg.max_steps,
     )
     n_t = cfg.max_steps
     # Per-side action: (T, N_side, action_dim)
@@ -50,9 +52,11 @@ def test_trajectory_vmap_seeds():
 
     def _run(key):
         return rollout(
-            env, BySide(guard=g_pol, bandit=b_pol),
+            env,
+            BySide(guard=g_pol, bandit=b_pol),
             BySide(guard=_init_none, bandit=_init_none),
-            key, n_steps=cfg.max_steps,
+            key,
+            n_steps=cfg.max_steps,
         )
 
     keys = jax.random.split(jax.random.PRNGKey(0), 4)

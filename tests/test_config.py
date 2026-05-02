@@ -25,12 +25,8 @@ def make_config(**overrides):
         ),
         guard_components=(StateComponentKey.RTN, StateComponentKey.MASS),
         bandit_components=(StateComponentKey.RTN,),
-        guard_params=VehicleParamsSpec(
-            dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0
-        ),
-        bandit_params=VehicleParamsSpec(
-            dry_mass_kg=50.0, isp_s=200.0, max_thrust_n=2.0
-        ),
+        guard_params=VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
+        bandit_params=VehicleParamsSpec(dry_mass_kg=50.0, isp_s=200.0, max_thrust_n=2.0),
         ic_sampler=ICSpec(
             guard_sampler=RelativeEllipse(
                 radial_ellipse_m=0.0,
@@ -125,6 +121,7 @@ def test_default_typed_pluggables_are_instances():
     from orbital_game.observations.reference import FullObservation
     from orbital_game.rewards.reference import DistanceToReferenceOrbit
     from orbital_game.termination.reference import MaxStepsOrBreach
+
     cfg = make_config()
     assert isinstance(cfg.guard_observation_fn, FullObservation)
     assert isinstance(cfg.bandit_observation_fn, FullObservation)
@@ -134,6 +131,7 @@ def test_default_typed_pluggables_are_instances():
 
 def test_default_scripted_policies_are_zero_control():
     from orbital_game.policies.library import ZeroControl
+
     cfg = make_config()
     assert isinstance(cfg.guard_scripted_policy, ZeroControl)
     assert isinstance(cfg.bandit_scripted_policy, ZeroControl)
@@ -141,12 +139,14 @@ def test_default_scripted_policies_are_zero_control():
 
 def test_default_controlled_side_is_guard():
     from orbital_game.env.types import Side
+
     cfg = make_config()
     assert cfg.controlled_side is Side.GUARD
 
 
 def test_roundtrip_typed_pluggables():
     from examples.reference_scenario import build_config
+
     cfg = build_config()
     s = cfg.to_json()
     cfg2 = ScenarioConfig.from_json(s)

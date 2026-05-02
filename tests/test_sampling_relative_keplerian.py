@@ -17,6 +17,7 @@ def _config(n_guards=2, n_bandits=1):
     # Minimal config — only fields the sampler reads matter.
     from orbital_game.sampling.side import RelativeEllipse
     from orbital_game.sampling.spec import ICSpec
+
     return ScenarioConfig(
         n_guards=n_guards,
         n_bandits=n_bandits,

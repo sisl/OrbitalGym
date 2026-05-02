@@ -76,10 +76,10 @@ class ScenarioConfig:
 
     # Pluggables that hold typed instances. Defaults via __post_init__ to avoid
     # mutable-default issues and circular imports.
-    guard_observation_fn: Any = None     # ObservationFn
+    guard_observation_fn: Any = None  # ObservationFn
     bandit_observation_fn: Any = None
-    reward_fn: Any = None                # RewardFn
-    termination_fn: Any = None           # TerminationFn
+    reward_fn: Any = None  # RewardFn
+    termination_fn: Any = None  # TerminationFn
 
     guard_belief_initializer: Any = None
     guard_belief_updater: Any = None
@@ -89,8 +89,8 @@ class ScenarioConfig:
     # Asymmetric play. `controlled_side` accepts a Side enum or its string value;
     # __post_init__ coerces to Side. Declared as Any to avoid a circular import
     # (config.py is loaded before env.types when orbital_game.__init__ runs).
-    controlled_side: Any = "guard"       # Side
-    guard_scripted_policy: Any = None    # Policy
+    controlled_side: Any = "guard"  # Side
+    guard_scripted_policy: Any = None  # Policy
     bandit_scripted_policy: Any = None
 
     # Game catalog (typed knob bundle; default NoGame for custom scenarios)
@@ -116,6 +116,7 @@ class ScenarioConfig:
         # Coerce controlled_side string value to Side enum (deferred import to
         # avoid circular dependency at module load time).
         from orbital_game.env.types import Side as _Side
+
         if not isinstance(self.controlled_side, _Side):
             object.__setattr__(self, "controlled_side", _Side(self.controlled_side))
 
@@ -125,6 +126,7 @@ class ScenarioConfig:
             from orbital_game.observations.reference import FullObservation
             from orbital_game.state.assemble import build_state_class
             from orbital_game.state.layout import StateLayout
+
             guard_comps = [_COMP_LOOKUP[k] for k in self.guard_components]
             bandit_comps = [_COMP_LOOKUP[k] for k in self.bandit_components]
             guard_cls = build_state_class(guard_comps, self.n_guards, "GuardState")
@@ -138,14 +140,17 @@ class ScenarioConfig:
             object.__setattr__(self, "guard_observation_fn", FullObservation(layout=layout))
         if self.bandit_observation_fn is None:
             from orbital_game.observations.reference import FullObservation
+
             guard_obs_fn = self.guard_observation_fn  # always set by this point
             layout = guard_obs_fn.layout  # pyrefly: ignore[missing-attribute]
             object.__setattr__(self, "bandit_observation_fn", FullObservation(layout=layout))
         if self.reward_fn is None:
             from orbital_game.rewards.reference import DistanceToReferenceOrbit
+
             object.__setattr__(self, "reward_fn", DistanceToReferenceOrbit())
         if self.termination_fn is None:
             from orbital_game.termination.reference import MaxStepsOrBreach
+
             object.__setattr__(
                 self,
                 "termination_fn",
@@ -156,9 +161,11 @@ class ScenarioConfig:
         # They remain None until the caller or OrbitalGameEnv sets them.
         if self.guard_scripted_policy is None:
             from orbital_game.policies.library import ZeroControl
+
             object.__setattr__(self, "guard_scripted_policy", ZeroControl())
         if self.bandit_scripted_policy is None:
             from orbital_game.policies.library import ZeroControl
+
             object.__setattr__(self, "bandit_scripted_policy", ZeroControl())
 
         # Default game = NoGame
@@ -193,10 +200,12 @@ _TYPED_INSTANCE_FIELDS: dict[str, type[Enum]] = {
 # sub-objects (e.g. StateLayout). These are stored as key-only dicts in JSON;
 # deserialization leaves them absent from kwargs so __post_init__ re-creates
 # them with the correct layout derived from the config's components/sizes.
-_KEY_ONLY_TYPED_FIELDS: frozenset[str] = frozenset({
-    "guard_observation_fn",
-    "bandit_observation_fn",
-})
+_KEY_ONLY_TYPED_FIELDS: frozenset[str] = frozenset(
+    {
+        "guard_observation_fn",
+        "bandit_observation_fn",
+    }
+)
 
 # Fields that are plain enum members (not typed-instance pluggables).
 _ENUM_FIELDS: dict[str, type[Enum]] = {
@@ -211,6 +220,7 @@ _ENUM_FIELDS: dict[str, type[Enum]] = {
 
 def _config_to_primitive(cfg: ScenarioConfig) -> dict[str, Any]:
     from orbital_game.sampling.serialize import serializable_to_primitive
+
     d: dict[str, Any] = {}
     for f in fields(cfg):
         v = getattr(cfg, f.name)
@@ -235,6 +245,7 @@ def _config_to_primitive(cfg: ScenarioConfig) -> dict[str, Any]:
                 # independently serializable. Store only the registry key; the
                 # layout is re-derived from config fields during from_json.
                 from orbital_game.registry import resolve_class_to_key
+
                 key_value, _ = resolve_class_to_key(type(v))
                 d[f.name] = {"_key": key_value}
             else:
@@ -248,6 +259,7 @@ def _config_to_primitive(cfg: ScenarioConfig) -> dict[str, Any]:
 
 def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> ScenarioConfig:
     from orbital_game.sampling.serialize import serializable_from_primitive
+
     kwargs: dict[str, Any] = {}
     for f in fields(cls):
         if f.name not in raw:
@@ -276,11 +288,10 @@ def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> Scen
                 # Leave absent so __post_init__ re-derives from config layout.
                 pass
             else:
-                kwargs[f.name] = serializable_from_primitive(
-                    v, _TYPED_INSTANCE_FIELDS[f.name]
-                )
+                kwargs[f.name] = serializable_from_primitive(v, _TYPED_INSTANCE_FIELDS[f.name])
         elif f.name == "controlled_side":
             from orbital_game.env.types import Side as _Side
+
             kwargs[f.name] = _Side(v)
         elif f.name == "game":
             kwargs[f.name] = _game_from_primitive(v)
@@ -292,6 +303,7 @@ def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> Scen
 def _ic_spec_to_primitive(spec: ICSpec) -> dict:
     """Serialize an ICSpec for JSON round-trip."""
     from orbital_game.sampling.serialize import serializable_to_primitive
+
     return {
         "guard_sampler": serializable_to_primitive(spec.guard_sampler),
         "bandit_sampler": serializable_to_primitive(spec.bandit_sampler),
@@ -320,6 +332,7 @@ def _game_from_primitive(d: dict) -> Game:
     from dataclasses import fields as _fields
 
     from orbital_game.registry import GameKey, resolve_game
+
     payload = dict(d)
     key_value = payload.pop("_key")
     key = GameKey(key_value)

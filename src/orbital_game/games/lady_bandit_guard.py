@@ -72,12 +72,8 @@ def make_lady_bandit_guard(
         ),
         "guard_components": (StateComponentKey.RTN, StateComponentKey.MASS),
         "bandit_components": (StateComponentKey.RTN,),
-        "guard_params": VehicleParamsSpec(
-            dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0
-        ),
-        "bandit_params": VehicleParamsSpec(
-            dry_mass_kg=50.0, isp_s=200.0, max_thrust_n=2.0
-        ),
+        "guard_params": VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
+        "bandit_params": VehicleParamsSpec(dry_mass_kg=50.0, isp_s=200.0, max_thrust_n=2.0),
         "ic_sampler": ICSpec(
             guard_sampler=RelativeEllipse(
                 radial_ellipse_m=1000.0,

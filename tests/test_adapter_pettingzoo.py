@@ -13,6 +13,7 @@ pettingzoo = pytest.importorskip("pettingzoo")
 
 def _make_adapter():
     from orbital_game.adapters.pettingzoo import PettingZooAdapter
+
     cfg = build_config()
     env = OrbitalGameEnv(cfg)
     return PettingZooAdapter(env, seed=0)
@@ -53,6 +54,7 @@ def test_pz_adapter_step_returns_5_dicts():
 def test_pz_adapter_passes_parallel_api_test():
     """Run pettingzoo's parallel API test against the adapter."""
     from pettingzoo.test import parallel_api_test
+
     adapter = _make_adapter()
     parallel_api_test(adapter, num_cycles=3)
 

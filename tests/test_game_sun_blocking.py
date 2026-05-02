@@ -36,10 +36,12 @@ def test_sb_reward_zero_sum():
     cfg = make_sun_blocking()
     env = OrbitalGameEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
-    actions = Actions(sides=BySide(
-        guard=jnp.zeros((cfg.n_guards, 3)),
-        bandit=jnp.zeros((cfg.n_bandits, 3)),
-    ))
+    actions = Actions(
+        sides=BySide(
+            guard=jnp.zeros((cfg.n_guards, 3)),
+            bandit=jnp.zeros((cfg.n_bandits, 3)),
+        )
+    )
     out = env.step(jax.random.PRNGKey(1), state, actions)
     r_g = float(out.outputs.guard.reward)
     r_b = float(out.outputs.bandit.reward)
@@ -51,10 +53,12 @@ def test_sb_reward_in_unit_range_for_bandit():
     cfg = make_sun_blocking()
     env = OrbitalGameEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
-    actions = Actions(sides=BySide(
-        guard=jnp.zeros((cfg.n_guards, 3)),
-        bandit=jnp.zeros((cfg.n_bandits, 3)),
-    ))
+    actions = Actions(
+        sides=BySide(
+            guard=jnp.zeros((cfg.n_guards, 3)),
+            bandit=jnp.zeros((cfg.n_bandits, 3)),
+        )
+    )
     out = env.step(jax.random.PRNGKey(1), state, actions)
     r_b = float(out.outputs.bandit.reward)
     assert 0.0 <= r_b <= 1.0

@@ -42,6 +42,4 @@ class UniformMass:
             )
 
     def __call__(self, n_vehicles: int, key: jax.Array) -> jax.Array:
-        return jax.random.uniform(
-            key, shape=(n_vehicles,), minval=self.low_kg, maxval=self.high_kg
-        )
+        return jax.random.uniform(key, shape=(n_vehicles,), minval=self.low_kg, maxval=self.high_kg)

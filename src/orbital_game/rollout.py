@@ -35,8 +35,8 @@ from orbital_game.env.types import (
 
 def rollout(
     env,
-    policies: BySide,                # BySide[Policy] — one policy per side
-    init_policy_state_fns: BySide,   # BySide[Callable(config, env_state, key) -> ps]
+    policies: BySide,  # BySide[Policy] — one policy per side
+    init_policy_state_fns: BySide,  # BySide[Callable(config, env_state, key) -> ps]
     key: jax.Array,
     n_steps: int,
 ) -> Trajectory:
@@ -104,8 +104,12 @@ def rollout(
             "bandit_ps": ps_b,
         }
         return (
-            advance_es, advance_ps_g, advance_ps_b,
-            advance_obs_g, advance_obs_b, next_terminated,
+            advance_es,
+            advance_ps_g,
+            advance_ps_b,
+            advance_obs_g,
+            advance_obs_b,
+            next_terminated,
         ), logged
 
     step_keys = jax.random.split(k_scan, n_steps)

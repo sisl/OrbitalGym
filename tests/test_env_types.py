@@ -52,6 +52,7 @@ def test_byside_is_pytree():
 
 def test_byside_vmap():
     """vmap over a leading batch axis traverses BySide transparently."""
+
     def add(bs):
         return BySide(guard=bs.guard + 1, bandit=bs.bandit + 1)
 
@@ -65,10 +66,12 @@ def test_byside_vmap():
 
 
 def test_actions_pytree():
-    actions = Actions(sides=BySide(
-        guard=jnp.zeros((1, 3)),
-        bandit=jnp.zeros((2, 3)),
-    ))
+    actions = Actions(
+        sides=BySide(
+            guard=jnp.zeros((1, 3)),
+            bandit=jnp.zeros((2, 3)),
+        )
+    )
     leaves, treedef = jax.tree_util.tree_flatten(actions)
     assert len(leaves) == 2
     rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)

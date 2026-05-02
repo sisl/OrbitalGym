@@ -59,6 +59,7 @@ def test_reset_returns_ic_valid_false_when_always_failing_validator():
     class _AlwaysFalse:
         def __call__(self, config, guards, bandits):
             return jnp.asarray(False)
+
     env = OrbitalGameEnv(_bounded_ellipse_config(validators=(_AlwaysFalse(),)))
     state, _ = env.reset(jax.random.PRNGKey(0))
     assert not bool(state.ic_valid)
@@ -69,6 +70,7 @@ def test_reset_returns_ic_valid_true_when_passing_validator():
     class _AlwaysTrue:
         def __call__(self, config, guards, bandits):
             return jnp.asarray(True)
+
     env = OrbitalGameEnv(_bounded_ellipse_config(validators=(_AlwaysTrue(),)))
     state, _ = env.reset(jax.random.PRNGKey(0))
     assert bool(state.ic_valid)
@@ -79,6 +81,7 @@ def test_reset_under_vmap_produces_per_lane_ic_valid():
     class _AlwaysFalse:
         def __call__(self, config, guards, bandits):
             return jnp.asarray(False)
+
     env = OrbitalGameEnv(_bounded_ellipse_config(validators=(_AlwaysFalse(),)))
 
     def reset_fn(k):

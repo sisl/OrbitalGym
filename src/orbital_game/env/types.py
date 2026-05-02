@@ -60,8 +60,8 @@ class Actions:
 class SideOutput:
     """Per-step output for one side. Shape rules per `scope`:
 
-      PER_VEHICLE: obs (N_side, obs_dim); reward (N_side,); done (N_side,) bool
-      PER_SIDE   : obs (obs_dim,);        reward ();        done () bool
+    PER_VEHICLE: obs (N_side, obs_dim); reward (N_side,); done (N_side,) bool
+    PER_SIDE   : obs (obs_dim,);        reward ();        done () bool
     """
 
     obs: jax.Array

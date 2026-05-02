@@ -199,19 +199,27 @@ class OrbitalGameEnv:
             k = jax.random.fold_in(k_ic, i)
             kg, kb = jax.random.split(k, 2)
             guards = self.ic_sampler.guard_sampler(
-                self.config, kg,
-                n_vehicles=n_guards, components=guard_components, class_name="GuardState",
+                self.config,
+                kg,
+                n_vehicles=n_guards,
+                components=guard_components,
+                class_name="GuardState",
             )
             bandits = self.ic_sampler.bandit_sampler(
-                self.config, kb,
-                n_vehicles=n_bandits, components=bandit_components, class_name="BanditState",
+                self.config,
+                kb,
+                n_vehicles=n_bandits,
+                components=bandit_components,
+                class_name="BanditState",
             )
             # Python-side branch on a static tuple length: safe under jit/vmap.
             if self.ic_sampler.validators:
-                checks = jnp.stack([
-                    jnp.asarray(v(self.config, guards, bandits))
-                    for v in self.ic_sampler.validators
-                ])
+                checks = jnp.stack(
+                    [
+                        jnp.asarray(v(self.config, guards, bandits))
+                        for v in self.ic_sampler.validators
+                    ]
+                )
                 ok = jnp.all(checks)
             else:
                 ok = jnp.asarray(True)

@@ -68,12 +68,8 @@ def test_no_game_roundtrip():
         ),
         guard_components=(StateComponentKey.RTN,),
         bandit_components=(StateComponentKey.RTN,),
-        guard_params=VehicleParamsSpec(
-            dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0
-        ),
-        bandit_params=VehicleParamsSpec(
-            dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0
-        ),
+        guard_params=VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
+        bandit_params=VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
         ic_sampler=ICSpec(
             guard_sampler=RelativeEllipse(
                 radial_ellipse_m=1000.0,

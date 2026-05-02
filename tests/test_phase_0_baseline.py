@@ -51,9 +51,7 @@ def fresh_traj():
 
 
 def test_reward_identical(baseline, fresh_traj):
-    np.testing.assert_array_equal(
-        baseline["reward"], np.asarray(fresh_traj.sides.guard.reward)
-    )
+    np.testing.assert_array_equal(baseline["reward"], np.asarray(fresh_traj.sides.guard.reward))
 
 
 def test_done_identical(baseline, fresh_traj):
@@ -61,15 +59,11 @@ def test_done_identical(baseline, fresh_traj):
 
 
 def test_action_identical(baseline, fresh_traj):
-    np.testing.assert_array_equal(
-        baseline["action"], np.asarray(fresh_traj.sides.guard.action)
-    )
+    np.testing.assert_array_equal(baseline["action"], np.asarray(fresh_traj.sides.guard.action))
 
 
 def test_obs_identical(baseline, fresh_traj):
-    np.testing.assert_array_equal(
-        baseline["obs"], np.asarray(fresh_traj.sides.guard.obs)
-    )
+    np.testing.assert_array_equal(baseline["obs"], np.asarray(fresh_traj.sides.guard.obs))
 
 
 def test_guards_rtn_identical(baseline, fresh_traj):

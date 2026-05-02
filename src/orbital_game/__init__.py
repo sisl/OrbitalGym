@@ -6,6 +6,28 @@ JAX's jax_enable_x64 flag is set; without this call, KOE/ECI conversions
 produce ~7m residuals on Earth-orbit-scale problems. Power users who want
 float32 for GPU throughput can call `astrojax.config.set_dtype(jnp.float32)`
 after import.
+
+Public API surface:
+
+    Core types:
+        ScenarioConfig, VehicleParamsSpec, ReferenceOrbitState
+        OrbitalGameEnv, EnvState, SingleAgentView
+        Side, BySide, Actions, SideOutput, StepOutput, SideTrajectory, Trajectory
+
+    Rollout + logging:
+        rollout, rollout_single_agent, episode_mask
+        save_run, load_run
+
+    Game catalog (typed knob bundles + builders):
+        Game, NoGame, GameKey
+        LadyBanditGuard, PursuitEvasion, SunBlocking, ObservationBlocking
+        make_lady_bandit_guard, make_pursuit_evasion, make_sun_blocking,
+        make_observation_blocking, make_game
+
+    Adapters (optional extras — see orbital_game.adapters):
+        POMDPAdapter         (always available)
+        GymnasiumAdapter     (pip install orbital-game[gymnasium])
+        PettingZooAdapter    (pip install orbital-game[pettingzoo])
 """
 
 from __future__ import annotations
@@ -17,22 +39,84 @@ _set_astrojax_dtype(jnp.float64)
 
 # Imports below intentionally follow the dtype configuration: orbital_game
 # submodules import astrojax helpers, and we want them to see float64.
+from orbital_game import adapters  # noqa: E402
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec  # noqa: E402
 from orbital_game.env.core import EnvState, OrbitalGameEnv  # noqa: E402
+from orbital_game.env.single_agent import SingleAgentView  # noqa: E402
+from orbital_game.env.types import (  # noqa: E402
+    Actions,
+    BySide,
+    Side,
+    SideOutput,
+    SideTrajectory,
+    StepOutput,
+    Trajectory,
+)
+from orbital_game.games import (  # noqa: E402
+    Game,
+    LadyBanditGuard,
+    NoGame,
+    ObservationBlocking,
+    PursuitEvasion,
+    SunBlocking,
+    make_game,
+    make_lady_bandit_guard,
+    make_observation_blocking,
+    make_pursuit_evasion,
+    make_sun_blocking,
+)
 from orbital_game.logging.reader import load_run  # noqa: E402
 from orbital_game.logging.writer import save_run  # noqa: E402
 from orbital_game.reference_orbit import ReferenceOrbitState  # noqa: E402
-from orbital_game.rollout import Trajectory, episode_mask, rollout  # noqa: E402
+from orbital_game.registry import GameKey  # noqa: E402
+from orbital_game.rollout import (  # noqa: E402
+    episode_mask,
+    rollout,
+    rollout_single_agent,
+)
+
+# Adapters: optional extras, exposed via the adapters submodule.
+# - POMDPAdapter is always importable (no external dep).
+# - GymnasiumAdapter / PettingZooAdapter are None when the matching extra
+#   isn't installed; users can `from orbital_game.adapters.<name> import ...`
+#   to surface the underlying ImportError instead.
+POMDPAdapter = adapters.POMDPAdapter
+GymnasiumAdapter = adapters.GymnasiumAdapter
+PettingZooAdapter = adapters.PettingZooAdapter
 
 __all__ = [
+    "Actions",
+    "BySide",
     "EnvState",
+    "Game",
+    "GameKey",
+    "GymnasiumAdapter",
+    "LadyBanditGuard",
+    "NoGame",
+    "ObservationBlocking",
     "OrbitalGameEnv",
+    "POMDPAdapter",
+    "PettingZooAdapter",
+    "PursuitEvasion",
     "ReferenceOrbitState",
     "ScenarioConfig",
+    "Side",
+    "SideOutput",
+    "SideTrajectory",
+    "SingleAgentView",
+    "StepOutput",
+    "SunBlocking",
     "Trajectory",
     "VehicleParamsSpec",
+    "adapters",
     "episode_mask",
     "load_run",
+    "make_game",
+    "make_lady_bandit_guard",
+    "make_observation_blocking",
+    "make_pursuit_evasion",
+    "make_sun_blocking",
     "rollout",
+    "rollout_single_agent",
     "save_run",
 ]

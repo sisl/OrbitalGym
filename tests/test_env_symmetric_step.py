@@ -14,10 +14,12 @@ def test_step_returns_step_output():
     cfg = build_config()
     env = OrbitalGameEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
-    actions = Actions(sides=BySide(
-        guard=jnp.zeros((cfg.n_guards, 3)),
-        bandit=jnp.zeros((cfg.n_bandits, 3)),
-    ))
+    actions = Actions(
+        sides=BySide(
+            guard=jnp.zeros((cfg.n_guards, 3)),
+            bandit=jnp.zeros((cfg.n_bandits, 3)),
+        )
+    )
     out = env.step(jax.random.PRNGKey(1), state, actions)
     assert isinstance(out, StepOutput)
     assert isinstance(out.outputs, BySide)
@@ -29,10 +31,12 @@ def test_step_advances_time_and_step():
     cfg = build_config()
     env = OrbitalGameEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
-    actions = Actions(sides=BySide(
-        guard=jnp.zeros((cfg.n_guards, 3)),
-        bandit=jnp.zeros((cfg.n_bandits, 3)),
-    ))
+    actions = Actions(
+        sides=BySide(
+            guard=jnp.zeros((cfg.n_guards, 3)),
+            bandit=jnp.zeros((cfg.n_bandits, 3)),
+        )
+    )
     out = env.step(jax.random.PRNGKey(1), state, actions)
     assert float(out.state.t) == float(state.t) + cfg.dt
     assert int(out.state.step) == int(state.step) + 1
@@ -42,10 +46,12 @@ def test_step_episode_done_broadcasts_to_per_side():
     cfg = build_config()
     env = OrbitalGameEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
-    actions = Actions(sides=BySide(
-        guard=jnp.zeros((cfg.n_guards, 3)),
-        bandit=jnp.zeros((cfg.n_bandits, 3)),
-    ))
+    actions = Actions(
+        sides=BySide(
+            guard=jnp.zeros((cfg.n_guards, 3)),
+            bandit=jnp.zeros((cfg.n_bandits, 3)),
+        )
+    )
     out = env.step(jax.random.PRNGKey(1), state, actions)
     assert out.outputs.guard.done.shape == out.episode_done.shape
     assert out.outputs.bandit.done.shape == out.episode_done.shape
@@ -58,10 +64,12 @@ def test_step_jit_compiles():
     cfg = build_config()
     env = OrbitalGameEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
-    actions = Actions(sides=BySide(
-        guard=jnp.zeros((cfg.n_guards, 3)),
-        bandit=jnp.zeros((cfg.n_bandits, 3)),
-    ))
+    actions = Actions(
+        sides=BySide(
+            guard=jnp.zeros((cfg.n_guards, 3)),
+            bandit=jnp.zeros((cfg.n_bandits, 3)),
+        )
+    )
     jit_step = jax.jit(env.step)
     out = jit_step(jax.random.PRNGKey(1), state, actions)
     assert out.episode_done.shape == ()

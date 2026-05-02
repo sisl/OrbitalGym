@@ -65,6 +65,7 @@ class PursuitEvasionReward:
     def __call__(self, prev_state, action, next_state, side, params, t):
         del prev_state, action, t
         from orbital_game.env.types import Side
+
         if not isinstance(params.game, PursuitEvasion):
             raise TypeError(
                 f"PursuitEvasionReward requires cfg.game: PursuitEvasion; "
@@ -129,12 +130,8 @@ def make_pursuit_evasion(
         ),
         "guard_components": (StateComponentKey.RTN,),
         "bandit_components": (StateComponentKey.RTN,),
-        "guard_params": VehicleParamsSpec(
-            dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0
-        ),
-        "bandit_params": VehicleParamsSpec(
-            dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0
-        ),
+        "guard_params": VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
+        "bandit_params": VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
         "ic_sampler": ICSpec(
             guard_sampler=RelativeEllipse(
                 radial_ellipse_m=1000.0,
@@ -166,7 +163,5 @@ def make_pursuit_evasion(
         reward_fn=PursuitEvasionReward(),
         **defaults,
     )
-    object.__setattr__(
-        cfg, "termination_fn", PursuitEvasionTermination(max_steps=cfg.max_steps)
-    )
+    object.__setattr__(cfg, "termination_fn", PursuitEvasionTermination(max_steps=cfg.max_steps))
     return cfg

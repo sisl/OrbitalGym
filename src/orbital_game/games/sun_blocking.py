@@ -33,6 +33,7 @@ def _epoch_from_mjd(mjd_float):
     jd_offset = astrojax.JD_MJD_OFFSET  # 2400000.5
     jd_full = float(mjd_float) + float(jd_offset)
     import math
+
     jd_int = math.floor(jd_full)
     seconds = (jd_full - jd_int) * 86400.0
     return astrojax.Epoch._from_internal(
@@ -71,6 +72,7 @@ class SunBlockingReward:
 
     def __call__(self, prev_state, action, next_state, side, params, t):
         from orbital_game.env.types import Side
+
         del prev_state, action, t
         if not isinstance(params.game, SunBlocking):
             raise TypeError(
@@ -109,7 +111,7 @@ class SunBlockingReward:
 
         bandit_r = jnp.where(
             in_front,
-            jnp.exp(-(angle_deg ** 2) / (2.0 * params.game.angle_sigma_deg ** 2)),
+            jnp.exp(-(angle_deg**2) / (2.0 * params.game.angle_sigma_deg**2)),
             0.0,
         )
         return jnp.where(side == Side.BANDIT, bandit_r, -bandit_r)
@@ -143,12 +145,8 @@ def make_sun_blocking(
         ),
         "guard_components": (StateComponentKey.RTN,),
         "bandit_components": (StateComponentKey.RTN,),
-        "guard_params": VehicleParamsSpec(
-            dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0
-        ),
-        "bandit_params": VehicleParamsSpec(
-            dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0
-        ),
+        "guard_params": VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
+        "bandit_params": VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
         "ic_sampler": ICSpec(
             guard_sampler=RelativeEllipse(
                 radial_ellipse_m=500.0,

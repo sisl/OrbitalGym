@@ -29,6 +29,7 @@ def build_config() -> ScenarioConfig:
     jitter. 200 steps at 10 s each.
     """
     from orbital_game.games import make_lady_bandit_guard
+
     return make_lady_bandit_guard(
         n_guards=1,
         n_bandits=1,
@@ -52,8 +53,11 @@ def run(hdf5_path: Path, plots_dir: Path) -> None:
         return None
 
     traj = rollout_single_agent(
-        view, controlled_policy, init_none,
-        jax.random.PRNGKey(cfg.seed), n_steps=cfg.max_steps,
+        view,
+        controlled_policy,
+        init_none,
+        jax.random.PRNGKey(cfg.seed),
+        n_steps=cfg.max_steps,
     )
 
     save_run(hdf5_path, cfg, traj)

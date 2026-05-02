@@ -33,6 +33,7 @@ from orbital_game.env.types import Actions, BySide, Side
 
 def _action_dim_from_dynamics(dynamics_key) -> int:
     from orbital_game.registry import DynamicsKey
+
     return 2 if dynamics_key is DynamicsKey.HCW_RT else 3
 
 
@@ -100,13 +101,9 @@ class POMDPAdapter:
         guards_next, bandits_next = self.layout.unflatten(s_next_flat)
         next_state = self._last_state.replace(guards=guards_next, bandits=bandits_next)
         obs_fn = (
-            self.env.guard_observation_fn
-            if side is Side.GUARD
-            else self.env.bandit_observation_fn
+            self.env.guard_observation_fn if side is Side.GUARD else self.env.bandit_observation_fn
         )
-        return obs_fn(
-            next_state, side, self.env.config, jax.random.PRNGKey(0), next_state.t
-        )
+        return obs_fn(next_state, side, self.env.config, jax.random.PRNGKey(0), next_state.t)
 
     def reward(
         self,

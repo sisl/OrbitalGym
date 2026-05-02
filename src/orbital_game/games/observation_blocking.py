@@ -64,11 +64,13 @@ class ObservationBlocking(Game):
     def __post_init__(self):
         # position_geodetic_to_ecef expects [lon, lat, alt] (lon first, radians).
         ecef = astrojax.position_geodetic_to_ecef(
-            jnp.array([
-                jnp.deg2rad(self.target_lon_deg),
-                jnp.deg2rad(self.target_lat_deg),
-                float(self.target_alt_m),
-            ])
+            jnp.array(
+                [
+                    jnp.deg2rad(self.target_lon_deg),
+                    jnp.deg2rad(self.target_lat_deg),
+                    float(self.target_alt_m),
+                ]
+            )
         )
         object.__setattr__(self, "target_ecef_m", ecef)
 
@@ -122,9 +124,7 @@ class ObservationBlockingReward:
         # for the guard and is JIT-compatible).
         # "up" at the target is the unit vector from Earth center to target.
         up = target_eci / jnp.linalg.norm(target_eci)
-        dir_to_guard = (guard_eci - target_eci) / jnp.linalg.norm(
-            guard_eci - target_eci
-        )
+        dir_to_guard = (guard_eci - target_eci) / jnp.linalg.norm(guard_eci - target_eci)
         sin_el = jnp.dot(up, dir_to_guard)
         elevation_rad = jnp.arcsin(jnp.clip(sin_el, -1.0, 1.0))
         elevation_deg = jnp.rad2deg(elevation_rad)
@@ -184,12 +184,8 @@ def make_observation_blocking(
         ),
         "guard_components": (StateComponentKey.RTN,),
         "bandit_components": (StateComponentKey.RTN,),
-        "guard_params": VehicleParamsSpec(
-            dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0
-        ),
-        "bandit_params": VehicleParamsSpec(
-            dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0
-        ),
+        "guard_params": VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
+        "bandit_params": VehicleParamsSpec(dry_mass_kg=100.0, isp_s=220.0, max_thrust_n=5.0),
         "ic_sampler": ICSpec(
             guard_sampler=RelativeEllipse(
                 radial_ellipse_m=500.0,

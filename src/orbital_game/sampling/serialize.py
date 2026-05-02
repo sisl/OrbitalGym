@@ -54,8 +54,7 @@ def serializable_from_primitive(d: dict, key_enum_cls: type[Enum]) -> Any:
         key = key_enum_cls(key_value)
     except ValueError as e:
         raise KeyError(
-            f"No callable registered for {key_value!r} "
-            f"(not a valid {key_enum_cls.__name__})"
+            f"No callable registered for {key_value!r} (not a valid {key_enum_cls.__name__})"
         ) from e
     resolved = resolve(key)
     if not (is_dataclass(resolved) and isinstance(resolved, type)):

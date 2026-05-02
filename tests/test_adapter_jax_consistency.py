@@ -25,6 +25,7 @@ pytest.importorskip("pettingzoo")
 def test_gymnasium_adapter_consistency_with_direct_env():
     """GymnasiumAdapter.reset() obs equals env.reset projected to controlled side."""
     from orbital_game.adapters.gymnasium import GymnasiumAdapter
+
     cfg = build_config()
 
     # Direct env path: same key, get reset outputs.
@@ -53,6 +54,7 @@ def test_gymnasium_adapter_consistency_with_direct_env():
 def test_pettingzoo_adapter_consistency_with_direct_env():
     """PettingZooAdapter.reset() obs dict equals env.reset per-side outputs."""
     from orbital_game.adapters.pettingzoo import PettingZooAdapter
+
     cfg = build_config()
 
     env = OrbitalGameEnv(cfg)
@@ -76,6 +78,7 @@ def test_pomdp_adapter_consistency_with_direct_env():
     """POMDPAdapter.transition produces the same flat state as
     layout.flatten(env.step(...).state)."""
     from orbital_game.adapters.pomdp import POMDPAdapter
+
     cfg = build_config()
 
     # Same env instance for both paths so layout/state shapes match.
@@ -95,16 +98,16 @@ def test_pomdp_adapter_consistency_with_direct_env():
     n_b = cfg.n_bandits
     d = adapter.action_dim_per_side
     a = jnp.zeros(n_g * d + n_b * d)
-    actions_direct = Actions(sides=BySide(
-        guard=a[: n_g * d].reshape(n_g, d),
-        bandit=a[n_g * d : n_g * d + n_b * d].reshape(n_b, d),
-    ))
+    actions_direct = Actions(
+        sides=BySide(
+            guard=a[: n_g * d].reshape(n_g, d),
+            bandit=a[n_g * d : n_g * d + n_b * d].reshape(n_b, d),
+        )
+    )
     step_out_direct = env.step(jax.random.PRNGKey(1), state_direct, actions_direct)
     s_next_expected = env.layout.flatten(
         step_out_direct.state.guards, step_out_direct.state.bandits
     )
 
     s_next_adapter = adapter.transition(s0, a, jax.random.PRNGKey(1))
-    np.testing.assert_array_equal(
-        np.asarray(s_next_adapter), np.asarray(s_next_expected)
-    )
+    np.testing.assert_array_equal(np.asarray(s_next_adapter), np.asarray(s_next_expected))

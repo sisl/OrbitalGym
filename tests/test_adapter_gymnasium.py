@@ -13,6 +13,7 @@ gymnasium = pytest.importorskip("gymnasium")
 
 def _make_adapter():
     from orbital_game.adapters.gymnasium import GymnasiumAdapter
+
     cfg = build_config()
     env = OrbitalGameEnv(cfg)
     return GymnasiumAdapter(env, seed=0)
@@ -71,5 +72,6 @@ def test_gym_adapter_step_before_reset_raises():
 def test_gym_adapter_passes_check_env():
     """Run gymnasium's environment-checker against the adapter."""
     from gymnasium.utils.env_checker import check_env
+
     adapter = _make_adapter()
     check_env(adapter, skip_render_check=True, skip_close_check=True)

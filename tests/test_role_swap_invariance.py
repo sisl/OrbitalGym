@@ -34,17 +34,21 @@ def test_zero_zero_rollout_is_invariant_to_controlled_side():
         return None
 
     traj_a = rollout(
-        env, BySide(guard=g_pol, bandit=b_pol),
+        env,
+        BySide(guard=g_pol, bandit=b_pol),
         BySide(guard=init_none, bandit=init_none),
-        jax.random.PRNGKey(cfg.seed), n_steps=cfg.max_steps,
+        jax.random.PRNGKey(cfg.seed),
+        n_steps=cfg.max_steps,
     )
 
     cfg_swap = dataclasses.replace(cfg, controlled_side=Side.BANDIT)
     env_swap = OrbitalGameEnv(cfg_swap)
     traj_b = rollout(
-        env_swap, BySide(guard=g_pol, bandit=b_pol),
+        env_swap,
+        BySide(guard=g_pol, bandit=b_pol),
         BySide(guard=init_none, bandit=init_none),
-        jax.random.PRNGKey(cfg_swap.seed), n_steps=cfg_swap.max_steps,
+        jax.random.PRNGKey(cfg_swap.seed),
+        n_steps=cfg_swap.max_steps,
     )
 
     # Numerical state evolution is identical (both sides ZeroControl, same ICs).

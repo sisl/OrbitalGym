@@ -44,10 +44,12 @@ def _make_cfg() -> ScenarioConfig:
 
 
 def _make_actions(cfg: ScenarioConfig, guard_action: jnp.ndarray) -> Actions:
-    return Actions(sides=BySide(
-        guard=guard_action,
-        bandit=jnp.zeros((cfg.n_bandits, 3)),
-    ))
+    return Actions(
+        sides=BySide(
+            guard=guard_action,
+            bandit=jnp.zeros((cfg.n_bandits, 3)),
+        )
+    )
 
 
 def test_env_reset_is_deterministic_under_same_key():
@@ -120,10 +122,12 @@ def test_env_runs_end_to_end_with_rt_2d_dynamics():
     assert s0.guards.rt.shape == (1, 4)
     assert s0.bandits.rt.shape == (1, 4)
     # Guard action is 2D in RT scenarios.
-    actions = Actions(sides=BySide(
-        guard=jnp.zeros((1, 2)),
-        bandit=jnp.zeros((1, 2)),
-    ))
+    actions = Actions(
+        sides=BySide(
+            guard=jnp.zeros((1, 2)),
+            bandit=jnp.zeros((1, 2)),
+        )
+    )
     step_out = env.step(jax.random.PRNGKey(1), s0, actions)
     assert step_out.state.guards.rt.shape == (1, 4)
     assert jnp.isfinite(step_out.outputs.guard.reward)
