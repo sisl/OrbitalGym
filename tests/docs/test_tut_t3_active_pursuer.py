@@ -75,7 +75,7 @@ def test_t3_active_pursuer_walkthrough():
     cfg = make_pursuit_evasion(seed=0, max_horizon_s=2000.0)
     cfg = dataclasses.replace(
         cfg,
-        bandit_scripted_policy=LeadInterceptPursuer(max_dv_mps=0.05, dt=cfg.dt),
+        bandit_policy=LeadInterceptPursuer(max_dv_mps=0.05, dt=cfg.dt),
     )
     env = OrbitalGameEnv(cfg)
     view = SingleAgentView(env)
@@ -119,7 +119,7 @@ def test_t3_ab_comparison_vmap():
 
     def closest_approach(seed, bandit_policy):
         cfg = make_pursuit_evasion(seed=int(seed), max_horizon_s=2000.0)
-        cfg = dataclasses.replace(cfg, bandit_scripted_policy=bandit_policy)
+        cfg = dataclasses.replace(cfg, bandit_policy=bandit_policy)
         env = OrbitalGameEnv(cfg)
         view = SingleAgentView(env)
         guard = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)

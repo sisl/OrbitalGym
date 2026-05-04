@@ -133,8 +133,8 @@ def test_default_scripted_policies_are_zero_control():
     from orbital_game.policies import ZeroControl
 
     cfg = make_config()
-    assert isinstance(cfg.guard_scripted_policy, ZeroControl)
-    assert isinstance(cfg.bandit_scripted_policy, ZeroControl)
+    assert isinstance(cfg.guard_policy, ZeroControl)
+    assert isinstance(cfg.bandit_policy, ZeroControl)
 
 
 def test_default_controlled_side_is_guard():

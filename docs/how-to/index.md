@@ -8,7 +8,7 @@ want to do and just need the few-line answer.
 | Drive the env from Gymnasium | [Use the Gymnasium adapter](use-gymnasium-adapter.md) |
 | Drive the env from PettingZoo | [Use the PettingZoo adapter](use-pettingzoo-adapter.md) |
 | Plug into a POMDP solver | [Use the POMDP adapter](use-pomdp-adapter.md) |
-| Replace the scripted opponent | [Customize the scripted opponent](customize-scripted-opponent.md) |
+| Replace the opponent | [Customize the opponent](customize-opponent.md) |
 | Train the bandit instead of the guard | [Switch the controlled side](switch-controlled-side.md) |
 | Persist a rollout | [Save and load runs](save-load-runs.md) |
 | Run many seeds in parallel | [vmap rollouts over seeds](vmap-rollouts.md) |

@@ -32,9 +32,7 @@ def test_lead_intercept_emits_unit_thrust_along_predicted_line():
 
 def test_lead_intercept_runs_in_pe_rollout():
     cfg = make_pursuit_evasion(seed=0, max_horizon_s=200.0)
-    cfg = dataclasses.replace(
-        cfg, bandit_scripted_policy=LeadInterceptPursuer(max_dv_mps=0.05, dt=cfg.dt)
-    )
+    cfg = dataclasses.replace(cfg, bandit_policy=LeadInterceptPursuer(max_dv_mps=0.05, dt=cfg.dt))
     env = OrbitalGameEnv(cfg)
     view = SingleAgentView(env)
     guard = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)

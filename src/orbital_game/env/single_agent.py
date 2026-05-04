@@ -1,8 +1,8 @@
 """SingleAgentView — projection wrapper for asymmetric play.
 
-Reads `cfg.controlled_side` and the opposite side's scripted policy from
-config; exposes a single-agent reset/step interface that internally runs
-the scripted opponent and threads its policy state through.
+Reads `cfg.controlled_side` and the opposite side's policy from config;
+exposes a single-agent reset/step interface that internally runs the
+opponent and threads its policy state through.
 
 This is the only place the asymmetric controlled/opponent split exists.
 The symmetric core (env/core.py) knows nothing about it.
@@ -22,13 +22,13 @@ from orbital_game.policies import ZeroControl
 
 
 def _resolve_scripted(cfg, side: Side, n_vehicles: int, action_dim: int):
-    """Pull the scripted policy for `side` from cfg, populating dims.
+    """Pull the policy for `side` from cfg, populating dims.
 
     Falls back to ZeroControl if the field doesn't exist (e.g. when this
     runs before Task 6 wires config fields). Same pattern Task 6's
     config-aware build will use.
     """
-    field_name = f"{side.value}_scripted_policy"
+    field_name = f"{side.value}_policy"
     spec = getattr(cfg, field_name, None) or ZeroControl()
     return dataclasses.replace(spec, n_vehicles=n_vehicles, action_dim=action_dim)
 
@@ -47,8 +47,8 @@ class SingleAgentView:
     """Projects the symmetric OrbitalGameEnv core to a single-agent view.
 
     Caller provides actions for the *controlled* side only. The opponent
-    is driven by the scripted policy declared in `cfg.{side}_scripted_policy`
-    (or ZeroControl if that field is not yet present on the config).
+    is driven by the policy declared in `cfg.{side}_policy` (or
+    ZeroControl if that field is not yet present on the config).
     """
 
     def __init__(self, env: OrbitalGameEnv):

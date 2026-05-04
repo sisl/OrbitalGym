@@ -49,9 +49,9 @@ limit.
 
 See [Switch the controlled side](switch-controlled-side.md).
 
-## Customising the scripted opponent
+## Customising the opponent
 
-See [Customize the scripted opponent](customize-scripted-opponent.md).
+See [Customize the opponent](customize-opponent.md).
 
 ## See also
 

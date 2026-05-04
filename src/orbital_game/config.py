@@ -90,8 +90,8 @@ class ScenarioConfig:
     # __post_init__ coerces to Side. Declared as Any to avoid a circular import
     # (config.py is loaded before env.types when orbital_game.__init__ runs).
     controlled_side: Any = "guard"  # Side
-    guard_scripted_policy: Any = None  # Policy
-    bandit_scripted_policy: Any = None
+    guard_policy: Any = None  # Policy
+    bandit_policy: Any = None
 
     # Game catalog (typed knob bundle; default NoGame for custom scenarios)
     game: Any = None  # populated in __post_init__
@@ -169,14 +169,14 @@ class ScenarioConfig:
         # Belief initializer/updater require layout-dependent args (variance_diag,
         # stm, obs_matrix, etc.) and cannot be meaningfully defaulted here.
         # They remain None until the caller or OrbitalGameEnv sets them.
-        if self.guard_scripted_policy is None:
+        if self.guard_policy is None:
             from orbital_game.policies import ZeroControl
 
-            object.__setattr__(self, "guard_scripted_policy", ZeroControl())
-        if self.bandit_scripted_policy is None:
+            object.__setattr__(self, "guard_policy", ZeroControl())
+        if self.bandit_policy is None:
             from orbital_game.policies import ZeroControl
 
-            object.__setattr__(self, "bandit_scripted_policy", ZeroControl())
+            object.__setattr__(self, "bandit_policy", ZeroControl())
 
         # Default game = NoGame
         if self.game is None:
@@ -229,8 +229,8 @@ _TYPED_INSTANCE_FIELDS: dict[str, type[Enum]] = {
     "guard_belief_updater": BeliefUpdaterKey,
     "bandit_belief_initializer": BeliefInitializerKey,
     "bandit_belief_updater": BeliefUpdaterKey,
-    "guard_scripted_policy": PolicyKey,
-    "bandit_scripted_policy": PolicyKey,
+    "guard_policy": PolicyKey,
+    "bandit_policy": PolicyKey,
 }
 
 # Typed-instance fields whose instances contain config-derived non-serializable

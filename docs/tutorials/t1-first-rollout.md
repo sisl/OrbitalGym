@@ -43,7 +43,7 @@ impulses.
 
 `rollout_single_agent` compiles down to one `jax.lax.scan` call. The
 opposing side (bandit) is driven internally by
-`cfg.bandit_scripted_policy` — defaulting to `ZeroControl`.
+`cfg.bandit_policy` — defaulting to `ZeroControl`.
 
 ## Inspect the trajectory
 

@@ -13,7 +13,7 @@ cfg = make_lady_bandit_guard()
 cfg = dataclasses.replace(cfg, controlled_side=Side.BANDIT)
 ```
 
-Now `cfg.guard_scripted_policy` drives the guard, and the adapter's
+Now `cfg.guard_policy` drives the guard, and the adapter's
 action / observation are the bandit's.
 
 ## Effect on adapters

@@ -57,7 +57,7 @@ For the full field list see [API → `LadyBanditGuard`](../api/games.md).
 ## Suggested experiments
 
 - **Sanity baseline.** Run with zero control on both sides — no breach occurs, the episode ends at `max_steps`. This is what `examples/reference_scenario.py` does.
-- **Bandit attack.** Replace `cfg.bandit_scripted_policy` with a heuristic that maneuvers toward the reference origin; the zero-control guard should eventually lose.
+- **Bandit attack.** Replace `cfg.bandit_policy` with a heuristic that maneuvers toward the reference origin; the zero-control guard should eventually lose.
 - **Guard station-keeping.** Train a guard policy to minimize the negative reward (stay close to the reference orbit) under bandit perturbations.
 
 ## Sanity-check notebook

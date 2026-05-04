@@ -105,18 +105,17 @@ PettingZoo adapter and the symmetric `rollout` use).
 
 In single-agent framing, `SingleAgentView` reads
 `cfg.controlled_side` (default `Side.GUARD`) and runs the opposite
-side's `cfg.<side>_scripted_policy` internally. The view's `step`
+side's `cfg.<side>_policy` internally. The view's `step`
 takes only the controlled side's action and returns only its reward
 and observation. The Gymnasium adapter wraps this view.
 
-## Why scripted policies live on the config
+## Why per-side policies live on the config
 
-`ScenarioConfig.guard_scripted_policy` and `bandit_scripted_policy`
-are populated by the make_<game> builders to `ZeroControl` by default.
-`SingleAgentView` reads the *opposite* side's scripted policy at
-construction. Multi-agent adapters ignore both fields. This means a
-swap from "guard learning vs scripted bandit" to "bandit learning vs
-scripted guard" is a single
+`ScenarioConfig.guard_policy` and `bandit_policy` are populated by the
+make_<game> builders to `ZeroControl` by default. `SingleAgentView`
+reads the *opposite* side's policy at construction. Multi-agent adapters
+ignore both fields. This means a swap from "guard learning vs heuristic
+bandit" to "bandit learning vs heuristic guard" is a single
 `dataclasses.replace(cfg, controlled_side=Side.BANDIT)` call — see
 [How-to → Switch the controlled side](../how-to/switch-controlled-side.md).
 

@@ -2,9 +2,9 @@
 
 A Policy is a pure callable mapping (policy_state, obs, key, t) to a tuple
 (action, next_policy_state). Stateful by default; stateless policies pass
-None for policy_state. The same concrete Policy class can be wired as a
-guard scripted-opponent, bandit scripted-opponent, or learned controlled
-side — only the (n_vehicles, action_dim) injection differs at env-build.
+None for policy_state. The same concrete Policy class can be wired as the
+guard policy, bandit policy, or learned controlled side — only the
+(n_vehicles, action_dim) injection differs at env-build.
 """
 
 from __future__ import annotations

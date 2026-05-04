@@ -23,7 +23,7 @@ from orbital_game.rollout import rollout_single_agent
 
 def _rollout_min_dist(bandit_policy):
     cfg = make_pursuit_evasion(seed=0, max_horizon_s=2000.0)
-    cfg = dataclasses.replace(cfg, bandit_scripted_policy=bandit_policy)
+    cfg = dataclasses.replace(cfg, bandit_policy=bandit_policy)
     env = OrbitalGameEnv(cfg)
     view = SingleAgentView(env)
     guard_policy = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)

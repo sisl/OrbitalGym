@@ -1,4 +1,4 @@
-# Customize the scripted opponent
+# Customize the opponent
 
 In single-agent framing, the *opposite* side runs a scripted policy.
 Replace it with anything that satisfies the `Policy` protocol.
@@ -17,7 +17,7 @@ class MyPursuer:
         ...
 
 cfg = make_pursuit_evasion()
-cfg = dataclasses.replace(cfg, bandit_scripted_policy=MyPursuer())
+cfg = dataclasses.replace(cfg, bandit_policy=MyPursuer())
 ```
 
 `ScenarioConfig` is frozen, hence `dataclasses.replace`. The Gymnasium
