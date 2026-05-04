@@ -18,18 +18,19 @@ import jax
 from orbital_game.env.core import EnvState, OrbitalGameEnv
 from orbital_game.env.types import Actions, BySide, Side
 from orbital_game.observations.types import flatten_observations
-from orbital_game.policies import ZeroControl
 
 
-def _resolve_scripted(cfg, side: Side, n_vehicles: int, action_dim: int):
+def _resolve_policy(cfg, side: Side, n_vehicles: int, action_dim: int):
     """Pull the policy for `side` from cfg, populating dims.
 
-    Falls back to ZeroControl if the field doesn't exist (e.g. when this
-    runs before Task 6 wires config fields). Same pattern Task 6's
-    config-aware build will use.
+    `cfg.{side}_policy` is guaranteed to be a Policy instance by
+    `ScenarioConfig.__post_init__` (defaults to `ZeroControl()` if the
+    builder didn't supply one). Missing or None means a misconfigured
+    cfg — let the AttributeError or `dataclasses.replace` failure
+    surface; do not substitute a silent default.
     """
     field_name = f"{side.value}_policy"
-    spec = getattr(cfg, field_name, None) or ZeroControl()
+    spec = getattr(cfg, field_name)
     return dataclasses.replace(spec, n_vehicles=n_vehicles, action_dim=action_dim)
 
 
@@ -47,18 +48,19 @@ class SingleAgentView:
     """Projects the symmetric OrbitalGameEnv core to a single-agent view.
 
     Caller provides actions for the *controlled* side only. The opponent
-    is driven by the policy declared in `cfg.{side}_policy` (or
-    ZeroControl if that field is not yet present on the config).
+    is driven by the policy declared in `cfg.{side}_policy`, which
+    `ScenarioConfig.__post_init__` defaults to `ZeroControl()` when the
+    builder leaves it unset.
     """
 
     def __init__(self, env: OrbitalGameEnv):
         self.env = env
         self.config = env.config
-        self.controlled_side: Side = getattr(env.config, "controlled_side", Side.GUARD)
+        self.controlled_side: Side = env.config.controlled_side
         self.opponent_side: Side = self.controlled_side.opposite()
         opp_n = env.config.n_guards if self.opponent_side is Side.GUARD else env.config.n_bandits
         action_dim = _action_dim_from_dynamics(env.config.truth_dynamics)
-        self.opponent_policy = _resolve_scripted(env.config, self.opponent_side, opp_n, action_dim)
+        self.opponent_policy = _resolve_policy(env.config, self.opponent_side, opp_n, action_dim)
 
     def reset(self, key: jax.Array):
         """Returns (env_state, obs_controlled, opponent_policy_state)."""
