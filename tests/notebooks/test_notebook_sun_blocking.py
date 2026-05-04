@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from orbital_game import OrbitalGameEnv, rollout  # noqa: E402
 from orbital_game.env.types import BySide  # noqa: E402
 from orbital_game.games import make_sun_blocking  # noqa: E402
-from orbital_game.policies.library import ZeroControl  # noqa: E402
+from orbital_game.policies import ZeroControl  # noqa: E402
 from orbital_game.sampling.side import RelativeEllipse  # noqa: E402
 from orbital_game.sampling.spec import ICSpec  # noqa: E402
 from orbital_game.viz import (  # noqa: E402

@@ -1,9 +1,9 @@
-"""Tests for policies/library.py — role-agnostic policy library."""
+"""Tests for ZeroControl — role-agnostic policy library."""
 
 import jax
 import jax.numpy as jnp
 
-from orbital_game.policies.library import ZeroControl
+from orbital_game.policies import ZeroControl
 
 
 def test_zero_control_returns_zeros():
@@ -18,7 +18,7 @@ def test_zero_control_replace_dims():
     """ZeroControl's n_vehicles/action_dim are populated via dataclasses.replace."""
     import dataclasses
 
-    from orbital_game.policies.library import ZeroControl
+    from orbital_game.policies import ZeroControl
 
     bare = ZeroControl()
     assert bare.n_vehicles == 0 and bare.action_dim == 0

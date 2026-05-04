@@ -5,7 +5,7 @@
 ```python
 import jax
 from orbital_game import OrbitalGameEnv, BySide, make_sun_blocking
-from orbital_game.policies.library import ZeroControl
+from orbital_game.policies import ZeroControl
 from orbital_game.rollout import rollout
 
 cfg = make_sun_blocking()

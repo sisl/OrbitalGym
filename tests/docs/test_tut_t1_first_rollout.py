@@ -10,7 +10,7 @@ def test_t1_first_rollout_rt2d():
     import jax
 
     from orbital_game import OrbitalGameEnv, SingleAgentView, make_lady_bandit_guard
-    from orbital_game.policies.library import ZeroControl
+    from orbital_game.policies import ZeroControl
     from orbital_game.registry import DynamicsKey, StateComponentKey
     from orbital_game.rollout import rollout_single_agent
     # --8<-- [end:imports]

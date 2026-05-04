@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from orbital_game import OrbitalGameEnv, rollout  # noqa: E402
 from orbital_game.env.types import BySide  # noqa: E402
 from orbital_game.games import make_lady_bandit_guard  # noqa: E402
-from orbital_game.policies.library import ZeroControl  # noqa: E402
+from orbital_game.policies import ZeroControl  # noqa: E402
 from orbital_game.viz import (  # noqa: E402
     plot_reward_diagnostic,
     plot_reward_position_sweep,

@@ -1,1 +1,21 @@
+"""Role-agnostic policy library — shared between guard and bandit.
 
+Public re-exports:
+
+    ZeroControl     — default scripted policy; emits zero command.
+    Policy          — structural protocol.
+
+Submodules:
+
+    controlled      — gallery of controlled-side patterns
+                      (scripted_with_fallback, belief_conditioned, composite_action).
+    scripted        — gallery of scripted adversaries
+                      (lead_intercept, evader, sun_tracker, jittered).
+"""
+
+from __future__ import annotations
+
+from orbital_game.policies.base import Policy
+from orbital_game.policies.zero import ZeroControl
+
+__all__ = ["Policy", "ZeroControl"]

@@ -31,7 +31,7 @@ from orbital_game.env.core import OrbitalGameEnv  # noqa: E402
 from orbital_game.env.types import BySide, Side  # noqa: E402
 from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard  # noqa: E402
 from orbital_game.observations.range_limited import RangeLimitedObservation  # noqa: E402
-from orbital_game.policies.library import ZeroControl  # noqa: E402
+from orbital_game.policies import ZeroControl  # noqa: E402
 from orbital_game.reference_orbit import mean_motion as ref_mean_motion  # noqa: E402
 from orbital_game.rollout import rollout  # noqa: E402
 from orbital_game.viz.animation import (  # noqa: E402

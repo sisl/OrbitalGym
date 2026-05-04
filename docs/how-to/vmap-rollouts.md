@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 
 from orbital_game import OrbitalGameEnv, SingleAgentView, make_pursuit_evasion
-from orbital_game.policies.library import ZeroControl
+from orbital_game.policies import ZeroControl
 from orbital_game.rollout import rollout_single_agent
 
 cfg = make_pursuit_evasion(seed=0)

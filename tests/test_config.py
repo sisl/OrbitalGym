@@ -130,7 +130,7 @@ def test_default_typed_pluggables_are_instances():
 
 
 def test_default_scripted_policies_are_zero_control():
-    from orbital_game.policies.library import ZeroControl
+    from orbital_game.policies import ZeroControl
 
     cfg = make_config()
     assert isinstance(cfg.guard_scripted_policy, ZeroControl)

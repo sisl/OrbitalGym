@@ -10,7 +10,7 @@ from orbital_game.env.core import OrbitalGameEnv  # noqa: E402
 from orbital_game.env.types import BySide  # noqa: E402
 from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard  # noqa: E402
 from orbital_game.games.pursuit_evasion import make_pursuit_evasion  # noqa: E402
-from orbital_game.policies.library import ZeroControl  # noqa: E402
+from orbital_game.policies import ZeroControl  # noqa: E402
 from orbital_game.rollout import rollout  # noqa: E402
 from orbital_game.viz.reward_diagnostics import (  # noqa: E402
     plot_lady_bandit_guard_diagnostic,

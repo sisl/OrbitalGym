@@ -17,7 +17,7 @@ from orbital_game import (
     make_lady_bandit_guard,
     save_run,
 )
-from orbital_game.policies.library import ZeroControl
+from orbital_game.policies import ZeroControl
 from orbital_game.rollout import rollout_single_agent
 
 cfg = make_lady_bandit_guard()

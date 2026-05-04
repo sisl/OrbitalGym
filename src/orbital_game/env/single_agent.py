@@ -18,7 +18,7 @@ import jax
 from orbital_game.env.core import EnvState, OrbitalGameEnv
 from orbital_game.env.types import Actions, BySide, Side
 from orbital_game.observations.types import flatten_observations
-from orbital_game.policies.library import ZeroControl
+from orbital_game.policies import ZeroControl
 
 
 def _resolve_scripted(cfg, side: Side, n_vehicles: int, action_dim: int):

@@ -170,11 +170,11 @@ class ScenarioConfig:
         # stm, obs_matrix, etc.) and cannot be meaningfully defaulted here.
         # They remain None until the caller or OrbitalGameEnv sets them.
         if self.guard_scripted_policy is None:
-            from orbital_game.policies.library import ZeroControl
+            from orbital_game.policies import ZeroControl
 
             object.__setattr__(self, "guard_scripted_policy", ZeroControl())
         if self.bandit_scripted_policy is None:
-            from orbital_game.policies.library import ZeroControl
+            from orbital_game.policies import ZeroControl
 
             object.__setattr__(self, "bandit_scripted_policy", ZeroControl())
 

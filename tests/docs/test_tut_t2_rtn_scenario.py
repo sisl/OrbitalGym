@@ -23,7 +23,7 @@ def test_t2_rtn_scenario():
 
     from orbital_game import OrbitalGameEnv, make_pursuit_evasion
     from orbital_game.env.types import BySide
-    from orbital_game.policies.library import ZeroControl
+    from orbital_game.policies import ZeroControl
     from orbital_game.rollout import episode_mask, rollout
     # --8<-- [end:imports]
 
@@ -82,7 +82,7 @@ def test_t2_plots_render():
 
     from orbital_game import OrbitalGameEnv, make_pursuit_evasion
     from orbital_game.env.types import BySide
-    from orbital_game.policies.library import ZeroControl
+    from orbital_game.policies import ZeroControl
     from orbital_game.rollout import rollout
     from orbital_game.viz.summaries import plot_reward_curve
     from orbital_game.viz.trajectories import plot_rtn_3d

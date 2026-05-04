@@ -24,7 +24,7 @@ def test_t3_active_pursuer_walkthrough():
         SingleAgentView,
         make_pursuit_evasion,
     )
-    from orbital_game.policies.library import ZeroControl
+    from orbital_game.policies import ZeroControl
     from orbital_game.rollout import rollout_single_agent
     # --8<-- [end:imports]
 
@@ -114,7 +114,7 @@ def test_t3_ab_comparison_vmap():
         SingleAgentView,
         make_pursuit_evasion,
     )
-    from orbital_game.policies.library import ZeroControl
+    from orbital_game.policies import ZeroControl
     from orbital_game.rollout import rollout_single_agent
 
     def closest_approach(seed, bandit_policy):

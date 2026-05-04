@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from orbital_game import OrbitalGameEnv, rollout  # noqa: E402
 from orbital_game.env.types import BySide  # noqa: E402
 from orbital_game.games import make_observation_blocking, make_sun_blocking  # noqa: E402
-from orbital_game.policies.library import ZeroControl  # noqa: E402
+from orbital_game.policies import ZeroControl  # noqa: E402
 from orbital_game.viz import (  # noqa: E402
     plot_observation_blocking_animated_diagnostic,
     plot_sun_blocking_animated_diagnostic,

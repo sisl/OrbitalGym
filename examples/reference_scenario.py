@@ -14,7 +14,7 @@ from orbital_game.config import ScenarioConfig
 from orbital_game.env.core import OrbitalGameEnv
 from orbital_game.env.single_agent import SingleAgentView
 from orbital_game.logging.writer import save_run
-from orbital_game.policies.library import ZeroControl
+from orbital_game.policies import ZeroControl
 from orbital_game.rollout import rollout_single_agent
 from orbital_game.viz.summaries import plot_mass_curve, plot_reward_curve
 from orbital_game.viz.trajectories import plot_rtn_3d

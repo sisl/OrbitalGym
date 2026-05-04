@@ -17,7 +17,7 @@ import jax.numpy as jnp
 from examples.reference_scenario import build_config
 from orbital_game.env.core import OrbitalGameEnv
 from orbital_game.env.types import BySide, Side
-from orbital_game.policies.library import ZeroControl
+from orbital_game.policies import ZeroControl
 from orbital_game.rollout import rollout
 
 

@@ -6,7 +6,7 @@ Protocols and reference implementations for the env's swappable building blocks.
 
 ::: orbital_game.policies.base.Policy
 
-::: orbital_game.policies.library.ZeroControl
+::: orbital_game.policies.ZeroControl
 
 ## Observations
 

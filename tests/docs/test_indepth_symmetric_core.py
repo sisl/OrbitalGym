@@ -26,7 +26,7 @@ def test_indepth_symmetric_core():
 
     # --8<-- [start:rollout-shapes]
     from orbital_game import OrbitalGameEnv, SingleAgentView, make_pursuit_evasion
-    from orbital_game.policies.library import ZeroControl
+    from orbital_game.policies import ZeroControl
     from orbital_game.rollout import rollout_single_agent
 
     cfg = make_pursuit_evasion(n_guards=2, n_bandits=1, seed=0, max_horizon_s=1000.0)

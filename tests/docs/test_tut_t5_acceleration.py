@@ -18,7 +18,7 @@ def test_t5_vmap_over_seeds():
         SingleAgentView,
         make_pursuit_evasion,
     )
-    from orbital_game.policies.library import ZeroControl
+    from orbital_game.policies import ZeroControl
     from orbital_game.rollout import rollout_single_agent
     # --8<-- [end:imports]
 
