@@ -150,7 +150,7 @@ class OrbitalGameEnv:
         self.truth_dynamics = _DYN_LOOKUP[config.truth_dynamics]
         self.planning_dynamics = _DYN_LOOKUP[config.planning_dynamics]
 
-        # Typed-instance pluggables come directly from the config (populated by
+        # Typed-instance components come directly from the config (populated by
         # ScenarioConfig.__post_init__ defaults or overridden by the caller).
         self.guard_observation_fn = config.guard_observation_fn
         self.bandit_observation_fn = config.bandit_observation_fn

@@ -42,11 +42,13 @@ Wire it onto the cfg:
 --8<-- "tests/docs/test_extending_customize_observations.py:wire-it-up"
 ```
 
-The `StateLayout` is not a top-level `ScenarioConfig` field; it is held
-by the default `FullObservation` that `ScenarioConfig.__post_init__`
-constructs. Pull it off `cfg.guard_observation_fn.layout` (as above)
-and pass it to the custom channel so `dynamics_state_dim`, `n_guards`,
-and `n_bandits` line up with the rest of the scenario.
+`cfg.layout` is the canonical `StateLayout` for the scenario — a small
+struct bundling the per-side state dataclass types, vehicle counts,
+flat-vector dimension, and pytree↔flat conversion functions. Pass it
+to your custom channel (as above) so `dynamics_state_dim`, `n_guards`,
+and `n_bandits` line up with the rest of the scenario. See
+[API → Components → State](../api/components.md#state) for the full
+class reference.
 
 ## Composing channels
 

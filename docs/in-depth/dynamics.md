@@ -104,5 +104,5 @@ by extending the `Actuator` protocol.
 
 - [State layout & adding a Power component](state-layout.md) — what
   the dynamics step reads and writes.
-- [API reference → Pluggables](../api/pluggables.md) — `Dynamics` and
+- [API reference → Components](../api/components.md) — `Dynamics` and
   `Actuator` protocols.

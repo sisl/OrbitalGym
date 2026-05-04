@@ -116,7 +116,7 @@ def test_vehicle_params_spec_no_longer_has_propellant_mass_kg():
     assert not hasattr(spec, "propellant_mass_kg")
 
 
-def test_default_typed_pluggables_are_instances():
+def test_default_typed_components_are_instances():
     """typed-instance fields are populated as object instances, not enum keys."""
     from orbital_game.observations.reference import FullObservation
     from orbital_game.rewards.reference import DistanceToReferenceOrbit
@@ -144,7 +144,7 @@ def test_default_controlled_side_is_guard():
     assert cfg.controlled_side is Side.GUARD
 
 
-def test_roundtrip_typed_pluggables():
+def test_roundtrip_typed_components():
     from examples.reference_scenario import build_config
 
     cfg = build_config()

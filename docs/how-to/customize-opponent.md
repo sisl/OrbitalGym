@@ -32,4 +32,4 @@ Hard-coding them defeats portability across scenario sizes.
 
 - [T3 — Active-pursuer policy](../tutorials/t3-active-pursuer.md) for
   a worked example.
-- [API reference → Pluggables](../api/pluggables.md).
+- [API reference → Components](../api/components.md).

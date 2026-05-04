@@ -52,6 +52,6 @@ Wiring is the usual `dataclasses.replace`:
 
 ## See also
 
-- [API → Pluggables → Termination](../api/pluggables.md#termination)
+- [API → Components → Termination](../api/components.md#termination)
 - [In depth → Symmetric core](../in-depth/symmetric-core.md) — how
   termination interacts with the latched `episode_done` mask.

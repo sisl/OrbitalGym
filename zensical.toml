@@ -77,7 +77,7 @@ nav = [
     { "Types: Side, BySide, Actions, Trajectory" = "api/types.md" },
     { "Games" = "api/games.md" },
     { "Adapters" = "api/adapters.md" },
-    { "Policies, observations, rewards" = "api/pluggables.md" },
+    { "Policies, observations, rewards" = "api/components.md" },
   ] },
 ]
 

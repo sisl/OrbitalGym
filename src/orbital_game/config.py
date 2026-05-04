@@ -1,7 +1,7 @@
 """ScenarioConfig — the single source of truth for a scenario.
 
-Pluggable references that have per-instance knobs are held as typed instances
-(set via __post_init__ defaults or passed directly by the caller). Pluggables
+Component references that have per-instance knobs are held as typed instances
+(set via __post_init__ defaults or passed directly by the caller). Components
 with no per-instance knobs (dynamics, actuators) stay as enum keys for
 cheap equality + JSON round-trips.
 
@@ -68,13 +68,13 @@ class ScenarioConfig:
     max_horizon_s: float
     seed: int
 
-    # Pluggables that stay enum-keyed (no per-instance knobs)
+    # Components that stay enum-keyed (no per-instance knobs)
     truth_dynamics: DynamicsKey = DynamicsKey.HCW_RTN
     planning_dynamics: DynamicsKey = DynamicsKey.HCW_RTN
     guard_actuator: ActuatorKey = ActuatorKey.IMPULSIVE
     bandit_actuator: ActuatorKey = ActuatorKey.IMPULSIVE
 
-    # Pluggables that hold typed instances. Defaults via __post_init__ to avoid
+    # Components that hold typed instances. Defaults via __post_init__ to avoid
     # mutable-default issues and circular imports.
     guard_observation_fn: Any = None  # ObservationFn
     bandit_observation_fn: Any = None
@@ -95,6 +95,11 @@ class ScenarioConfig:
 
     # Game catalog (typed knob bundle; default NoGame for custom scenarios)
     game: Any = None  # populated in __post_init__
+
+    # State layout — derived from n_guards/n_bandits/components. Built once
+    # in __post_init__ so custom observation functions can read it via
+    # `cfg.layout` without reaching into the default `FullObservation`.
+    layout: Any = None  # StateLayout
 
     @property
     def max_steps(self) -> int:
@@ -130,10 +135,12 @@ class ScenarioConfig:
         if not isinstance(self.controlled_side, _Side):
             object.__setattr__(self, "controlled_side", _Side(self.controlled_side))
 
-        # Defaults for typed-instance pluggables. Local imports to avoid cycles.
-        if self.guard_observation_fn is None:
+        # Build the canonical StateLayout once. It is derived purely from
+        # n_guards/n_bandits/components, so it's always the same regardless
+        # of which obs/reward/policy the user wires in. Custom observation
+        # functions read this via cfg.layout.
+        if self.layout is None:
             from orbital_game.env.core import _COMP_LOOKUP
-            from orbital_game.observations.reference import FullObservation
             from orbital_game.state.assemble import build_state_class
             from orbital_game.state.layout import StateLayout
 
@@ -141,19 +148,26 @@ class ScenarioConfig:
             bandit_comps = [_COMP_LOOKUP[k] for k in self.bandit_components]
             guard_cls = build_state_class(guard_comps, self.n_guards, "GuardState")
             bandit_cls = build_state_class(bandit_comps, self.n_bandits, "BanditState")
-            layout = StateLayout.build(
-                guard_state_cls=guard_cls,
-                bandit_state_cls=bandit_cls,
-                n_guards=self.n_guards,
-                n_bandits=self.n_bandits,
+            object.__setattr__(
+                self,
+                "layout",
+                StateLayout.build(
+                    guard_state_cls=guard_cls,
+                    bandit_state_cls=bandit_cls,
+                    n_guards=self.n_guards,
+                    n_bandits=self.n_bandits,
+                ),
             )
-            object.__setattr__(self, "guard_observation_fn", FullObservation(layout=layout))
+
+        # Defaults for typed-instance components. Local imports to avoid cycles.
+        if self.guard_observation_fn is None:
+            from orbital_game.observations.reference import FullObservation
+
+            object.__setattr__(self, "guard_observation_fn", FullObservation(layout=self.layout))
         if self.bandit_observation_fn is None:
             from orbital_game.observations.reference import FullObservation
 
-            guard_obs_fn = self.guard_observation_fn  # always set by this point
-            layout = guard_obs_fn.layout  # pyrefly: ignore[missing-attribute]
-            object.__setattr__(self, "bandit_observation_fn", FullObservation(layout=layout))
+            object.__setattr__(self, "bandit_observation_fn", FullObservation(layout=self.layout))
         if self.reward_fn is None:
             from orbital_game.rewards.reference import DistanceToReferenceOrbit
 
@@ -244,7 +258,7 @@ _KEY_ONLY_TYPED_FIELDS: frozenset[str] = frozenset(
     }
 )
 
-# Fields that are plain enum members (not typed-instance pluggables).
+# Fields that are plain enum members (not typed-instance components).
 _ENUM_FIELDS: dict[str, type[Enum]] = {
     "guard_components": StateComponentKey,
     "bandit_components": StateComponentKey,
@@ -261,6 +275,9 @@ def _config_to_primitive(cfg: ScenarioConfig) -> dict[str, Any]:
     d: dict[str, Any] = {}
     for f in fields(cfg):
         v = getattr(cfg, f.name)
+        # Skip derived fields that __post_init__ rebuilds.
+        if f.name == "layout":
+            continue
         if isinstance(v, Enum):
             d[f.name] = v.value
         elif isinstance(v, tuple) and v and isinstance(v[0], Enum):

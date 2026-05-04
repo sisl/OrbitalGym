@@ -141,5 +141,5 @@ existing scenario via `cfg.guard_observation_fn` /
 
 - [Belief](belief.md) — what consumes `Observation` tuples to maintain
   estimates over time.
-- [API reference → Pluggables](../api/pluggables.md) — the
+- [API reference → Components](../api/components.md) — the
   `ObservationFn` protocol and bundled channels.

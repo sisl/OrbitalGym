@@ -96,5 +96,5 @@ class UKFBeliefUpdater:
 
 - [Observations](observations.md) — what produces the `Observation`
   tuples that the belief consumes.
-- [API reference → Pluggables → Belief](../api/pluggables.md) —
+- [API reference → Components → Belief](../api/components.md) —
   `BeliefInitializer`, `BeliefUpdater`, `KFBelief`, `EKFBelief`.

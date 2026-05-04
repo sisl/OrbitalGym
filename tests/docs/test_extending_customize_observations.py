@@ -54,13 +54,10 @@ def test_customize_observations_walkthrough():
 
     # --8<-- [start:wire-it-up]
     cfg = make_pursuit_evasion(seed=0, max_horizon_s=200.0)
-    # ScenarioConfig holds the StateLayout on the default observation fn it
-    # constructed during __post_init__. Reuse it for the custom channel.
-    layout = cfg.guard_observation_fn.layout
     cfg = dataclasses.replace(
         cfg,
-        guard_observation_fn=PositionOnlyObservation(layout=layout),
-        bandit_observation_fn=PositionOnlyObservation(layout=layout),
+        guard_observation_fn=PositionOnlyObservation(layout=cfg.layout),
+        bandit_observation_fn=PositionOnlyObservation(layout=cfg.layout),
     )
     env = OrbitalGameEnv(cfg)
     # --8<-- [end:wire-it-up]

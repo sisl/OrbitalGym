@@ -94,5 +94,5 @@ or anything else you want side-states to carry.
 
 - [Dynamics](dynamics.md) — how the dynamics step consumes
   components and writes the next state.
-- [API reference → Pluggables → State](../api/pluggables.md) —
+- [API reference → Components → State](../api/components.md) —
   `StateLayout`, `build_state_class`.

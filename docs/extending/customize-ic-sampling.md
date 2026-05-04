@@ -53,4 +53,4 @@ reference configuration so the metric isn't dominated by IC variance:
 ## See also
 
 - [How-to → Round-trip config to JSON](../how-to/json-roundtrip-config.md) — IC samplers serialize cleanly.
-- [API → Pluggables → IC sampling](../api/pluggables.md#ic-sampling)
+- [API → Components → IC sampling](../api/components.md#ic-sampling)

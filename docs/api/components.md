@@ -1,4 +1,4 @@
-# Pluggables
+# Components
 
 Protocols and reference implementations for the env's swappable building blocks.
 

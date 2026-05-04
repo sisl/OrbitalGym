@@ -129,7 +129,7 @@ def resolve_class_to_key(cls: Callable) -> tuple[str, type[Enum]]:
 
     Raises KeyError if not registered. The reverse map accepts any callable
     (functions for stateless registrations like dynamics step fns; classes
-    for dataclass-based pluggables) since `register` is decorator-bound to
+    for dataclass-based components) since `register` is decorator-bound to
     `Callable`. Round-trip serialization (`sampling/serialize.py`) only
     consults this for dataclass classes, but the storage shape is broader.
     """

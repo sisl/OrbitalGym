@@ -14,6 +14,31 @@ from jax.flatten_util import ravel_pytree
 
 @dataclass(frozen=True)
 class StateLayout:
+    """Bridge between the per-side pytree state and a single flat vector.
+
+    Bundles four things that derive together from `n_guards`,
+    `n_bandits`, and the per-side state-component tuples
+    (`cfg.guard_components`, `cfg.bandit_components`):
+
+    - `guard_state_cls`, `bandit_state_cls` — the dynamically-assembled
+      per-side dataclass types. These contain one field per state
+      component (e.g. `rtn` for an RTN dynamics frame, `mass`,
+      `power`, ...). The set of fields is determined by the
+      `cfg.{side}_components` tuple.
+    - `n_guards`, `n_bandits` — vehicle counts.
+    - `flat_dim` — the size of the full flat state vector. For a 1v1
+      RTN scenario with masses, this is `(6 + 1) + (6 + 1) = 14`
+      (six dims of state per vehicle from RTN, one extra from MASS,
+      times two sides). Custom component sets change this.
+    - `_flatten_fn`, `_unflatten_fn` — JIT-compatible bijections
+      between `(guards_pytree, bandits_pytree)` and a flat
+      `(flat_dim,)` vector. POMDP planners use these to operate on
+      the flat representation.
+
+    Built once per cfg in `ScenarioConfig.__post_init__`. Read it as
+    `cfg.layout`.
+    """
+
     guard_state_cls: type
     bandit_state_cls: type
     n_guards: int

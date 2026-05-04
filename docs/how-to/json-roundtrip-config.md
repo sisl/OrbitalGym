@@ -31,5 +31,5 @@ Only if you need JSON round-trip. In-memory composition works without
 
 ## See also
 
-- [API reference → Pluggables](../api/pluggables.md) — the registration
+- [API reference → Components](../api/components.md) — the registration
   convention.

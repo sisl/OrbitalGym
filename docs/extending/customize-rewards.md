@@ -61,5 +61,5 @@ Wire it onto the cfg:
 ## See also
 
 - [In depth → Symmetric core & data shapes](../in-depth/symmetric-core.md) — what's in `prev_state` / `next_state`.
-- [API → Pluggables → Rewards](../api/pluggables.md#rewards) — auto-generated reference.
+- [API → Components → Rewards](../api/components.md#rewards) — auto-generated reference.
 - [Game guides](../games/index.md) — each game's reward in context.
