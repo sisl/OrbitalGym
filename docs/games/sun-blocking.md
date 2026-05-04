@@ -17,18 +17,26 @@ traj = rollout(env, BySide(guard=guard, bandit=bandit),
                jax.random.PRNGKey(0), n_steps=cfg.max_steps)
 ```
 
-The bandit is rewarded for occluding the guard's view of the Sun — forming an approximately collinear `Sun → guard → bandit` line with the bandit on the far-from-Sun side of the guard. The scenario models adversarial dazzling and sun-shadowing in proximity operations.
+The bandit is rewarded for occluding the guard's view of the Sun — interposing along the line from the bandit to the Sun, at a desired standoff distance. The reward is the KSP-DG SB1 formulation, signed so the *guard* is rewarded when the configuration is reversed.
 
 ## What the reward shapes
 
-Two geometric conditions must hold simultaneously:
+The reward at each timestep is
 
-1. The angle between the Sun-to-guard vector and the Sun-to-bandit vector is small (the three bodies are approximately collinear).
-2. The bandit is farther from the Sun than the guard (it blocks light, rather than being blocked by the guard).
+```
+bandit_r = -û_BG · û_BS  *  exp(-decay * (d_BG - d_target)²)
+guard_r  = -bandit_r
+```
 
-The reward is a Gaussian on the collinearity angle, gated to zero whenever the second condition fails. Smaller `angle_sigma_deg` makes the peak sharper — the bandit must align more precisely to score. The game is zero-sum: the guard's reward is the negative of the bandit's.
+with vertex at the bandit. Three regimes:
 
-The reward looks up Sun ECI position via `astrojax.sun_position(epoch)` and converts vehicle RTN positions to ECI via the shared frame helper in `games/_frames.py`.
+- **Peak (`+1`)** — the bandit is between sun and guard at distance `target_viewing_distance_m`. û_BG points away from the sun, û_BS points toward the sun, so their dot product is ≈ -1, and `-dot ≈ +1`.
+- **Trough (`-1`)** — the *guard* is between sun and bandit at the same distance. The dot product flips sign.
+- **Zero** — far from either configuration, either because the geometry is perpendicular (dot product ≈ 0) or because `|d_BG - d_target|` is large (range factor crushes everything).
+
+The game is zero-sum and bounded `[-1, +1]`. There is no separate angular σ — the dot product is its own peak-shape.
+
+The reward looks up Sun ECI position via `astrojax.sun_position(epoch)` and converts vehicle RTN positions to ECI via the shared frame helper in `games/_frames.py`. The pure formula is exposed as `orbital_game.games.sun_blocking.sun_blocking_kernel(...)` and is used directly by the position-sweep diagnostic.
 
 ## Termination
 
@@ -40,7 +48,8 @@ The reward looks up Sun ECI position via `astrojax.sun_position(epoch)` and conv
 from orbital_game import make_sun_blocking
 
 cfg = make_sun_blocking(
-    angle_sigma_deg=5.0,
+    target_viewing_distance_m=500.0,
+    range_decay_coef=4.0e-6,
     max_horizon_s=5400.0,    # ~90 min, one full LEO orbit
     seed=0,
 )
@@ -54,16 +63,21 @@ The default horizon is one full LEO orbit so the Sun-guard-bandit geometry varie
 |---|---|---|---|
 | `n_guards` | `int` | `1` | Observer count. |
 | `n_bandits` | `int` | `1` | Blocker count. |
-| `angle_sigma_deg` | `float` | `5.0` | Gaussian sharpness on collinearity angle. |
+| `target_viewing_distance_m` | `float` | `500.0` | Desired bandit-guard standoff at the reward peak. |
+| `range_decay_coef` | `float` | `4.0e-6` | Gaussian decay coefficient (1/m²); lower → wider peak. |
 | `max_horizon_s` | `float` | `5400.0` | Total duration (one LEO orbit). |
 | `dt` | `float` | `10.0` | Step size. |
 | `seed` | `int` | `0` | PRNG seed. |
 
 ## Suggested experiments
 
-- **Bandit positioning.** Train a bandit policy to maximize cumulative reward — i.e., maximize sun-occlusion duration over the orbit.
-- **Guard counter-positioning.** Train a guard to actively maneuver away from the bandit's occlusion line.
-- **σ sweep.** Vary `angle_sigma_deg` from 1° to 30°. Smaller σ gives a harder, sharper-peaked problem; larger σ smooths the reward landscape.
+- **Bandit positioning.** Train a bandit policy to maximize cumulative reward — i.e., maintain interposition near `target_viewing_distance_m` over the orbit.
+- **Guard counter-positioning.** Train a guard to actively maneuver to push the bandit out of the peak region (or into the trough).
+- **Range-peak sweep.** Vary `target_viewing_distance_m` from 100 m to 2000 m. The reward peak sits at that range; the IC sampler scale should scale alongside or the bandit will rarely visit the peak in default rollouts.
+
+## Sanity-check notebook
+
+[`examples/games/sun_blocking.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/games/sun_blocking.ipynb) is a full walkthrough that builds a SB scenario, runs a rollout, plots the rollout-time diagnostic, and renders the 2D position-sweep surface — the latter is the canonical reward-shape verification, and it should match the [KSP-DG SB1](https://github.com/mit-ll/spacegym-kspdg/blob/main/src/kspdg/sb1/sb1_base.py) reference shape.
 
 ## Where to next
 

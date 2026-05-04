@@ -60,6 +60,10 @@ For the full field list see [API → `LadyBanditGuard`](../api/games.md).
 - **Bandit attack.** Replace `cfg.bandit_scripted_policy` with a heuristic that maneuvers toward the reference origin; the zero-control guard should eventually lose.
 - **Guard station-keeping.** Train a guard policy to minimize the negative reward (stay close to the reference orbit) under bandit perturbations.
 
+## Sanity-check notebook
+
+[`examples/games/lady_bandit_guard.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/games/lady_bandit_guard.ipynb) is a full walkthrough that builds an LBG scenario, runs a rollout, and renders the rollout diagnostic plus the 2D guard-position reward surface.
+
 ## Where to next
 
 - **Tutorial:** [T1 — First rollout](../tutorials/t1-first-rollout.md).

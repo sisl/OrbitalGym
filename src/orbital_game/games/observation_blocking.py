@@ -2,12 +2,15 @@
 
 Bandit blocks guard's view of an Earth surface target — but only when the
 target is observable (guard above min_elevation_deg from the target).
-Reward shape: Gaussian on collinearity angle, gated on (a) bandit farther
-from target than guard, and (b) target visibility from guard.
 
-Reward (PER_SIDE, zero-sum):
-    bandit_reward = exp(-angle²/2σ²)  if visible AND ordering OK, else 0
-    guard_reward  = -bandit_reward
+Reward (PER_SIDE, zero-sum) — KSP-DG-aligned shape, gated on visibility:
+
+    bandit_r = (-û_BG · û_BT) * exp(-decay * (d_BG - d_target)²) * 1[visible]
+    guard_r  = -bandit_r
+
+where û_BT is the unit vector from bandit to the surface target (rotated
+ECEF→ECI per timestep). Visibility is computed from geocentric "up" at the
+target — see the spec's "Risks" section for accuracy notes.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 import astrojax
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from orbital_game.games._frames import vehicle_eci_position
 from orbital_game.games.base import Game
@@ -48,6 +52,75 @@ def _epoch_from_mjd(mjd_float):
     return _sb_epoch_from_mjd(mjd_float)
 
 
+def _target_eci_at_mjd(mjd: jax.Array, target_ecef: jax.Array) -> jax.Array:
+    """Target ECI position at a given MJD. JIT/scan-safe via `jax.pure_callback`.
+
+    `astrojax.rotation_ecef_to_eci` builds an `Epoch` via `_from_internal`,
+    which uses `math.floor` on a Python float — incompatible with traced JAX
+    scalars. We push the rotation construction (and the ECEF→ECI rotation
+    itself) to the host via `pure_callback` so the reward fn is safe to use
+    inside `jax.lax.scan` / `jax.jit`.
+    """
+
+    def host_fn(mjd_arr, target_ecef_arr):
+        epoch = _epoch_from_mjd(float(mjd_arr))
+        eop = astrojax.zero_eop()
+        rot = np.asarray(astrojax.rotation_ecef_to_eci(eop, epoch), dtype=np.float64)
+        return rot @ np.asarray(target_ecef_arr, dtype=np.float64)
+
+    return jax.pure_callback(
+        host_fn,
+        jax.ShapeDtypeStruct((3,), jnp.float64),
+        mjd,
+        target_ecef,
+    )
+
+
+def target_visible_from_guard(
+    target_eci: jax.Array,
+    guard_eci: jax.Array,
+    min_elevation_deg: float,
+) -> jax.Array:
+    """Boolean visibility gate — True if elevation(target → guard) ≥ min_elevation_deg.
+
+    Uses geocentric "up" at the target (radial from Earth center). Dot product
+    is rotation-invariant, so the choice of frame doesn't matter; the only
+    approximation is geocentric vs. geodetic up. See spec.
+    """
+    up = target_eci / (jnp.linalg.norm(target_eci) + 1e-12)
+    dir_to_guard = (guard_eci - target_eci) / (jnp.linalg.norm(guard_eci - target_eci) + 1e-12)
+    sin_el = jnp.dot(up, dir_to_guard)
+    elevation_rad = jnp.arcsin(jnp.clip(sin_el, -1.0, 1.0))
+    elevation_deg = jnp.rad2deg(elevation_rad)
+    return elevation_deg >= min_elevation_deg
+
+
+def observation_blocking_kernel(
+    guard_eci: jax.Array,
+    bandit_eci: jax.Array,
+    target_eci: jax.Array,
+    target_viewing_distance_m: float,
+    range_decay_coef: float,
+    min_elevation_deg: float,
+) -> jax.Array:
+    """Pure OB reward formula. Returns the bandit's reward as a scalar.
+
+    Same KSP-DG-style core as SB (vertex at the bandit), but multiplied by a
+    visibility gate driven by the target's elevation as seen from the guard.
+
+    Output: scalar reward in [-1, +1].
+    """
+    rel_bg = guard_eci - bandit_eci
+    rel_bt = target_eci - bandit_eci
+    d_bg = jnp.linalg.norm(rel_bg)
+    u_bg = rel_bg / (d_bg + 1e-12)
+    u_bt = rel_bt / (jnp.linalg.norm(rel_bt) + 1e-12)
+    angular = -jnp.dot(u_bg, u_bt)
+    range_factor = jnp.exp(-range_decay_coef * (d_bg - target_viewing_distance_m) ** 2)
+    visible = target_visible_from_guard(target_eci, guard_eci, min_elevation_deg)
+    return jnp.where(visible, angular * range_factor, 0.0)
+
+
 @register_game(GameKey.OBSERVATION_BLOCKING)
 @dataclass(frozen=True)
 class ObservationBlocking(Game):
@@ -59,20 +132,21 @@ class ObservationBlocking(Game):
         min_elevation_deg: target visibility threshold (degrees above
             horizon). Reward is gated to 0 when the target is below this
             elevation as seen from the guard.
-        angle_sigma_deg: collinearity Gaussian width (degrees).
+        target_viewing_distance_m: desired bandit-guard standoff at which the
+            range factor peaks (meters).
+        range_decay_coef: Gaussian decay coefficient (1/m²) controlling the
+            range-factor peak width.
 
     target_ecef_m is precomputed in __post_init__ (one-time geodetic→ECEF
     conversion) and cached on the instance for use in the reward fn.
-
-    Note: astrojax.position_geodetic_to_ecef takes x_geod=[lon, lat, alt]
-    (longitude first) with radians by default.
     """
 
     target_lat_deg: float = 37.4
     target_lon_deg: float = -122.2
     target_alt_m: float = 0.0
     min_elevation_deg: float = 5.0
-    angle_sigma_deg: float = 5.0
+    target_viewing_distance_m: float = 500.0
+    range_decay_coef: float = 4.0e-6
     target_ecef_m: jax.Array = field(init=False)
 
     def __post_init__(self):
@@ -92,18 +166,14 @@ class ObservationBlocking(Game):
 @register(RewardFnKey.OBSERVATION_BLOCKING)
 @dataclass(frozen=True)
 class ObservationBlockingReward:
-    """Earth-target collinearity reward, gated on visibility.
+    """KSP-DG-style observation-blocking reward, gated on visibility.
 
-    Requires cfg.game: ObservationBlocking. Uses astrojax to convert
-    target ECEF → ECI per timestep (via GMST rotation) and computes
-    elevation from the guard using the manual dot-product formula.
-
-    rotation_ecef_to_eci requires (EOPData, Epoch); we use zero_eop() for a
-    simple GMST-only approximation (no EOP corrections), which is sufficient
-    for game-play purposes.
+    Requires `cfg.game: ObservationBlocking`. Pulls vehicle ECI positions via
+    `games/_frames.vehicle_eci_position`, rotates the target ECEF→ECI per
+    timestep (GMST-only via `astrojax.zero_eop`), then calls
+    `observation_blocking_kernel`.
     """
 
-    # scope is a string to avoid circular import on RewardScope at module load.
     scope: str = "per_side"
 
     def __call__(self, prev_state, action, next_state, side, params, t):
@@ -126,42 +196,16 @@ class ObservationBlockingReward:
             bandit_v0, params.reference_orbit, params.epoch_mjd_utc, next_state.t
         )
 
-        # Target ECEF → ECI at current epoch+t.
-        # rotation_ecef_to_eci(eop, epoch) — use zero_eop() for a simple
-        # GMST-based approximation without EOP corrections.
-        epoch = _epoch_from_mjd(params.epoch_mjd_utc + float(next_state.t) / 86400.0)
-        eop = astrojax.zero_eop()
-        rot_ecef_to_eci = astrojax.rotation_ecef_to_eci(eop, epoch)
-        target_eci = rot_ecef_to_eci @ params.game.target_ecef_m
+        mjd = params.epoch_mjd_utc + next_state.t / 86400.0
+        target_eci = _target_eci_at_mjd(mjd, params.game.target_ecef_m)
 
-        # Elevation from target to guard (manual, avoids needing ECEF positions
-        # for the guard and is JIT-compatible).
-        # "up" at the target is the unit vector from Earth center to target.
-        up = target_eci / jnp.linalg.norm(target_eci)
-        dir_to_guard = (guard_eci - target_eci) / jnp.linalg.norm(guard_eci - target_eci)
-        sin_el = jnp.dot(up, dir_to_guard)
-        elevation_rad = jnp.arcsin(jnp.clip(sin_el, -1.0, 1.0))
-        elevation_deg = jnp.rad2deg(elevation_rad)
-        visible = elevation_deg >= params.game.min_elevation_deg
-
-        # Collinearity: angle between (target→guard) and (target→bandit).
-        u_tg = guard_eci - target_eci
-        u_tb = bandit_eci - target_eci
-        u_tg = u_tg / (jnp.linalg.norm(u_tg) + 1e-12)
-        u_tb = u_tb / (jnp.linalg.norm(u_tb) + 1e-12)
-        cos_theta = jnp.clip(jnp.dot(u_tg, u_tb), -1.0, 1.0)
-        angle_deg = jnp.rad2deg(jnp.arccos(cos_theta))
-
-        # Ordering: bandit must be farther from target than guard to actually
-        # occlude the line-of-sight from the target's perspective.
-        target_to_guard_dist = jnp.linalg.norm(guard_eci - target_eci)
-        target_to_bandit_dist = jnp.linalg.norm(bandit_eci - target_eci)
-        in_front = target_to_bandit_dist > target_to_guard_dist
-
-        bandit_r = jnp.where(
-            jnp.logical_and(visible, in_front),
-            jnp.exp(-(angle_deg**2) / (2.0 * params.game.angle_sigma_deg**2)),
-            0.0,
+        bandit_r = observation_blocking_kernel(
+            guard_eci=guard_eci,
+            bandit_eci=bandit_eci,
+            target_eci=target_eci,
+            target_viewing_distance_m=params.game.target_viewing_distance_m,
+            range_decay_coef=params.game.range_decay_coef,
+            min_elevation_deg=params.game.min_elevation_deg,
         )
         return jnp.where(side == Side.BANDIT, bandit_r, -bandit_r)
 
@@ -173,7 +217,8 @@ def make_observation_blocking(
     target_lon_deg: float = -122.2,
     target_alt_m: float = 0.0,
     min_elevation_deg: float = 5.0,
-    angle_sigma_deg: float = 5.0,
+    target_viewing_distance_m: float = 500.0,
+    range_decay_coef: float = 4.0e-6,
     # Fleet sizing
     n_guards: int = 1,
     n_bandits: int = 1,
@@ -263,7 +308,8 @@ def make_observation_blocking(
             target_lon_deg=target_lon_deg,
             target_alt_m=target_alt_m,
             min_elevation_deg=min_elevation_deg,
-            angle_sigma_deg=angle_sigma_deg,
+            target_viewing_distance_m=target_viewing_distance_m,
+            range_decay_coef=range_decay_coef,
         ),
         reward_fn=ObservationBlockingReward(),
     )

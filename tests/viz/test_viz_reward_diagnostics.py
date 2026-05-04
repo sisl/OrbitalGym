@@ -84,3 +84,71 @@ def test_reward_diagnostic_dispatches_lbg(key):
     fig = plot_reward_diagnostic(traj, cfg)
     assert len(fig.axes) == 2
     plt.close(fig)
+
+
+def test_sb_diagnostic_three_panels(key):
+    from orbital_game.games.sun_blocking import make_sun_blocking
+    from orbital_game.viz.reward_diagnostics import plot_sun_blocking_diagnostic
+
+    cfg = make_sun_blocking(dt=10.0, max_horizon_s=200.0)
+    env = OrbitalGameEnv(cfg)
+    policies = BySide(
+        guard=ZeroControl(n_vehicles=1, action_dim=3),
+        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+    )
+    init_ps = BySide(guard=_zero_init, bandit=_zero_init)
+    traj = rollout(env, policies, init_ps, key, n_steps=15)
+    fig = plot_sun_blocking_diagnostic(traj, cfg)
+    assert len(fig.axes) == 3
+    plt.close(fig)
+
+
+def test_ob_diagnostic_four_panels(key):
+    from orbital_game.games.observation_blocking import make_observation_blocking
+    from orbital_game.viz.reward_diagnostics import plot_observation_blocking_diagnostic
+
+    cfg = make_observation_blocking(dt=10.0, max_horizon_s=200.0)
+    env = OrbitalGameEnv(cfg)
+    policies = BySide(
+        guard=ZeroControl(n_vehicles=1, action_dim=3),
+        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+    )
+    init_ps = BySide(guard=_zero_init, bandit=_zero_init)
+    traj = rollout(env, policies, init_ps, key, n_steps=15)
+    fig = plot_observation_blocking_diagnostic(traj, cfg)
+    assert len(fig.axes) == 4
+    plt.close(fig)
+
+
+def test_reward_diagnostic_dispatches_sb(key):
+    from orbital_game.games.sun_blocking import make_sun_blocking
+    from orbital_game.viz.reward_diagnostics import plot_reward_diagnostic
+
+    cfg = make_sun_blocking(dt=10.0, max_horizon_s=200.0)
+    env = OrbitalGameEnv(cfg)
+    policies = BySide(
+        guard=ZeroControl(n_vehicles=1, action_dim=3),
+        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+    )
+    init_ps = BySide(guard=_zero_init, bandit=_zero_init)
+    traj = rollout(env, policies, init_ps, key, n_steps=15)
+    fig = plot_reward_diagnostic(traj, cfg)
+    assert len(fig.axes) == 3
+    plt.close(fig)
+
+
+def test_reward_diagnostic_dispatches_ob(key):
+    from orbital_game.games.observation_blocking import make_observation_blocking
+    from orbital_game.viz.reward_diagnostics import plot_reward_diagnostic
+
+    cfg = make_observation_blocking(dt=10.0, max_horizon_s=200.0)
+    env = OrbitalGameEnv(cfg)
+    policies = BySide(
+        guard=ZeroControl(n_vehicles=1, action_dim=3),
+        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+    )
+    init_ps = BySide(guard=_zero_init, bandit=_zero_init)
+    traj = rollout(env, policies, init_ps, key, n_steps=15)
+    fig = plot_reward_diagnostic(traj, cfg)
+    assert len(fig.axes) == 4
+    plt.close(fig)

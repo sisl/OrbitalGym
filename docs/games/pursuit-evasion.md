@@ -62,6 +62,10 @@ Defaults place the guard on a 1 km radial ellipse at phase 0 and the bandit on a
 - **Self-play.** Train both sides simultaneously via the [PettingZoo adapter](../adapters/pettingzoo.md) and observe equilibrium-ish capture rates.
 - **Asymmetric capabilities.** Vary `guard_params.max_thrust_n` against `bandit_params.max_thrust_n` to study how the thrust ratio affects capture probability.
 
+## Sanity-check notebook
+
+[`examples/games/pursuit_evasion.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/games/pursuit_evasion.ipynb) is a full walkthrough that builds a PE scenario, runs a rollout, and renders the rollout diagnostic plus the 2D guard-position reward surface.
+
 ## Where to next
 
 - **Tutorials:** [T2 — RTN scenario](../tutorials/t2-rtn-scenario.md), [T3 — Active pursuer](../tutorials/t3-active-pursuer.md), [T4 — Short-horizon search](../tutorials/t4-short-horizon-search.md).

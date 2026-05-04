@@ -20,15 +20,17 @@ def test_sun_blocking_registered():
 def test_make_sb_default_knobs():
     cfg = make_sun_blocking()
     assert isinstance(cfg.game, SunBlocking)
-    assert cfg.game.angle_sigma_deg == 5.0
+    assert cfg.game.target_viewing_distance_m == 500.0
+    assert cfg.game.range_decay_coef == 4.0e-6
 
 
 def test_sb_serialize_roundtrip():
-    cfg = make_sun_blocking(angle_sigma_deg=2.5)
+    cfg = make_sun_blocking(target_viewing_distance_m=250.0, range_decay_coef=1.0e-5)
     s = cfg.to_json()
     cfg2 = ScenarioConfig.from_json(s)
     assert isinstance(cfg2.game, SunBlocking)
-    assert cfg2.game.angle_sigma_deg == 2.5
+    assert cfg2.game.target_viewing_distance_m == 250.0
+    assert cfg2.game.range_decay_coef == 1.0e-5
 
 
 def test_sb_reward_zero_sum():
@@ -48,8 +50,8 @@ def test_sb_reward_zero_sum():
     assert abs(r_g + r_b) < 1e-6
 
 
-def test_sb_reward_in_unit_range_for_bandit():
-    """exp(-angle²/2σ²) gated on ordering ⇒ bandit reward in [0, 1]."""
+def test_sb_reward_in_signed_unit_range():
+    """KSP-DG SB1 form ⇒ bandit reward in [-1, 1]."""
     cfg = make_sun_blocking()
     env = OrbitalGameEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
@@ -61,7 +63,7 @@ def test_sb_reward_in_unit_range_for_bandit():
     )
     out = env.step(jax.random.PRNGKey(1), state, actions)
     r_b = float(out.outputs.bandit.reward)
-    assert 0.0 <= r_b <= 1.0
+    assert -1.0 - 1e-6 <= r_b <= 1.0 + 1e-6
 
 
 def test_sb_reward_rejects_wrong_game():

@@ -38,10 +38,11 @@ def test_pe_roundtrip():
 
 
 def test_sb_roundtrip():
-    cfg = make_sun_blocking(angle_sigma_deg=3.0)
+    cfg = make_sun_blocking(target_viewing_distance_m=250.0, range_decay_coef=2.0e-6)
     cfg2 = ScenarioConfig.from_json(cfg.to_json())
     assert isinstance(cfg2.game, SunBlocking)
-    assert cfg2.game.angle_sigma_deg == 3.0
+    assert cfg2.game.target_viewing_distance_m == 250.0
+    assert cfg2.game.range_decay_coef == 2.0e-6
 
 
 def test_ob_roundtrip():
@@ -106,9 +107,9 @@ def test_make_game_lbg():
 
 
 def test_make_game_sb():
-    cfg = make_game(GameKey.SUN_BLOCKING, angle_sigma_deg=1.5)
+    cfg = make_game(GameKey.SUN_BLOCKING, target_viewing_distance_m=750.0)
     assert isinstance(cfg.game, SunBlocking)
-    assert cfg.game.angle_sigma_deg == 1.5
+    assert cfg.game.target_viewing_distance_m == 750.0
 
 
 def test_make_game_ob():

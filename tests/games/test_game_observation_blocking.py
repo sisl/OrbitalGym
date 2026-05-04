@@ -62,7 +62,8 @@ def test_ob_reward_zero_sum():
     assert abs(r_g + r_b) < 1e-6
 
 
-def test_ob_reward_in_unit_range_for_bandit():
+def test_ob_reward_in_signed_unit_range():
+    """KSP-DG SB1 form ⇒ bandit reward in [-1, 1]."""
     cfg = make_observation_blocking()
     env = OrbitalGameEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
@@ -74,7 +75,7 @@ def test_ob_reward_in_unit_range_for_bandit():
     )
     out = env.step(jax.random.PRNGKey(1), state, actions)
     r_b = float(out.outputs.bandit.reward)
-    assert 0.0 <= r_b <= 1.0
+    assert -1.0 - 1e-6 <= r_b <= 1.0 + 1e-6
 
 
 def test_ob_reward_rejects_wrong_game():

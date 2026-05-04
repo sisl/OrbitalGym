@@ -1,13 +1,21 @@
 """Sun-Blocking game.
 
-Bandit is rewarded for occluding the guard's view of the Sun — i.e.,
-forming a Sun→Guard→Bandit collinear line with the bandit on the
-far-from-sun side of the guard. Reward shape is a Gaussian on the
-collinearity angle, gated on the ordering condition.
+Bandit is rewarded for occluding the guard's view of the Sun. Reward is the
+KSP-DG SB1 formulation:
 
-Reward (PER_SIDE, zero-sum):
-    bandit_reward = exp(-angle² / (2σ²))    if bandit farther-from-sun than guard, else 0
-    guard_reward  = -bandit_reward
+    bandit_r = -û_BG · û_BS  *  exp(-decay * (d_BG - d_target)²)
+    guard_r  = -bandit_r
+
+where û_BG is the unit vector from bandit to guard, û_BS is the unit vector
+from bandit to sun, d_BG is the bandit-guard distance, d_target is the
+desired viewing distance, and `decay` is a Gaussian decay coefficient.
+
+Reward is bounded `[-1, +1]`. Peak (`+1`) when the bandit is directly between
+sun and guard at the desired range; trough (`-1`) when the guard is between
+sun and bandit at the desired range; zero far from either configuration.
+Zero-sum across sides.
+
+Reference: https://github.com/mit-ll/spacegym-kspdg/blob/main/src/kspdg/sb1/sb1_base.py
 """
 
 from __future__ import annotations
@@ -18,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 import astrojax
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from orbital_game.games._frames import vehicle_eci_position
 from orbital_game.games.base import Game
@@ -57,28 +66,77 @@ def _epoch_from_mjd(mjd_float):
     )
 
 
+def _sun_eci_at_mjd(mjd: jax.Array) -> jax.Array:
+    """Sun ECI position at a given MJD. JIT/scan-safe via `jax.pure_callback`.
+
+    `astrojax.sun_position` builds an `Epoch` via `_from_internal`, which uses
+    `math.floor` on a Python float — incompatible with traced JAX scalars.
+    We push that work to the host via `pure_callback`, which receives a
+    concrete numpy scalar at execution time even when the surrounding code is
+    being traced (e.g. inside `jax.lax.scan`).
+    """
+
+    def host_fn(mjd_arr):
+        epoch = _epoch_from_mjd(float(mjd_arr))
+        return np.asarray(astrojax.sun_position(epoch), dtype=np.float64)
+
+    return jax.pure_callback(
+        host_fn,
+        jax.ShapeDtypeStruct((3,), jnp.float64),
+        mjd,
+    )
+
+
+def sun_blocking_kernel(
+    guard_eci: jax.Array,
+    bandit_eci: jax.Array,
+    sun_eci: jax.Array,
+    target_viewing_distance_m: float,
+    range_decay_coef: float,
+) -> jax.Array:
+    """Pure SB reward formula. Returns the bandit's reward as a scalar.
+
+    Inputs:
+        guard_eci, bandit_eci, sun_eci: (3,) position vectors in ECI [m].
+        target_viewing_distance_m: peak of the range factor.
+        range_decay_coef: Gaussian decay coefficient (1/m²).
+
+    Output: scalar reward in [-1, +1].
+    """
+    rel_bg = guard_eci - bandit_eci
+    rel_bs = sun_eci - bandit_eci
+    d_bg = jnp.linalg.norm(rel_bg)
+    u_bg = rel_bg / (d_bg + 1e-12)
+    u_bs = rel_bs / (jnp.linalg.norm(rel_bs) + 1e-12)
+    angular = -jnp.dot(u_bg, u_bs)
+    range_factor = jnp.exp(-range_decay_coef * (d_bg - target_viewing_distance_m) ** 2)
+    return angular * range_factor
+
+
 @register_game(GameKey.SUN_BLOCKING)
 @dataclass(frozen=True)
 class SunBlocking(Game):
     """1v1 sun-blocking game.
 
     Knobs:
-        angle_sigma_deg: collinearity-angle Gaussian width (degrees).
-            Smaller σ → narrower reward peak around perfect collinearity.
+        target_viewing_distance_m: desired bandit-guard standoff at which the
+            range factor peaks (meters).
+        range_decay_coef: Gaussian decay coefficient (1/m²) controlling the
+            range-factor peak width.
     """
 
-    angle_sigma_deg: float = 5.0
+    target_viewing_distance_m: float = 500.0
+    range_decay_coef: float = 4.0e-6
 
 
 @register(RewardFnKey.SUN_BLOCKING)
 @dataclass(frozen=True)
 class SunBlockingReward:
-    """Bandit-collinear-with-Sun-Guard reward.
+    """KSP-DG-style sun-blocking reward.
 
-    Requires cfg.game: SunBlocking and cfg.epoch_mjd_utc / cfg.reference_orbit.
-    Computes vehicle ECI positions via the games/_frames helper, looks up
-    Sun ECI via astrojax.sun_position, then evaluates a Gaussian on the
-    collinearity angle gated on the ordering condition.
+    Requires `cfg.game: SunBlocking`. Pulls vehicle ECI positions via
+    `games/_frames.vehicle_eci_position`, looks up Sun ECI via
+    `astrojax.sun_position`, then calls `sun_blocking_kernel`.
     """
 
     # scope is a string to avoid circular import on RewardScope at module load.
@@ -94,7 +152,6 @@ class SunBlockingReward:
                 f"got {type(params.game).__name__}"
             )
 
-        # Vehicle ECI positions (1v1 — first guard, first bandit).
         guard_v0 = jax.tree_util.tree_map(lambda x: x[0], next_state.guards)
         bandit_v0 = jax.tree_util.tree_map(lambda x: x[0], next_state.bandits)
 
@@ -105,36 +162,24 @@ class SunBlockingReward:
             bandit_v0, params.reference_orbit, params.epoch_mjd_utc, next_state.t
         )
 
-        # Sun ECI at current epoch + t_offset.
-        epoch = _epoch_from_mjd(params.epoch_mjd_utc + float(next_state.t) / 86400.0)
-        sun_eci = astrojax.sun_position(epoch)
+        mjd = params.epoch_mjd_utc + next_state.t / 86400.0
+        sun_eci = _sun_eci_at_mjd(mjd)
 
-        # Collinearity: angle between (sun→guard) and (sun→bandit).
-        u_sg = guard_eci - sun_eci
-        u_sb = bandit_eci - sun_eci
-        u_sg = u_sg / (jnp.linalg.norm(u_sg) + 1e-12)
-        u_sb = u_sb / (jnp.linalg.norm(u_sb) + 1e-12)
-        cos_theta = jnp.clip(jnp.dot(u_sg, u_sb), -1.0, 1.0)
-        angle_deg = jnp.rad2deg(jnp.arccos(cos_theta))
-
-        # Ordering: bandit must be farther from sun than guard for the geometry
-        # to actually block the guard's view.
-        sun_to_guard_dist = jnp.linalg.norm(guard_eci - sun_eci)
-        sun_to_bandit_dist = jnp.linalg.norm(bandit_eci - sun_eci)
-        in_front = sun_to_bandit_dist > sun_to_guard_dist
-
-        bandit_r = jnp.where(
-            in_front,
-            jnp.exp(-(angle_deg**2) / (2.0 * params.game.angle_sigma_deg**2)),
-            0.0,
+        bandit_r = sun_blocking_kernel(
+            guard_eci=guard_eci,
+            bandit_eci=bandit_eci,
+            sun_eci=sun_eci,
+            target_viewing_distance_m=params.game.target_viewing_distance_m,
+            range_decay_coef=params.game.range_decay_coef,
         )
         return jnp.where(side == Side.BANDIT, bandit_r, -bandit_r)
 
 
 def make_sun_blocking(
     *,
-    # Game-specific knob
-    angle_sigma_deg: float = 5.0,
+    # Game-specific knobs
+    target_viewing_distance_m: float = 500.0,
+    range_decay_coef: float = 4.0e-6,
     # Fleet sizing
     n_guards: int = 1,
     n_bandits: int = 1,
@@ -219,10 +264,12 @@ def make_sun_blocking(
         bandit_actuator=bandit_actuator,
         guard_observation_fn=guard_observation_fn,
         bandit_observation_fn=bandit_observation_fn,
-        game=SunBlocking(angle_sigma_deg=angle_sigma_deg),
+        game=SunBlocking(
+            target_viewing_distance_m=target_viewing_distance_m,
+            range_decay_coef=range_decay_coef,
+        ),
         reward_fn=SunBlockingReward(),
     )
-    # Termination: max_steps only — set breach_distance to 0 so it never triggers.
     object.__setattr__(
         cfg,
         "termination_fn",
