@@ -54,3 +54,26 @@ def test_component_zeros_shapes(component, field, expected_leaf_shape):
 def test_component_names_unique():
     names = {c.name for c in (RTState, RTNState, Mass, Power, Attitude, BodyRates)}
     assert len(names) == 6
+
+
+def test_eci_state_zeros():
+    from orbital_game.state.components import ECIState
+
+    z = ECIState.zeros(3)
+    assert z["eci"].shape == (3, 6)
+    assert (z["eci"] == 0).all()
+
+
+def test_eci_state_component_key():
+    from orbital_game.registry import StateComponentKey
+
+    assert StateComponentKey.ECI.value == "eci"
+
+
+def test_eci_state_assemble():
+    from orbital_game.state.assemble import build_state_class
+    from orbital_game.state.components import ECIState
+
+    cls = build_state_class([ECIState], n_vehicles=2, class_name="EciOnly")
+    inst = cls.zeros(2)
+    assert inst.eci.shape == (2, 6)

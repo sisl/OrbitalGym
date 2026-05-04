@@ -30,8 +30,8 @@ dynamics: (state, dv, params, dt) → next_state
 - `dt` — scalar timestep in seconds.
 
 `OrbitalGameEnv` exposes the configured dynamics callables as
-`env.truth_dynamics` and `env.planning_dynamics`. You can call them
-directly:
+`env.truth_dynamics`, `env.policy_dynamics`, and `env.belief_dynamics`.
+You can call them directly:
 
 ```python
 --8<-- "tests/docs/test_indepth_dynamics.py:hcw-rtn-step"
@@ -56,27 +56,28 @@ desired `Δv`, clipped to `max_dv_mps`"). The dynamics owns the
 physics (e.g. "given a `Δv`, propagate the HCW state by `dt`"). Swap
 either independently.
 
-## Truth vs planning dynamics
+## Truth, policy, and belief dynamics
 
-`ScenarioConfig` carries two dynamics keys:
+`ScenarioConfig` carries three dynamics roles:
 
 - `truth_dynamics` — what the env actually integrates each step. The
   ground truth.
-- `planning_dynamics` — what `POMDPAdapter`'s `transition` uses for
+- `policy_dynamics` — what `POMDPAdapter`'s `transition` uses for
   the model-based solver. May differ from truth (e.g. simpler model
   for a faster planner; or pretend-J2 for robustness studies).
+- `belief_dynamics` — what the belief updater uses to propagate the
+  belief between observations. Defaults to `policy_dynamics` when
+  unset (read the resolved value as `cfg.belief_dynamics_resolved` /
+  `env.belief_dynamics`).
 
-Bundled games default both to the same key.
+Bundled games default all three to the same key.
 
 ## Writing a custom dynamics module
 
-Dynamics is registry-swappable but does not yet have a dedicated
-"customize" walkthrough. The closest pattern is the
-[State layout & adding a Power component](state-layout.md) worked
-example — same recipe (frozen dataclass + `@register(...)` + scenario
-wiring) applied to a state component instead of a dynamics callable.
-For the protocol surface see
-[API reference → Components](../api/components.md).
+See [Extending → Customize dynamics](../extending/customize-dynamics.md)
+for the full extension surface — registered vs typed-instance
+patterns, `frame`/`kind` metadata, and the headline mixed-frame recipe
+(ECI truth + HCW belief/policy via `AstrojaxOrbitDynamics`).
 
 ## What's not yet swappable
 

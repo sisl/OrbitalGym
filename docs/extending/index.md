@@ -11,6 +11,7 @@ patterns and a gallery of named, ready-to-use policies on the right.
 
 | Axis | What you swap | Page |
 |---|---|---|
+| Dynamics | `cfg.truth_dynamics`, `cfg.policy_dynamics`, `cfg.belief_dynamics`, `cfg.reference_orbit_dynamics` | [Customize dynamics](customize-dynamics.md) |
 | Reward | `cfg.reward_fn` | [Customize rewards](customize-rewards.md) |
 | Termination | `cfg.termination_fn` | [Customize termination](customize-termination.md) |
 | Initial conditions | `cfg.ic_sampler` | [Customize IC sampling](customize-ic-sampling.md) |

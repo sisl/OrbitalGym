@@ -63,6 +63,7 @@ nav = [
   ] },
   { "Extending" = [
     { "Overview" = "extending/index.md" },
+    { "Customize dynamics" = "extending/customize-dynamics.md" },
     { "Customize rewards" = "extending/customize-rewards.md" },
     { "Customize termination" = "extending/customize-termination.md" },
     { "Customize IC sampling" = "extending/customize-ic-sampling.md" },

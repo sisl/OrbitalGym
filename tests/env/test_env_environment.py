@@ -120,7 +120,7 @@ def test_env_runs_end_to_end_with_rt_2d_dynamics():
         max_horizon_s=2000.0,
         seed=0,
         truth_dynamics=DynamicsKey.HCW_RT,
-        planning_dynamics=DynamicsKey.HCW_RT,
+        policy_dynamics=DynamicsKey.HCW_RT,
     )
     env = OrbitalGameEnv(cfg)
     s0, outputs0 = env.reset(jax.random.PRNGKey(0))

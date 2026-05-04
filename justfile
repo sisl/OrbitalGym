@@ -35,3 +35,12 @@ docs-build:
 # Serve the docs site locally
 docs-serve:
     uv run zensical serve --clean
+
+# Execute all example notebooks end-to-end (uses the project venv's Jupyter).
+notebooks:
+    #!/usr/bin/env bash
+    set -e
+    for nb in examples/games/*.ipynb examples/workflow_*.ipynb; do
+        echo "=== $nb ==="
+        .venv/bin/jupyter nbconvert --to notebook --execute --output /tmp/_out.ipynb "$nb"
+    done

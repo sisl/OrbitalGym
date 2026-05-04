@@ -16,9 +16,25 @@ from enum import Enum, StrEnum
 from typing import TypeVar
 
 
+class Frame(StrEnum):
+    """Spatial frame in which a state or action is expressed."""
+
+    RT = "rt"  # 2D in-plane radial + along-track
+    RTN = "rtn"  # 3D radial-tangential-normal (rotating, ref-orbit local)
+    ECI = "eci"  # Earth-Centered Inertial (absolute)
+
+
+class DynamicsKind(StrEnum):
+    """Whether a dynamics propagates absolute or relative state."""
+
+    RELATIVE = "relative"  # rotating-frame propagation (HCW, etc.)
+    ABSOLUTE = "absolute"  # inertial-frame propagation (Keplerian, J2, ...)
+
+
 class StateComponentKey(StrEnum):
     RT = "rt"
     RTN = "rtn"
+    ECI = "eci"
     MASS = "mass"
     POWER = "power"
     ATTITUDE = "attitude"
@@ -28,6 +44,14 @@ class StateComponentKey(StrEnum):
 class DynamicsKey(StrEnum):
     HCW_RT = "hcw_rt"
     HCW_RTN = "hcw_rtn"
+    KEPLERIAN_ECI = "keplerian_eci"
+    J2_ECI = "j2_eci"
+    # Configurable astrojax-backed orbit dynamics. Unlike the others (registered
+    # functions), this key resolves to a *class* (`AstrojaxOrbitDynamics`) which
+    # callers instantiate with a `ForceModelConfig`. The four ScenarioConfig
+    # role fields accept either a `DynamicsKey` (registered function) or a
+    # typed instance carrying its own `frame` / `kind` attributes.
+    ASTROJAX_ORBIT = "astrojax_orbit"
 
 
 class ActuatorKey(StrEnum):
@@ -101,17 +125,44 @@ _REVERSE: dict[Callable, tuple[str, type[Enum]]] = {}
 F = TypeVar("F", bound=Callable)
 
 
-def register(key: Enum) -> Callable[[F], F]:
-    """Decorator: @register(DynamicsKey.HCW_RTN) def hcw_rtn_step(...): ...
+def register(
+    key: Enum,
+    *,
+    frame: Frame | None = None,
+    kind: DynamicsKind | None = None,
+) -> Callable[[F], F]:
+    """Decorator: @register(DynamicsKey.HCW_RTN, frame=Frame.RTN, kind=DynamicsKind.RELATIVE)
 
     Populates both the forward (key -> callable) and reverse
     (class -> (enum_value, enum_class)) maps. The reverse map is used by the
     sampling/validator generic serializer.
+
+    Optional `frame` and `kind` kwargs attach metadata to the registered callable;
+    used by the dynamics validator to check role/component compatibility. Non-dynamics
+    registrations omit them.
+
+    DynamicsKey registrations REQUIRE both ``frame`` and ``kind`` — they describe
+    a dynamics, and downstream code (dynamics validator, reference-orbit kind check)
+    depends on those attributes being populated. Other key types (ActuatorKey,
+    PolicyKey, ObservationFnKey, RewardFnKey, BeliefInitializerKey,
+    BeliefUpdaterKey, etc.) accept ``frame=None, kind=None`` since they don't
+    represent dynamics.
     """
+    if isinstance(key, DynamicsKey):
+        if frame is None:
+            raise ValueError(f"register({key!r}): DynamicsKey registrations require frame=Frame.X")
+        if kind is None:
+            raise ValueError(
+                f"register({key!r}): DynamicsKey registrations require kind=DynamicsKind.Y"
+            )
 
     def decorator(fn: F) -> F:
         _REGISTRY[key] = fn
         _REVERSE[fn] = (key.value, type(key))
+        if frame is not None:
+            fn.frame = frame  # type: ignore[attr-defined]
+        if kind is not None:
+            fn.kind = kind  # type: ignore[attr-defined]
         return fn
 
     return decorator

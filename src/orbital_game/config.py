@@ -26,11 +26,14 @@ from orbital_game.registry import (
     BeliefInitializerKey,
     BeliefUpdaterKey,
     DynamicsKey,
+    DynamicsKind,
+    Frame,
     ObservationFnKey,
     PolicyKey,
     RewardFnKey,
     StateComponentKey,
     TerminationFnKey,
+    resolve,
 )
 from orbital_game.sampling.spec import ICSpec
 
@@ -68,11 +71,42 @@ class ScenarioConfig:
     max_horizon_s: float
     seed: int
 
-    # Components that stay enum-keyed (no per-instance knobs)
-    truth_dynamics: DynamicsKey = DynamicsKey.HCW_RTN
-    planning_dynamics: DynamicsKey = DynamicsKey.HCW_RTN
+    # Dynamics roles. Each accepts either a ``DynamicsKey`` (registered step
+    # function — pre-baked offering with no per-instance knobs) or a
+    # typed-instance dynamics (e.g. ``AstrojaxOrbitDynamics(force_model=...)``)
+    # carrying its own ``frame`` / ``kind`` class attributes. Typed annotation
+    # is ``DynamicsKey | Any`` to mirror the ``Any`` pattern used for
+    # observation/reward fns; the validator/resolution paths handle both shapes
+    # via ``_resolve_dynamics_callable``.
+    truth_dynamics: Any = DynamicsKey.HCW_RTN
+    policy_dynamics: Any = DynamicsKey.HCW_RTN
+    # Optional user-supplied belief-update dynamics. Defaults to policy_dynamics
+    # via belief_dynamics_resolved when None. Users should read the resolved
+    # field, not this input field.
+    belief_dynamics: Any = None
+    belief_dynamics_resolved: Any = DynamicsKey.HCW_RTN
+    # Optional user-supplied reference-orbit propagator (must be ABSOLUTE-kind).
+    # Resolved in __post_init__ to `reference_orbit_dynamics_resolved`; users
+    # should read the resolved field, not this input field.
+    reference_orbit_dynamics: Any = None
+    reference_orbit_dynamics_resolved: Any = DynamicsKey.KEPLERIAN_ECI
     guard_actuator: ActuatorKey = ActuatorKey.IMPULSIVE
     bandit_actuator: ActuatorKey = ActuatorKey.IMPULSIVE
+
+    # Frame in which actuator-emitted Δv is expressed. ``env.step()`` rotates
+    # the actuator output from this frame into the truth-dynamics frame using
+    # ``convert_action`` before applying it. When left as ``None`` (the
+    # default), it resolves in __post_init__ to the truth_dynamics frame —
+    # this is the no-op-conversion case (action arrives already in the truth
+    # frame). Users wiring an RTN policy against an ECI truth, etc., set this
+    # explicitly to the policy's emission frame.
+    action_frame: Frame | None = None
+
+    # Derived: per-side components auto-extended with views for every frame
+    # consumed by the four resolved dynamics roles plus Frame.RTN (viz). Computed
+    # in __post_init__; the canonical input to _COMP_LOOKUP for state assembly.
+    guard_components_extended: tuple[StateComponentKey, ...] = ()
+    bandit_components_extended: tuple[StateComponentKey, ...] = ()
 
     # Components that hold typed instances. Defaults via __post_init__ to avoid
     # mutable-default issues and circular imports.
@@ -118,15 +152,67 @@ class ScenarioConfig:
         if self.max_horizon_s < self.dt:
             raise ValueError("max_horizon_s must be >= dt")
 
-        # The spatial state component must match the dynamics frame. Catch
-        # incoherent combinations here so callers get a clear error instead
-        # of a downstream crash inside state assembly or the dynamics step.
-        for dyn_field, dyn in (
-            ("truth_dynamics", self.truth_dynamics),
-            ("planning_dynamics", self.planning_dynamics),
-        ):
-            _validate_components_match_dynamics("guard", self.guard_components, dyn_field, dyn)
-            _validate_components_match_dynamics("bandit", self.bandit_components, dyn_field, dyn)
+        # The spatial state component must match the truth dynamics frame. Truth
+        # is the authoritative role; policy/belief frames need not be in the
+        # user-supplied components — they are added by the auto-extension below
+        # (computed after role resolution).
+        _validate_components_match_dynamics(
+            "guard", self.guard_components, "truth_dynamics", self.truth_dynamics
+        )
+        _validate_components_match_dynamics(
+            "bandit", self.bandit_components, "truth_dynamics", self.truth_dynamics
+        )
+
+        # Resolve action_frame default to the truth-dynamics frame (no-op
+        # conversion is the natural default). The truth_dynamics frame was
+        # already validated by _validate_components_match_dynamics above, so
+        # truth_frame is guaranteed to be a registered spatial Frame.
+        truth_fn = _resolve_dynamics_callable(self.truth_dynamics)
+        truth_frame: Frame = truth_fn.frame
+        if self.action_frame is None:
+            object.__setattr__(self, "action_frame", truth_frame)
+        else:
+            # action_frame must be one of the registered spatial frames.
+            if self.action_frame not in (Frame.RT, Frame.RTN, Frame.ECI):
+                raise ValueError(f"action_frame must be RT/RTN/ECI; got {self.action_frame}")
+            # Reject explicit lossy conversions: rotating an RTN/ECI action
+            # into an RT truth frame drops the cross-track component, which
+            # silently discards user intent. The resolved-from-None case
+            # trivially matches truth and never hits this branch.
+            if truth_frame is Frame.RT and self.action_frame in (Frame.RTN, Frame.ECI):
+                raise ValueError(
+                    f"action_frame={self.action_frame.value} -> "
+                    f"truth_frame={truth_frame.value} is a lossy conversion: "
+                    f"the cross-track component of an {self.action_frame.value} "
+                    f"Δv would be silently dropped. Use an RT-emitting policy "
+                    f"or choose a 3D truth frame (RTN/ECI)."
+                )
+
+        # Resolve belief_dynamics: defaults to policy_dynamics when None.
+        belief_resolved = (
+            self.belief_dynamics if self.belief_dynamics is not None else self.policy_dynamics
+        )
+        object.__setattr__(self, "belief_dynamics_resolved", belief_resolved)
+
+        # Resolve reference_orbit_dynamics. The reference orbit is propagated in
+        # ECI (absolute), so it must be an ABSOLUTE-kind dynamics. If the user
+        # didn't supply one: default to truth_dynamics if it's absolute, else
+        # KEPLERIAN_ECI. If the user did supply one: validate kind=ABSOLUTE.
+        if self.reference_orbit_dynamics is None:
+            truth_fn = _resolve_dynamics_callable(self.truth_dynamics)
+            if getattr(truth_fn, "kind", None) is DynamicsKind.ABSOLUTE:
+                resolved_ref = self.truth_dynamics
+            else:
+                resolved_ref = DynamicsKey.KEPLERIAN_ECI
+        else:
+            ref_fn = _resolve_dynamics_callable(self.reference_orbit_dynamics)
+            if getattr(ref_fn, "kind", None) is not DynamicsKind.ABSOLUTE:
+                raise ValueError(
+                    f"reference_orbit_dynamics={_dynamics_label(self.reference_orbit_dynamics)} "
+                    f"must be ABSOLUTE; got kind={getattr(ref_fn, 'kind', None)}"
+                )
+            resolved_ref = self.reference_orbit_dynamics
+        object.__setattr__(self, "reference_orbit_dynamics_resolved", resolved_ref)
 
         # Coerce controlled_side string value to Side enum (deferred import to
         # avoid circular dependency at module load time).
@@ -135,17 +221,67 @@ class ScenarioConfig:
         if not isinstance(self.controlled_side, _Side):
             object.__setattr__(self, "controlled_side", _Side(self.controlled_side))
 
+        # Auto-extend per-side components with derived-frame views. The three
+        # per-side resolved roles (truth, policy, belief) plus Frame.RTN for viz
+        # drive which frames must materialize on the per-side state. The
+        # reference-orbit propagator runs on EnvState.reference_orbit (not on
+        # the per-side pytree), so its frame is not consulted here. The
+        # user-supplied components stay at the head of the tuple in their
+        # original order; only new components are appended.
+        needed_frames: set[Frame] = set()
+        for _role_field, _dyn_spec in (
+            ("truth_dynamics", self.truth_dynamics),
+            ("policy_dynamics", self.policy_dynamics),
+            ("belief_dynamics_resolved", belief_resolved),
+        ):
+            if _dyn_spec is None:
+                continue
+            _fn = _resolve_dynamics_callable(_dyn_spec)
+            _f = getattr(_fn, "frame", None)
+            if _f is None:
+                raise ValueError(
+                    f"{_role_field}={_dynamics_label(_dyn_spec)} has no Frame metadata; "
+                    f"register it with @register(..., frame=Frame.X, kind=DynamicsKind.Y) "
+                    f"or attach .frame and .kind class attributes"
+                )
+            needed_frames.add(_f)
+        needed_frames.add(Frame.RTN)  # viz requires RTN
+
+        # Iterate Frame in declaration order for deterministic component ordering.
+        ordered_needed_frames = tuple(f for f in Frame if f in needed_frames)
+
+        # RT and RTN are mutually exclusive on the per-side state — RT is a 2D
+        # in-plane projection of RTN. If the user picked RT, do not auto-add
+        # RTN (viz handles 2D scenarios via the RT field directly).
+        def _extend(
+            side_components: tuple[StateComponentKey, ...],
+        ) -> tuple[StateComponentKey, ...]:
+            out = list(side_components)
+            user_has_rt = StateComponentKey.RT in side_components
+            for _f in ordered_needed_frames:
+                _comp = _FRAME_TO_COMPONENT.get(_f)
+                if _comp is None or _comp in out:
+                    continue
+                if user_has_rt and _comp is StateComponentKey.RTN:
+                    continue
+                out.append(_comp)
+            return tuple(out)
+
+        object.__setattr__(self, "guard_components_extended", _extend(self.guard_components))
+        object.__setattr__(self, "bandit_components_extended", _extend(self.bandit_components))
+
         # Build the canonical StateLayout once. It is derived purely from
         # n_guards/n_bandits/components, so it's always the same regardless
         # of which obs/reward/policy the user wires in. Custom observation
-        # functions read this via cfg.layout.
+        # functions read this via cfg.layout. State assembly uses the extended
+        # tuples so all derived-frame views are present on the pytree.
         if self.layout is None:
             from orbital_game.env.core import _COMP_LOOKUP
             from orbital_game.state.assemble import build_state_class
             from orbital_game.state.layout import StateLayout
 
-            guard_comps = [_COMP_LOOKUP[k] for k in self.guard_components]
-            bandit_comps = [_COMP_LOOKUP[k] for k in self.bandit_components]
+            guard_comps = [_COMP_LOOKUP[k] for k in self.guard_components_extended]
+            bandit_comps = [_COMP_LOOKUP[k] for k in self.bandit_components_extended]
             guard_cls = build_state_class(guard_comps, self.n_guards, "GuardState")
             bandit_cls = build_state_class(bandit_comps, self.n_bandits, "BanditState")
             object.__setattr__(
@@ -205,30 +341,74 @@ class ScenarioConfig:
         return _primitive_to_config(raw, cls)
 
 
-_DYNAMICS_REQUIRED_COMPONENT: dict[DynamicsKey, StateComponentKey] = {
-    DynamicsKey.HCW_RT: StateComponentKey.RT,
-    DynamicsKey.HCW_RTN: StateComponentKey.RTN,
+_FRAME_TO_COMPONENT: dict[Frame, StateComponentKey] = {
+    Frame.RT: StateComponentKey.RT,
+    Frame.RTN: StateComponentKey.RTN,
+    Frame.ECI: StateComponentKey.ECI,
 }
+
+
+def _resolve_dynamics_callable(spec: Any) -> Any:
+    """Return the underlying callable for a dynamics-role spec.
+
+    ``spec`` may be a ``DynamicsKey`` (registered step function) or a
+    typed-instance dynamics (e.g. ``AstrojaxOrbitDynamics``) carrying its
+    own ``frame`` / ``kind`` class attributes.
+    """
+    if isinstance(spec, DynamicsKey):
+        return resolve(spec)
+    return spec
+
+
+def _dynamics_label(spec: Any) -> str:
+    """Stable human-readable label for a dynamics spec used in error messages."""
+    if isinstance(spec, DynamicsKey):
+        return spec.value
+    return type(spec).__name__
 
 
 def _validate_components_match_dynamics(
     side: str,
     components: tuple[StateComponentKey, ...],
     dynamics_field: str,
-    dynamics: DynamicsKey,
+    dynamics: Any,
 ) -> None:
-    required = _DYNAMICS_REQUIRED_COMPONENT[dynamics]
-    forbidden = StateComponentKey.RT if required is StateComponentKey.RTN else StateComponentKey.RTN
+    """Validate that ``components`` includes the component required by ``dynamics``'s frame.
+
+    NOTE: This validator is intentionally only run against ``truth_dynamics``
+    (the user-supplied per-side components must directly cover the truth
+    frame). ``policy_dynamics`` and ``belief_dynamics`` rely on the ``_extend``
+    auto-extension in ``__post_init__`` to add any frames they need as derived
+    views, so they do NOT go through this validator. Do not change that —
+    auto-extension users would lose mixed-frame support.
+    """
+    fn = _resolve_dynamics_callable(dynamics)
+    frame: Frame | None = getattr(fn, "frame", None)
+    if frame is None:
+        raise ValueError(
+            f"{dynamics_field}={_dynamics_label(dynamics)} has no Frame metadata; "
+            f"register it with @register(..., frame=Frame.X, kind=DynamicsKind.Y) "
+            f"or attach class-level frame/kind attributes"
+        )
+    required = _FRAME_TO_COMPONENT[frame]
     got = [c.value for c in components]
     if required not in components:
         raise ValueError(
-            f"{dynamics_field}={dynamics.value} requires {side}_components to include "
-            f"{required.value!r}; got {got}"
+            f"{dynamics_field}={_dynamics_label(dynamics)} (frame={frame.value}) requires "
+            f"{side}_components to include {required.value!r}; got {got}"
         )
-    if forbidden in components:
+    # Forbid only the *other* registered relative-frame component to preserve the
+    # existing "RT and RTN are mutually exclusive" error message. ECI is allowed
+    # to coexist with RTN (mixed-frame scenarios — Phase 5 introduces this).
+    forbidden_pairs: dict[StateComponentKey, StateComponentKey] = {
+        StateComponentKey.RT: StateComponentKey.RTN,
+        StateComponentKey.RTN: StateComponentKey.RT,
+    }
+    forbidden = forbidden_pairs.get(required)
+    if forbidden is not None and forbidden in components:
         raise ValueError(
-            f"{dynamics_field}={dynamics.value} is incompatible with {forbidden.value!r} "
-            f"in {side}_components; got {got}"
+            f"{dynamics_field}={_dynamics_label(dynamics)} is incompatible with "
+            f"{forbidden.value!r} in {side}_components; got {got}"
         )
 
 
@@ -263,9 +443,12 @@ _ENUM_FIELDS: dict[str, type[Enum]] = {
     "guard_components": StateComponentKey,
     "bandit_components": StateComponentKey,
     "truth_dynamics": DynamicsKey,
-    "planning_dynamics": DynamicsKey,
+    "policy_dynamics": DynamicsKey,
+    "belief_dynamics": DynamicsKey,
+    "reference_orbit_dynamics": DynamicsKey,
     "guard_actuator": ActuatorKey,
     "bandit_actuator": ActuatorKey,
+    "action_frame": Frame,
 }
 
 
@@ -276,7 +459,32 @@ def _config_to_primitive(cfg: ScenarioConfig) -> dict[str, Any]:
     for f in fields(cfg):
         v = getattr(cfg, f.name)
         # Skip derived fields that __post_init__ rebuilds.
-        if f.name == "layout":
+        if f.name in (
+            "layout",
+            "reference_orbit_dynamics_resolved",
+            "belief_dynamics_resolved",
+            "guard_components_extended",
+            "bandit_components_extended",
+        ):
+            continue
+        # Dynamics role fields accept enum or typed-instance. Enum serializes via
+        # .value below; typed-instance serialization is deferred (see spec risk #2).
+        if f.name in (
+            "truth_dynamics",
+            "policy_dynamics",
+            "belief_dynamics",
+            "reference_orbit_dynamics",
+        ):
+            if isinstance(v, Enum):
+                d[f.name] = v.value
+            elif v is None:
+                d[f.name] = None
+            else:
+                raise NotImplementedError(
+                    "JSON serialization of typed-instance dynamics is deferred; "
+                    "see superpowers/specs/2026-05-04-three-dynamics-roles-and-eci-frame-design.md "
+                    "risk #2."
+                )
             continue
         if isinstance(v, Enum):
             d[f.name] = v.value
@@ -323,6 +531,10 @@ def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> Scen
         if f.name in ("guard_components", "bandit_components"):
             kwargs[f.name] = tuple(StateComponentKey(x) for x in v)
         elif f.name in _ENUM_FIELDS:
+            # Optional enum fields (e.g. reference_orbit_dynamics) may be stored
+            # as None — leave absent so __post_init__ resolves the default.
+            if v is None:
+                continue
             kwargs[f.name] = _ENUM_FIELDS[f.name](v)
         elif f.name == "reference_orbit":
             kwargs[f.name] = ReferenceOrbitState(

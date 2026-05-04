@@ -20,7 +20,7 @@ def test_t1_first_rollout_rt2d():
         n_guards=1,
         n_bandits=1,
         truth_dynamics=DynamicsKey.HCW_RT,
-        planning_dynamics=DynamicsKey.HCW_RT,
+        policy_dynamics=DynamicsKey.HCW_RT,
         guard_components=(StateComponentKey.RT, StateComponentKey.MASS),
         bandit_components=(StateComponentKey.RT,),
         max_horizon_s=2000.0,

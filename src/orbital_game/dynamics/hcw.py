@@ -18,7 +18,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from orbital_game.registry import DynamicsKey, register
+from orbital_game.registry import DynamicsKey, DynamicsKind, Frame, register
 
 
 def _hcw_in_plane_stm(s: jax.Array, c: jax.Array, n: float, dt: float) -> jax.Array:
@@ -43,7 +43,7 @@ def _hcw_in_plane_stm(s: jax.Array, c: jax.Array, n: float, dt: float) -> jax.Ar
     )
 
 
-@register(DynamicsKey.HCW_RT)
+@register(DynamicsKey.HCW_RT, frame=Frame.RT, kind=DynamicsKind.RELATIVE)
 def hcw_rt_step(state: jax.Array, dv: jax.Array, params, dt: float) -> jax.Array:
     """In-plane HCW step via closed-form 4x4 STM.
 
@@ -64,7 +64,7 @@ def hcw_rt_step(state: jax.Array, dv: jax.Array, params, dt: float) -> jax.Array
     return s0 @ phi.T
 
 
-@register(DynamicsKey.HCW_RTN)
+@register(DynamicsKey.HCW_RTN, frame=Frame.RTN, kind=DynamicsKind.RELATIVE)
 def hcw_rtn_step(state: jax.Array, dv: jax.Array, params, dt: float) -> jax.Array:
     """Full 3D HCW step. In-plane (R, T) uses the same 4x4 STM as hcw_rt_step;
     cross-track (N) is a decoupled 2D harmonic oscillator with the same mean motion.

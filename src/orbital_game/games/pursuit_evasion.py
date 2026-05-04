@@ -136,7 +136,7 @@ def make_pursuit_evasion(
     ic_sampler: ICSpec | None = None,
     # Dynamics + actuators
     truth_dynamics: DynamicsKey = DynamicsKey.HCW_RTN,
-    planning_dynamics: DynamicsKey = DynamicsKey.HCW_RTN,
+    policy_dynamics: DynamicsKey = DynamicsKey.HCW_RTN,
     guard_actuator: ActuatorKey = ActuatorKey.IMPULSIVE,
     bandit_actuator: ActuatorKey = ActuatorKey.IMPULSIVE,
     # Observation fns (None → ScenarioConfig.__post_init__ supplies FullObservation)
@@ -194,7 +194,7 @@ def make_pursuit_evasion(
         max_horizon_s=max_horizon_s,
         seed=seed,
         truth_dynamics=truth_dynamics,
-        planning_dynamics=planning_dynamics,
+        policy_dynamics=policy_dynamics,
         guard_actuator=guard_actuator,
         bandit_actuator=bandit_actuator,
         guard_observation_fn=guard_observation_fn,

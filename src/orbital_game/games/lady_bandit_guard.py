@@ -71,7 +71,7 @@ def make_lady_bandit_guard(
     ic_sampler: ICSpec | None = None,
     # Dynamics + actuators
     truth_dynamics: DynamicsKey = DynamicsKey.HCW_RTN,
-    planning_dynamics: DynamicsKey = DynamicsKey.HCW_RTN,
+    policy_dynamics: DynamicsKey = DynamicsKey.HCW_RTN,
     guard_actuator: ActuatorKey = ActuatorKey.IMPULSIVE,
     bandit_actuator: ActuatorKey = ActuatorKey.IMPULSIVE,
     # Observation fns (None → ScenarioConfig.__post_init__ supplies FullObservation)
@@ -84,7 +84,7 @@ def make_lady_bandit_guard(
     constructs a `MaxStepsOrBreach` termination using the same knob.
 
     Defaults assume a 1v1 RTN scenario with mass-tracked guard. To switch
-    to 2D RT dynamics, pass matching `truth_dynamics`/`planning_dynamics`
+    to 2D RT dynamics, pass matching `truth_dynamics`/`policy_dynamics`
     *and* corresponding `guard_components`/`bandit_components`; otherwise
     `ScenarioConfig.__post_init__` will reject the incoherent combo.
     """
@@ -143,7 +143,7 @@ def make_lady_bandit_guard(
         max_horizon_s=max_horizon_s,
         seed=seed,
         truth_dynamics=truth_dynamics,
-        planning_dynamics=planning_dynamics,
+        policy_dynamics=policy_dynamics,
         guard_actuator=guard_actuator,
         bandit_actuator=bandit_actuator,
         guard_observation_fn=guard_observation_fn,

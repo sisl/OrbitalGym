@@ -20,14 +20,18 @@ import jax.numpy as jnp
 from orbital_game.actuators.impulsive import ImpulsiveActuator
 from orbital_game.config import ScenarioConfig
 from orbital_game.dynamics.hcw import hcw_rt_step, hcw_rtn_step
+from orbital_game.dynamics.j2 import j2_eci_step
+from orbital_game.dynamics.keplerian import keplerian_eci_step
 from orbital_game.env.types import Actions, BySide, Side, SideOutput, StepOutput
+from orbital_game.frames.conversions import convert_action, convert_state
 from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.reference_orbit import mean_motion as _ref_mean_motion
-from orbital_game.registry import ActuatorKey, DynamicsKey, StateComponentKey
+from orbital_game.registry import ActuatorKey, DynamicsKey, Frame, StateComponentKey
 from orbital_game.state.assemble import build_state_class
 from orbital_game.state.components import (
     Attitude,
     BodyRates,
+    ECIState,
     Mass,
     Power,
     RTNState,
@@ -38,6 +42,7 @@ from orbital_game.state.layout import StateLayout
 _COMP_LOOKUP = {
     StateComponentKey.RT: RTState,
     StateComponentKey.RTN: RTNState,
+    StateComponentKey.ECI: ECIState,
     StateComponentKey.MASS: Mass,
     StateComponentKey.POWER: Power,
     StateComponentKey.ATTITUDE: Attitude,
@@ -47,7 +52,61 @@ _COMP_LOOKUP = {
 _DYN_LOOKUP = {
     DynamicsKey.HCW_RT: hcw_rt_step,
     DynamicsKey.HCW_RTN: hcw_rtn_step,
+    DynamicsKey.KEPLERIAN_ECI: keplerian_eci_step,
+    DynamicsKey.J2_ECI: j2_eci_step,
 }
+
+
+def _resolve_dynamics_callable(spec):
+    """Return the callable for a dynamics-role spec.
+
+    ``spec`` is either a ``DynamicsKey`` (looked up in ``_DYN_LOOKUP``) or a
+    typed-instance dynamics (e.g. ``AstrojaxOrbitDynamics``) which is itself
+    callable and carries its own ``frame`` / ``kind`` class attributes.
+    """
+    if isinstance(spec, DynamicsKey):
+        return _DYN_LOOKUP[spec]
+    return spec
+
+
+# Per-frame canonical field name on the assembled per-side state pytree. The
+# truth dynamics writes here; derived views are populated by converting from it.
+_FRAME_TO_FIELD: dict[Frame, str] = {
+    Frame.RT: "rt",
+    Frame.RTN: "rtn",
+    Frame.ECI: "eci",
+}
+
+# Inverse of the registry's frame-component mapping, restricted to spatial-state
+# components. Mass/Power/Attitude/BodyRates have no frame and are skipped.
+_COMPONENT_TO_FRAME: dict[StateComponentKey, Frame] = {
+    StateComponentKey.RT: Frame.RT,
+    StateComponentKey.RTN: Frame.RTN,
+    StateComponentKey.ECI: Frame.ECI,
+}
+
+
+def _truth_field(truth_frame: Frame) -> str:
+    return _FRAME_TO_FIELD[truth_frame]
+
+
+def _materialize_derived_views(
+    side_state,
+    truth_field: str,
+    truth_frame: Frame,
+    extended_frames: tuple[Frame, ...],
+    ref_eci6: jax.Array,
+):
+    """Populate every non-truth frame field on the per-side state by converting
+    from the canonical truth-frame array. Returns the side state unchanged when
+    `extended_frames` contains only the truth frame (e.g. HCW-only scenarios)."""
+    truth_arr = getattr(side_state, truth_field)
+    replacements: dict[str, jax.Array] = {}
+    for f in extended_frames:
+        if f is truth_frame:
+            continue
+        replacements[_FRAME_TO_FIELD[f]] = convert_state(truth_arr, truth_frame, f, ref_eci6)
+    return side_state.replace(**replacements) if replacements else side_state
 
 
 @flax.struct.dataclass
@@ -86,30 +145,6 @@ def _make_actuator(key: ActuatorKey, track_mass: bool):
     raise ValueError(f"Unknown actuator key: {key!r}")
 
 
-def _get_dynamics_state(state) -> jax.Array:
-    """Return the raw (n, 4) or (n, 6) array the dynamics expects.
-
-    Queries the authoritative component tuple set by `build_state_class`
-    rather than duck-typing via `hasattr`, so ordering is deterministic and
-    a state with both `rt` and `rtn` would be an explicit error.
-    """
-    comps = state._orbital_game_components
-    if RTNState in comps:
-        return state.rtn
-    if RTState in comps:
-        return state.rt
-    raise AttributeError("State has no dynamics component (RTState or RTNState)")
-
-
-def _set_dynamics_state(state, new_state: jax.Array):
-    comps = state._orbital_game_components
-    if RTNState in comps:
-        return state.replace(rtn=new_state)
-    if RTState in comps:
-        return state.replace(rt=new_state)
-    raise AttributeError("State has no dynamics component (RTState or RTNState)")
-
-
 def _apply_propellant(state, dp: jax.Array):
     if hasattr(state, "propellant_mass"):
         return state.replace(propellant_mass=jnp.maximum(state.propellant_mass - dp, 0.0))
@@ -126,9 +161,10 @@ class OrbitalGameEnv:
         # uses the same so sampled ICs satisfy the dynamics' bounded-orbit condition.
         self.mean_motion = float(_ref_mean_motion(config.reference_orbit))
 
-        # Build per-side state classes.
-        guard_comps = [_COMP_LOOKUP[k] for k in config.guard_components]
-        bandit_comps = [_COMP_LOOKUP[k] for k in config.bandit_components]
+        # Build per-side state classes from the auto-extended component tuples
+        # so derived-frame views are present alongside the user-specified ones.
+        guard_comps = [_COMP_LOOKUP[k] for k in config.guard_components_extended]
+        bandit_comps = [_COMP_LOOKUP[k] for k in config.bandit_components_extended]
         self.guard_state_cls = build_state_class(guard_comps, config.n_guards, "GuardState")
         self.bandit_state_cls = build_state_class(bandit_comps, config.n_bandits, "BanditState")
 
@@ -147,8 +183,32 @@ class OrbitalGameEnv:
         self.guard_actuator = _make_actuator(config.guard_actuator, guard_track_mass)
         self.bandit_actuator = _make_actuator(config.bandit_actuator, bandit_track_mass)
 
-        self.truth_dynamics = _DYN_LOOKUP[config.truth_dynamics]
-        self.planning_dynamics = _DYN_LOOKUP[config.planning_dynamics]
+        self.truth_dynamics = _resolve_dynamics_callable(config.truth_dynamics)
+        self.policy_dynamics = _resolve_dynamics_callable(config.policy_dynamics)
+        self.belief_dynamics = _resolve_dynamics_callable(config.belief_dynamics_resolved)
+        self.reference_orbit_dynamics = _resolve_dynamics_callable(
+            config.reference_orbit_dynamics_resolved
+        )
+
+        # Precompute the truth frame and the per-side spatial-frame set so step()
+        # can look up canonical / derived fields without re-resolving registry
+        # metadata every call. Mass/Power/etc. have no frame and are filtered out.
+        self.truth_frame: Frame = self.truth_dynamics.frame
+
+        # action_frame is resolved to a concrete Frame in ScenarioConfig.__post_init__;
+        # the | None on the dataclass field is only for the user-facing API.
+        assert config.action_frame is not None
+        self.action_frame: Frame = config.action_frame
+        self.guard_extended_frames: tuple[Frame, ...] = tuple(
+            _COMPONENT_TO_FRAME[c]
+            for c in config.guard_components_extended
+            if c in _COMPONENT_TO_FRAME
+        )
+        self.bandit_extended_frames: tuple[Frame, ...] = tuple(
+            _COMPONENT_TO_FRAME[c]
+            for c in config.bandit_components_extended
+            if c in _COMPONENT_TO_FRAME
+        )
 
         # Typed-instance components come directly from the config (populated by
         # ScenarioConfig.__post_init__ defaults or overridden by the caller).
@@ -165,6 +225,31 @@ class OrbitalGameEnv:
         """Reset returns (env_state, BySide(guard=SideOutput, bandit=SideOutput))."""
         k_ic, k_obs_g, k_obs_b = jax.random.split(key, 3)
         guards, bandits, ok = self._reset_with_icspec(k_ic)
+        # Re-materialize derived views from the canonical truth-frame field so
+        # observations and beliefs at t=0 see fields that are mutually
+        # consistent. The sampler may also have populated them, but we make the
+        # truth field authoritative.
+        ref_eci6 = jnp.concatenate(
+            [
+                self.config.reference_orbit.position_eci,
+                self.config.reference_orbit.velocity_eci,
+            ]
+        )
+        truth_field_name = _truth_field(self.truth_frame)
+        guards = _materialize_derived_views(
+            guards,
+            truth_field_name,
+            self.truth_frame,
+            self.guard_extended_frames,
+            ref_eci6,
+        )
+        bandits = _materialize_derived_views(
+            bandits,
+            truth_field_name,
+            self.truth_frame,
+            self.bandit_extended_frames,
+            ref_eci6,
+        )
         state = EnvState(
             t=jnp.asarray(0.0),
             step=jnp.asarray(0),
@@ -192,8 +277,10 @@ class OrbitalGameEnv:
         """
         n_guards = self.config.n_guards
         n_bandits = self.config.n_bandits
-        guard_components = self.config.guard_components
-        bandit_components = self.config.bandit_components
+        # Use the auto-extended tuples so the sampler builds the same per-side
+        # state class the env uses; otherwise pytree structures won't match.
+        guard_components = self.config.guard_components_extended
+        bandit_components = self.config.bandit_components_extended
 
         def _draw(i):
             k = jax.random.fold_in(k_ic, i)
@@ -249,6 +336,27 @@ class OrbitalGameEnv:
         guard_action = actions.sides.guard
         bandit_action = actions.sides.bandit
 
+        # Pre-propagation reference, used to rotate the impulsive Δv (which is
+        # applied at the START of the step). The post-propagation reference is
+        # only canonical for the post-step state and its derived views.
+        ref_pre_eci6 = jnp.concatenate(
+            [
+                state.reference_orbit.position_eci,
+                state.reference_orbit.velocity_eci,
+            ]
+        )
+
+        # Propagate the reference orbit one tick. Reference is always 1 vehicle in ECI.
+        ref_state6 = ref_pre_eci6[None, :]  # (1, 6)
+        ref_dv = jnp.zeros((1, 3))
+        ref_next6 = self.reference_orbit_dynamics(
+            ref_state6, ref_dv, params=None, dt=self.config.dt
+        )
+        ref_next = state.reference_orbit.replace(  # pyrefly: ignore[missing-attribute]
+            position_eci=ref_next6[0, :3],
+            velocity_eci=ref_next6[0, 3:],
+        )
+
         # Symmetric per-side dynamics step.
         applied_guard, dprop_guard = self.guard_actuator.apply(
             guard_action, state.guards, self.guard_params, self.config.dt
@@ -256,28 +364,64 @@ class OrbitalGameEnv:
         applied_bandit, dprop_bandit = self.bandit_actuator.apply(
             bandit_action, state.bandits, self.bandit_params, self.config.dt
         )
-        new_guard_dyn = self.truth_dynamics(
-            _get_dynamics_state(state.guards),
-            applied_guard.dv,
+
+        # Rotate the actuator-emitted Δv from cfg.action_frame into the truth
+        # dynamics frame. Use the *start-of-step* reference orbit
+        # (ref_pre_eci6): the impulsive Δv is applied at the start of the
+        # interval, so the frame in which it is expressed is anchored at the
+        # pre-step reference. When src == dst, convert_action short-circuits
+        # to identity (no-op).
+        dv_g_truth = convert_action(
+            applied_guard.dv, self.action_frame, self.truth_frame, ref_pre_eci6
+        )
+        dv_b_truth = convert_action(
+            applied_bandit.dv, self.action_frame, self.truth_frame, ref_pre_eci6
+        )
+
+        truth_field_name = _truth_field(self.truth_frame)
+        new_guard_truth = self.truth_dynamics(
+            getattr(state.guards, truth_field_name),
+            dv_g_truth,
             self.guard_params,
             self.config.dt,
         )
-        new_bandit_dyn = self.truth_dynamics(
-            _get_dynamics_state(state.bandits),
-            applied_bandit.dv,
+        new_bandit_truth = self.truth_dynamics(
+            getattr(state.bandits, truth_field_name),
+            dv_b_truth,
             self.bandit_params,
             self.config.dt,
         )
-        next_guards = _set_dynamics_state(state.guards, new_guard_dyn)
-        next_bandits = _set_dynamics_state(state.bandits, new_bandit_dyn)
+        next_guards = state.guards.replace(**{truth_field_name: new_guard_truth})
+        next_bandits = state.bandits.replace(**{truth_field_name: new_bandit_truth})
         next_guards = _apply_propellant(next_guards, dprop_guard)
         next_bandits = _apply_propellant(next_bandits, dprop_bandit)
+
+        # Materialize every non-truth frame from the post-step truth array. Use
+        # the *propagated* reference orbit (ref_next) so derived views are
+        # consistent with the truth state at t+dt. HCW-only scenarios skip this
+        # because the only spatial frame is the truth frame.
+        ref_eci6 = jnp.concatenate([ref_next.position_eci, ref_next.velocity_eci])
+        next_guards = _materialize_derived_views(
+            next_guards,
+            truth_field_name,
+            self.truth_frame,
+            self.guard_extended_frames,
+            ref_eci6,
+        )
+        next_bandits = _materialize_derived_views(
+            next_bandits,
+            truth_field_name,
+            self.truth_frame,
+            self.bandit_extended_frames,
+            ref_eci6,
+        )
 
         next_state = state.replace(  # pyrefly: ignore[missing-attribute]
             t=state.t + self.config.dt,
             step=state.step + 1,
             guards=next_guards,
             bandits=next_bandits,
+            reference_orbit=ref_next,
         )
 
         # Per-side observations + rewards.

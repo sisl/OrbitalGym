@@ -4,11 +4,14 @@ from enum import StrEnum
 
 import pytest
 
+from orbital_game import registry as _registry
 from orbital_game.registry import (
     ActuatorKey,
     BeliefInitializerKey,
     BeliefUpdaterKey,
     DynamicsKey,
+    DynamicsKind,
+    Frame,
     MassSamplerKey,
     ObservationFnKey,
     PolicyKey,
@@ -26,10 +29,25 @@ from orbital_game.registry import (
 
 @pytest.fixture(autouse=True)
 def _isolate_registry():
-    """Clear the registry before and after every test so order-dependent state never leaks."""
+    """Snapshot the registry, clear for the test, then restore.
+
+    Avoids leaving the registry empty after the last test in the module — other
+    tests rely on package-level @register decorators that only run once per
+    process (Python import cache).
+    """
+    fwd = dict(_registry._REGISTRY)
+    rev = dict(_registry._REVERSE)
+    games_fwd = dict(_registry._GAME_REGISTRY)
+    games_rev = dict(_registry._GAME_REVERSE)
     _clear_registry_for_tests()
-    yield
-    _clear_registry_for_tests()
+    try:
+        yield
+    finally:
+        _clear_registry_for_tests()
+        _registry._REGISTRY.update(fwd)
+        _registry._REVERSE.update(rev)
+        _registry._GAME_REGISTRY.update(games_fwd)
+        _registry._GAME_REVERSE.update(games_rev)
 
 
 def test_enum_str_roundtrip():
@@ -40,7 +58,7 @@ def test_enum_str_roundtrip():
 
 
 def test_register_and_resolve():
-    @register(DynamicsKey.HCW_RT)
+    @register(DynamicsKey.HCW_RT, frame=Frame.RT, kind=DynamicsKind.RELATIVE)
     def _dummy_hcw_rt(*args, **kwargs):
         return "ok"
 

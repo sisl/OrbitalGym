@@ -26,7 +26,12 @@ from typing import Any
 
 import jax
 import jax.numpy as jnp
-from astrojax import state_eci_to_koe, state_eci_to_rtn, state_koe_to_eci
+from astrojax import (
+    state_eci_to_koe,
+    state_eci_to_rtn,
+    state_koe_to_eci,
+    state_rtn_to_eci,
+)
 
 from orbital_game.reference_orbit import mean_motion as _ref_mean_motion
 from orbital_game.registry import (
@@ -39,6 +44,7 @@ from orbital_game.state.assemble import build_state_class
 from orbital_game.state.components import (
     Attitude,
     BodyRates,
+    ECIState,
     Mass,
     Power,
     RTNState,
@@ -48,6 +54,7 @@ from orbital_game.state.components import (
 _COMP_LOOKUP = {
     StateComponentKey.RT: RTState,
     StateComponentKey.RTN: RTNState,
+    StateComponentKey.ECI: ECIState,
     StateComponentKey.MASS: Mass,
     StateComponentKey.POWER: Power,
     StateComponentKey.ATTITUDE: Attitude,
@@ -167,26 +174,25 @@ class RelativeKeplerian:
         # 3. Per-vehicle absolute KOE
         per_vehicle_koe = ref_koe[None, :] + deltas
 
-        # 4. Convert each vehicle's KOE -> ECI -> reference-orbit-RTN
-        def _to_rtn(koe):
-            state_eci = state_koe_to_eci(koe)
-            return state_eci_to_rtn(ref_state_eci, state_eci)
-
-        rtn_states = jax.vmap(_to_rtn)(per_vehicle_koe)
+        # 4. Convert each vehicle's KOE -> ECI; also project to RTN for the
+        # relative-frame components.
+        eci_states = jax.vmap(state_koe_to_eci)(per_vehicle_koe)
+        rtn_states = jax.vmap(state_eci_to_rtn, in_axes=(None, 0))(ref_state_eci, eci_states)
 
         # 5. RT scenarios drop cross-track + cross-track velocity
-        if StateComponentKey.RT in components:
-            rtn_states = jnp.stack(
-                [rtn_states[:, 0], rtn_states[:, 1], rtn_states[:, 3], rtn_states[:, 4]],
-                axis=-1,
-            )
+        rt_states = jnp.stack(
+            [rtn_states[:, 0], rtn_states[:, 1], rtn_states[:, 3], rtn_states[:, 4]],
+            axis=-1,
+        )
 
         # 6. Build the side state pytree
         kwargs = {}
         if StateComponentKey.RTN in components:
             kwargs["rtn"] = rtn_states
-        elif StateComponentKey.RT in components:
-            kwargs["rt"] = rtn_states
+        if StateComponentKey.RT in components:
+            kwargs["rt"] = rt_states
+        if StateComponentKey.ECI in components:
+            kwargs["eci"] = eci_states
 
         propellant = _maybe_sample_mass(self.mass_sampler, components, n_vehicles, k_mass)
         if propellant is not None:
@@ -285,15 +291,22 @@ class RelativeEllipse:
         n_vel = n_motion * cross_e * cp
 
         rtn_states = jnp.stack([r_pos, t_pos, n_pos, r_vel, t_vel, n_vel], axis=-1)
-
-        if StateComponentKey.RT in components:
-            rtn_states = jnp.stack([r_pos, t_pos, r_vel, t_vel], axis=-1)
+        rt_states = jnp.stack([r_pos, t_pos, r_vel, t_vel], axis=-1)
 
         kwargs = {}
         if StateComponentKey.RTN in components:
             kwargs["rtn"] = rtn_states
-        elif StateComponentKey.RT in components:
-            kwargs["rt"] = rtn_states
+        if StateComponentKey.RT in components:
+            kwargs["rt"] = rt_states
+        if StateComponentKey.ECI in components:
+            # Project the closed-form RTN ICs to ECI via the chief reference state.
+            ref_state_eci = jnp.concatenate(
+                [
+                    config.reference_orbit.position_eci,
+                    config.reference_orbit.velocity_eci,
+                ]
+            )
+            kwargs["eci"] = jax.vmap(state_rtn_to_eci, in_axes=(None, 0))(ref_state_eci, rtn_states)
 
         propellant = _maybe_sample_mass(self.mass_sampler, components, n_vehicles, k_mass)
         if propellant is not None:

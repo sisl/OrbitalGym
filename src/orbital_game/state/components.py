@@ -69,6 +69,23 @@ class RTNState:
         return {"rtn": jnp.zeros((n, 6))}
 
 
+class ECIState:
+    """Absolute 6D inertial state (Earth-Centered Inertial).
+
+    eci layout: [rx, ry, rz, vx, vy, vz] — position [m] then velocity [m/s].
+    """
+
+    name: ClassVar[str] = "eci"
+
+    @staticmethod
+    def fields() -> Mapping[str, tuple[int, ...]]:
+        return {"eci": (6,)}
+
+    @staticmethod
+    def zeros(n: int) -> Mapping[str, jax.Array]:
+        return {"eci": jnp.zeros((n, 6))}
+
+
 class Mass:
     """Propellant-mass tracking.
 
