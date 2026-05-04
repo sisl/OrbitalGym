@@ -62,6 +62,49 @@ Defaults place the guard on a 1 km radial ellipse at phase 0 and the bandit on a
 - **Self-play.** Train both sides simultaneously via the [PettingZoo adapter](../adapters/pettingzoo.md) and observe equilibrium-ish capture rates.
 - **Asymmetric capabilities.** Vary `guard_params.max_thrust_n` against `bandit_params.max_thrust_n` to study how the thrust ratio affects capture probability.
 
+## Variants
+
+The four customization axes (reward, termination, IC, observation) all
+swap by `dataclasses.replace`. Two PE-flavored recipes:
+
+### Variant 1: jittered pursuer
+
+Wrap a `LeadInterceptPursuer` in `JitteredPolicy` to randomize the
+chaser. A stochastic bandit prevents the guard from exploiting a
+deterministic pursuit law and gives a more robust evader benchmark.
+
+```python
+--8<-- "tests/docs/test_games_pursuit_evasion_variants.py:variant-jittered-pursuer"
+```
+
+### Variant 2: tighter IC for evaluation
+
+Shrink `sigma_radial_ellipse_m` on both sides so evaluation rollouts
+draw from a narrow band around the canonical phase-0/phase-π/2
+configuration. Lower IC variance → lower return variance → fewer
+episodes to separate two policies under the same compute budget.
+
+```python
+--8<-- "tests/docs/test_games_pursuit_evasion_variants.py:variant-tighter-ic"
+```
+
+For more axes, see [Extending → Customize rewards](../extending/customize-rewards.md),
+[…termination](../extending/customize-termination.md),
+[…IC sampling](../extending/customize-ic-sampling.md), and
+[…observations](../extending/customize-observations.md).
+
+## Built-in policies and adversaries
+
+Sensible gallery picks for Pursuit-Evasion:
+
+- **Heuristic policies (opponent):** [`LeadInterceptPursuer`](../extending/gallery.md#leadinterceptpursuer),
+  [`OrthogonalEvader`](../extending/gallery.md#orthogonalevader),
+  [`JitteredPolicy`](../extending/gallery.md#jitteredpolicy) (wrap any of the above).
+- **Controlled side:** any class from [Controlled-side cookbook](../extending/controlled-policy-cookbook.md)
+  ([`HeuristicWithFallbackPolicy`](../extending/gallery.md#heuristicwithfallbackpolicy),
+  [`BeliefConditionedPolicy`](../extending/gallery.md#beliefconditionedpolicy),
+  [`CompositeActionPolicy`](../extending/gallery.md#compositeactionpolicy)).
+
 ## Sanity-check notebook
 
 [`examples/games/pursuit_evasion.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/games/pursuit_evasion.ipynb) is a full walkthrough that builds a PE scenario, runs a rollout, and renders the rollout diagnostic plus the 2D guard-position reward surface.

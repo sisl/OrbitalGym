@@ -1,4 +1,4 @@
-"""Enum keys + name registry for pluggable callables.
+"""Enum keys + name registry for swappable callables.
 
 Scope: serialization identity only. OrbitalGameEnv may also be constructed
 directly from callables in memory, bypassing the registry. The registry

@@ -80,6 +80,50 @@ cfg = make_observation_blocking(
 - **Elevation gate study.** Vary `min_elevation_deg` from 5° (relaxed) to 30° (strict). Higher thresholds shorten visibility windows and harden the bandit problem.
 - **Coordinated guards.** Extend to `n_guards > 1` and test whether multiple guards spread along the orbit can keep target observability above some threshold.
 
+## Variants
+
+The four customization axes (reward, termination, IC, observation) all
+swap by `dataclasses.replace`. Two OB-flavored recipes:
+
+### Variant 1: chasing bandit
+
+Drop in `LeadInterceptPursuer` as the bandit. The bandit closes on the
+guard rather than tracking the bandit-to-target line — a baseline
+adversary that doesn't yet exploit the visibility gate, useful for
+sanity-checking that an OB-aware bandit policy you're training actually
+beats this naive chaser.
+
+```python
+--8<-- "tests/docs/test_games_observation_blocking_variants.py:variant-lead-intercept-bandit"
+```
+
+### Variant 2: tighter IC for evaluation
+
+Shrink `sigma_radial_ellipse_m` so evaluation rollouts draw from a
+narrow band around the canonical phase-0/phase-π/2 IC. Lower IC
+variance reduces episode-return variance, which matters more here than
+in PE because OB returns are gated by visibility windows.
+
+```python
+--8<-- "tests/docs/test_games_observation_blocking_variants.py:variant-tighter-ic"
+```
+
+For more axes, see [Extending → Customize rewards](../extending/customize-rewards.md),
+[…termination](../extending/customize-termination.md),
+[…IC sampling](../extending/customize-ic-sampling.md), and
+[…observations](../extending/customize-observations.md).
+
+## Built-in policies and adversaries
+
+Sensible gallery picks for Observation-Blocking:
+
+- **Heuristic policies (opponent):** [`LeadInterceptPursuer`](../extending/gallery.md#leadinterceptpursuer),
+  [`JitteredPolicy`](../extending/gallery.md#jitteredpolicy) (wrap any of the above).
+- **Controlled side:** any class from [Controlled-side cookbook](../extending/controlled-policy-cookbook.md)
+  ([`HeuristicWithFallbackPolicy`](../extending/gallery.md#heuristicwithfallbackpolicy),
+  [`BeliefConditionedPolicy`](../extending/gallery.md#beliefconditionedpolicy),
+  [`CompositeActionPolicy`](../extending/gallery.md#compositeactionpolicy)).
+
 ## Sanity-check notebook
 
 [`examples/games/observation_blocking.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/games/observation_blocking.ipynb) is a full walkthrough that builds an OB scenario, runs a rollout, plots the rollout-time diagnostic (with shaded invisible windows), and renders the 2D position-sweep surface.

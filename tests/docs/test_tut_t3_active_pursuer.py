@@ -13,11 +13,8 @@ import jax.numpy as jnp
 def test_t3_active_pursuer_walkthrough():
     # --8<-- [start:imports]
     import dataclasses
-    from dataclasses import dataclass
-    from typing import Any
 
     import jax
-    import jax.numpy as jnp
 
     from orbital_game import (
         OrbitalGameEnv,
@@ -25,51 +22,9 @@ def test_t3_active_pursuer_walkthrough():
         make_pursuit_evasion,
     )
     from orbital_game.policies import ZeroControl
+    from orbital_game.policies.heuristic import LeadInterceptPursuer
     from orbital_game.rollout import rollout_single_agent
     # --8<-- [end:imports]
-
-    # --8<-- [start:lead-intercept-class]
-    @dataclass(frozen=True)
-    class LeadInterceptPursuer:
-        """Bandit policy: thrust toward the guard's predicted next-step position.
-
-        FullObservation flattens the per-side state as [own_truth, opp_truth].
-        For the bandit, that's [bandit_rtn(6), guard_rtn(6)] in a 1v1 RTN game.
-        """
-
-        max_dv_mps: float = 0.05
-        dt: float = 10.0
-
-        # Env-populated dims:
-        n_vehicles: int = 0
-        action_dim: int = 0
-
-        def __call__(
-            self,
-            policy_state: Any,
-            obs: jax.Array,
-            key: jax.Array,
-            t: jax.Array,
-        ) -> tuple[jax.Array, Any]:
-            del key, t
-            # [own_truth, opp_truth]: bandit reads its own state first, guard second.
-            bandit_rtn = obs[0:6]
-            guard_rtn = obs[6:12]
-
-            # One-step zero-control HCW prediction of the guard.
-            guard_pos = guard_rtn[0:3]
-            guard_vel = guard_rtn[3:6]
-            guard_pred = guard_pos + guard_vel * self.dt
-
-            # Max-magnitude impulse along the line to the predicted point.
-            direction = guard_pred - bandit_rtn[0:3]
-            unit = direction / (jnp.linalg.norm(direction) + 1e-9)
-            dv = unit * self.max_dv_mps
-
-            action = jnp.broadcast_to(dv, (self.n_vehicles, self.action_dim))
-            return action, policy_state
-
-    # --8<-- [end:lead-intercept-class]
 
     # --8<-- [start:wire-it-up]
     cfg = make_pursuit_evasion(seed=0, max_horizon_s=2000.0)
@@ -108,13 +63,13 @@ def test_t3_ab_comparison_vmap():
     Lives outside snippet regions because the comparison relies on imports
     the tutorial doesn't repeat.
     """
-    from examples.policies.lead_intercept import LeadInterceptPursuer
     from orbital_game import (
         OrbitalGameEnv,
         SingleAgentView,
         make_pursuit_evasion,
     )
     from orbital_game.policies import ZeroControl
+    from orbital_game.policies.heuristic import LeadInterceptPursuer
     from orbital_game.rollout import rollout_single_agent
 
     def closest_approach(seed, bandit_policy):

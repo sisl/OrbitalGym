@@ -111,31 +111,9 @@ tensors into the flat shapes that adapters publish:
 
 ## Writing a custom channel
 
-```python
-from dataclasses import dataclass
-from orbital_game.observations.types import Observation
-from orbital_game.registry import ObservationFnKey, register
-
-@register(ObservationFnKey.LINE_OF_SIGHT)   # add the enum member first
-@dataclass(frozen=True)
-class LineOfSightObservation:
-    """Per-pair position measurement, gated by a cone-angle field of view."""
-
-    layout: ...      # has n_guards, n_bandits, dynamics_state_dim
-    fov_deg: float = 30.0
-    sigma: float = 1.0
-
-    def __call__(self, env_state, side, params, key, t):
-        # 1. Compute observer-target geometry.
-        # 2. Build the visibility mask from the cone-angle test.
-        # 3. Sample noise, return tuple[Observation, ...].
-        ...
-```
-
-The `(env_state, side, params, key, t)` signature is the contract
-every channel implements; respect it and the channel drops into any
-existing scenario via `cfg.guard_observation_fn` /
-`cfg.bandit_observation_fn`.
+The practical "how to write one" walkthrough lives in the Extending
+section. See [Extending → Customize observations](../extending/customize-observations.md)
+for the protocol, two worked examples, and per-game applicability.
 
 ## Where to next
 

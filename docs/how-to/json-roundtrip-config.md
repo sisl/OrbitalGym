@@ -1,6 +1,6 @@
 # Round-trip a config to JSON
 
-`ScenarioConfig` and every registered pluggable round-trip through
+`ScenarioConfig` and every registered component round-trip through
 JSON.
 
 ## Recipe
@@ -17,8 +17,8 @@ assert cfg_loaded.game.capture_distance_m == 20.0
 
 ## What's serialized
 
-Every field of `ScenarioConfig` plus every nested pluggable. Each
-pluggable's enum key is the discriminator; `dataclasses.asdict`
+Every field of `ScenarioConfig` plus every nested component. Each
+component's enum key is the discriminator; `dataclasses.asdict`
 walks the knob fields.
 
 Derived fields like `ObservationBlocking.target_ecef_m` are recomputed

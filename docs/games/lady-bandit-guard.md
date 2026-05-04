@@ -60,6 +60,50 @@ For the full field list see [API → `LadyBanditGuard`](../api/games.md).
 - **Bandit attack.** Replace `cfg.bandit_policy` with a heuristic that maneuvers toward the reference origin; the zero-control guard should eventually lose.
 - **Guard station-keeping.** Train a guard policy to minimize the negative reward (stay close to the reference orbit) under bandit perturbations.
 
+## Variants
+
+The four customization axes (reward, termination, IC, observation) all
+swap by `dataclasses.replace`. Two LBG-flavored recipes:
+
+### Variant 1: jittered chasing bandit
+
+Wrap a `LeadInterceptPursuer` in `JitteredPolicy` to give the guard a
+randomized chaser threat — the bandit closes on the reference origin but
+with stochastic per-step deviation, preventing a guard from exploiting a
+deterministic threat trajectory.
+
+```python
+--8<-- "tests/docs/test_games_lady_bandit_guard_variants.py:variant-jittered-bandit"
+```
+
+### Variant 2: tighter IC for evaluation
+
+Shrink the IC sampler's `sigma_radial_ellipse_m` so evaluation rollouts
+draw from a narrow band around the canonical phase-π geometry. Useful
+when comparing learned guard policies head-to-head: lower IC variance
+means lower episode-return variance, which means fewer rollouts needed
+to separate two policies.
+
+```python
+--8<-- "tests/docs/test_games_lady_bandit_guard_variants.py:variant-tighter-ic"
+```
+
+For more axes, see [Extending → Customize rewards](../extending/customize-rewards.md),
+[…termination](../extending/customize-termination.md),
+[…IC sampling](../extending/customize-ic-sampling.md), and
+[…observations](../extending/customize-observations.md).
+
+## Built-in policies and adversaries
+
+Sensible gallery picks for Lady-Bandit-Guard:
+
+- **Heuristic policies (opponent):** [`LeadInterceptPursuer`](../extending/gallery.md#leadinterceptpursuer),
+  [`JitteredPolicy`](../extending/gallery.md#jitteredpolicy) (wrap any of the above).
+- **Controlled side:** any class from [Controlled-side cookbook](../extending/controlled-policy-cookbook.md)
+  ([`HeuristicWithFallbackPolicy`](../extending/gallery.md#heuristicwithfallbackpolicy),
+  [`BeliefConditionedPolicy`](../extending/gallery.md#beliefconditionedpolicy),
+  [`CompositeActionPolicy`](../extending/gallery.md#compositeactionpolicy)).
+
 ## Sanity-check notebook
 
 [`examples/games/lady_bandit_guard.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/games/lady_bandit_guard.ipynb) is a full walkthrough that builds an LBG scenario, runs a rollout, and renders the rollout diagnostic plus the 2D guard-position reward surface.

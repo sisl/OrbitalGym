@@ -2,7 +2,7 @@
 
 `OrbitalGameEnv` composes an **actuator** (action → applied control)
 with a **dynamics** step (state + control → next state) once per
-timestep, per side. Both are pluggable: pick a different combination
+timestep, per side. Both are swappable: pick a different combination
 to model different physics.
 
 ## What ships
@@ -70,30 +70,15 @@ Bundled games default both to the same key.
 
 ## Writing a custom dynamics module
 
-Frozen dataclass + `@register(DynamicsKey.MY_DYNAMICS)`:
+Dynamics is registry-swappable but does not yet have a dedicated
+"customize" walkthrough. The closest pattern is the
+[State layout & adding a Power component](state-layout.md) worked
+example — same recipe (frozen dataclass + `@register(...)` + scenario
+wiring) applied to a state component instead of a dynamics callable.
+For the protocol surface see
+[API reference → Components](../api/components.md).
 
-```python
-from dataclasses import dataclass
-from orbital_game.registry import DynamicsKey, register
-
-@register(DynamicsKey.J2_HCW_RTN)   # add the enum member first
-@dataclass(frozen=True)
-class J2HCWRTNStep:
-    """HCW-RTN with a first-order J2 secular drift correction."""
-
-    j2_coefficient: float = 1.082626e-3
-
-    def __call__(self, state, dv, params, dt):
-        # 1. Apply HCW propagation as in hcw_rtn_step.
-        # 2. Add a J2 secular drift term to (theta_dot, n_dot).
-        # 3. Return the corrected state.
-        ...
-```
-
-Register the new key under `DynamicsKey` (in `orbital_game.registry`),
-then point a scenario at it via `truth_dynamics=DynamicsKey.J2_HCW_RTN`.
-
-## What's not yet pluggable
+## What's not yet swappable
 
 The actuator surface assumes impulsive dynamics (one `Δv` per
 timestep). Finite-burn or thrust-vs-time actuators would need a

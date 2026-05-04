@@ -64,33 +64,10 @@ post-hoc reconstruct what each side believed at every step.
 
 ## Writing a custom updater
 
-A skeleton UKF (Unscented Kalman Filter) for the same per-pair shape:
-
-```python
-from dataclasses import dataclass
-from orbital_game.registry import BeliefUpdaterKey, register
-
-@register(BeliefUpdaterKey.UKF)
-@dataclass(frozen=True)
-class UKFBeliefUpdater:
-    """UKF skeleton — generates sigma points around each (observer, target) mean,
-    propagates them through a possibly nonlinear dynamics model, and reconstructs
-    a Gaussian posterior."""
-
-    stm: jax.Array
-    process_noise: jax.Array
-    alpha: float = 1e-3
-    beta: float = 2.0
-    kappa: float = 0.0
-
-    def __call__(self, belief, observations, action, side, key):
-        # 1. Generate sigma points per (observer, target) pair.
-        # 2. Propagate each sigma point through self.stm.
-        # 3. Reconstruct mean and cov from weighted sigma points.
-        # 4. For each Observation channel, apply the measurement update
-        #    using the sigma-point predicted measurement.
-        ...
-```
+The practical "how to write one" walkthrough lives in the Extending
+section. See [Extending → Customize observations](../extending/customize-observations.md)
+for the observation-side protocol, two worked examples, and per-game
+applicability — the belief consumes whatever channels you build.
 
 ## Where to next
 

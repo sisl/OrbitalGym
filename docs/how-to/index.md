@@ -14,3 +14,9 @@ want to do and just need the few-line answer.
 | Run many seeds in parallel | [vmap rollouts over seeds](vmap-rollouts.md) |
 | Persist a scenario configuration | [Round-trip config to JSON](json-roundtrip-config.md) |
 | Choose an observation pipeline | [Pick an observation channel](pick-observation-channel.md) |
+
+## See also
+
+For deeper customization (writing your own reward / termination / IC sampler
+/ observation function, plus pattern cookbooks for controlled and
+heuristic policies), see [Extending](../extending/index.md).

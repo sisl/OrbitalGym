@@ -75,6 +75,50 @@ The default horizon is one full LEO orbit so the Sun-guard-bandit geometry varie
 - **Guard counter-positioning.** Train a guard to actively maneuver to push the bandit out of the peak region (or into the trough).
 - **Range-peak sweep.** Vary `target_viewing_distance_m` from 100 m to 2000 m. The reward peak sits at that range; the IC sampler scale should scale alongside or the bandit will rarely visit the peak in default rollouts.
 
+## Variants
+
+The four customization axes (reward, termination, IC, observation) all
+swap by `dataclasses.replace`. Two SB-flavored recipes:
+
+### Variant 1: Sun-line-aware bandit
+
+`SunTrackerBlocker` is the gallery's static-Sun blocker heuristic — it
+thrusts along a fixed RTN Sun direction toward the projection of the
+opponent onto that line. Use it as the bandit to give the guard an
+adversary that already understands the geometry and is harder to evade
+than a generic chaser.
+
+```python
+--8<-- "tests/docs/test_games_sun_blocking_variants.py:variant-sun-tracker-bandit"
+```
+
+### Variant 2: jittered Sun-tracker for population-of-adversaries
+
+Wrap `SunTrackerBlocker` in `JitteredPolicy` to produce a small
+population of stochastic Sun-line blockers. Useful for training a guard
+robust to a band of Sun-aware threats rather than overfitting to one
+deterministic adversary.
+
+```python
+--8<-- "tests/docs/test_games_sun_blocking_variants.py:variant-jittered-sun-tracker"
+```
+
+For more axes, see [Extending → Customize rewards](../extending/customize-rewards.md),
+[…termination](../extending/customize-termination.md),
+[…IC sampling](../extending/customize-ic-sampling.md), and
+[…observations](../extending/customize-observations.md).
+
+## Built-in policies and adversaries
+
+Sensible gallery picks for Sun-Blocking:
+
+- **Heuristic policies (opponent):** [`SunTrackerBlocker`](../extending/gallery.md#suntrackerblocker),
+  [`JitteredPolicy`](../extending/gallery.md#jitteredpolicy) (wrap any of the above).
+- **Controlled side:** any class from [Controlled-side cookbook](../extending/controlled-policy-cookbook.md)
+  ([`HeuristicWithFallbackPolicy`](../extending/gallery.md#heuristicwithfallbackpolicy),
+  [`BeliefConditionedPolicy`](../extending/gallery.md#beliefconditionedpolicy),
+  [`CompositeActionPolicy`](../extending/gallery.md#compositeactionpolicy)).
+
 ## Sanity-check notebook
 
 [`examples/games/sun_blocking.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/games/sun_blocking.ipynb) is a full walkthrough that builds a SB scenario, runs a rollout, plots the rollout-time diagnostic, and renders the 2D position-sweep surface — the latter is the canonical reward-shape verification, and it should match the [KSP-DG SB1](https://github.com/mit-ll/spacegym-kspdg/blob/main/src/kspdg/sb1/sb1_base.py) reference shape.

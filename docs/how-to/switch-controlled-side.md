@@ -27,3 +27,5 @@ action / observation are the bandit's.
 ## See also
 
 - [Use the Gymnasium adapter](use-gymnasium-adapter.md).
+- [Extending → Controlled-side policy cookbook](../extending/controlled-policy-cookbook.md)
+  for patterns once you've switched.

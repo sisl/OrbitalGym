@@ -1,9 +1,9 @@
 # State layout & adding a Power component
 
 `EnvState` carries one *side-state* per side. Each side-state is a
-flax pytree composed of **components** — `RTN` for relative-orbital
-state, `Mass` for propellant tracking, and so on. Components are
-pluggable: pick the set you want when building the side-state class.
+flax pytree composed of **state components** — `RTN` for relative-orbital
+state, `Mass` for propellant tracking, and so on. State components are
+swappable: pick the set you want when building the side-state class.
 
 This page documents how to read the existing fields, then walks
 through adding a new `Power` component end-to-end.

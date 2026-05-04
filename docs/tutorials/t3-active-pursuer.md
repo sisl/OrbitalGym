@@ -54,8 +54,12 @@ default 0. The env populates them at construction via
 
 ## Build the policy
 
+T3 used to define the lead-intercept pursuer inline. The gallery now
+ships [`LeadInterceptPursuer`](../extending/gallery.md#leadinterceptpursuer);
+T3 imports it directly:
+
 ```python
---8<-- "tests/docs/test_tut_t3_active_pursuer.py:lead-intercept-class"
+--8<-- "tests/docs/test_tut_t3_active_pursuer.py:imports"
 ```
 
 The math: with both vehicles in HCW the guard's next-step position

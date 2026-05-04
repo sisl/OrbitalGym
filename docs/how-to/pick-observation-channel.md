@@ -61,3 +61,6 @@ cfg = dataclasses.replace(
 
 - [In depth → Observations](../in-depth/observations.md) — the full
   channel walk-through with shape diagrams.
+- [Extending → Customize observations](../extending/customize-observations.md)
+  for *writing* a new observation function rather than choosing among
+  the shipped ones.
