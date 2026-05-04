@@ -1,4 +1,4 @@
-"""ZeroControl — always emits a zero command. The default scripted policy
+"""ZeroControl — always emits a zero command. The default heuristic policy
 for both sides; reference for bootstrap validation."""
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from orbital_game.registry import PolicyKey, register
 @dataclass(frozen=True)
 class ZeroControl:
     """Always emits a zero command. Reference for bootstrap validation
-    and the default scripted policy for both sides."""
+    and the default heuristic policy for both sides."""
 
     # Env-populated dims (filled by OrbitalGameEnv.__init__ via dataclasses.replace):
     n_vehicles: int = 0

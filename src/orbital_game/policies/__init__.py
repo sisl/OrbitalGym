@@ -2,14 +2,14 @@
 
 Public re-exports:
 
-    ZeroControl     — default scripted policy; emits zero command.
+    ZeroControl     — default heuristic policy; emits zero command.
     Policy          — structural protocol.
 
 Submodules:
 
     controlled      — gallery of controlled-side patterns
                       (scripted_with_fallback, belief_conditioned, composite_action).
-    scripted        — gallery of scripted adversaries
+    heuristic       — gallery of heuristic policies
                       (lead_intercept, evader, sun_tracker, jittered).
 """
 
