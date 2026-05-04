@@ -61,6 +61,16 @@ nav = [
     { "Observations" = "in-depth/observations.md" },
     { "Belief" = "in-depth/belief.md" },
   ] },
+  { "Extending" = [
+    { "Overview" = "extending/index.md" },
+    { "Customize rewards" = "extending/customize-rewards.md" },
+    { "Customize termination" = "extending/customize-termination.md" },
+    { "Customize IC sampling" = "extending/customize-ic-sampling.md" },
+    { "Customize observations" = "extending/customize-observations.md" },
+    { "Controlled-side policy cookbook" = "extending/controlled-policy-cookbook.md" },
+    { "Heuristic policy cookbook" = "extending/heuristic-policy-cookbook.md" },
+    { "Gallery" = "extending/gallery.md" },
+  ] },
   { "API reference" = [
     { "Overview" = "api/index.md" },
     { "Core: env, config, rollout" = "api/core.md" },

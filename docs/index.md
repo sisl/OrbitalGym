@@ -26,6 +26,11 @@ underlying game. Four scenarios ship in the box.
   symmetric core, state layout, dynamics, observations, belief, and
   more.
 
+- :material-puzzle: **Building variants and policies**
+  See [Extending](extending/index.md) for by-axis customization
+  (rewards, termination, IC sampling, observations) and pattern
+  cookbooks for controlled-side policies and heuristic policies.
+
 </div>
 
 ## What's in the box
