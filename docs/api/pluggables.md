@@ -6,7 +6,25 @@ Protocols and reference implementations for the env's swappable building blocks.
 
 ::: orbital_game.policies.base.Policy
 
-::: orbital_game.policies.ZeroControl
+::: orbital_game.policies.zero.ZeroControl
+
+### Heuristic-policy gallery
+
+::: orbital_game.policies.heuristic.lead_intercept.LeadInterceptPursuer
+
+::: orbital_game.policies.heuristic.evader.OrthogonalEvader
+
+::: orbital_game.policies.heuristic.sun_tracker.SunTrackerBlocker
+
+::: orbital_game.policies.heuristic.jittered.JitteredPolicy
+
+### Controlled-side wrappers
+
+::: orbital_game.policies.controlled.heuristic_with_fallback.HeuristicWithFallbackPolicy
+
+::: orbital_game.policies.controlled.belief_conditioned.BeliefConditionedPolicy
+
+::: orbital_game.policies.controlled.composite_action.CompositeActionPolicy
 
 ## Observations
 
