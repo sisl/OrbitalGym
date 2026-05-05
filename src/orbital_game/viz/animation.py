@@ -202,16 +202,38 @@ class RolloutScene:
         else:
             raise ValueError(f"mode must be 'auto', '2d', or '3d'; got {self.mode!r}")
 
+        # Fail fast: the renderer reads `action.dv` for the thrust-quiver
+        # overlays, so both sides' Command pytrees must carry the
+        # ImpulsiveManeuver component (which contributes the `dv` field).
+        # A comms-only side would otherwise raise an opaque AttributeError
+        # below; this check names the offending side up front.
+        from orbital_game.actions.components import ImpulsiveManeuver
+
+        for side_name in ("guard", "bandit"):
+            action = getattr(self.traj.sides, side_name).action
+            comps = getattr(type(action), "_orbital_game_action_components", ())
+            if ImpulsiveManeuver not in comps:
+                raise ValueError(
+                    f"RolloutScene requires IMPULSIVE_MANEUVER in "
+                    f"{side_name}_action_components (it reads "
+                    f"traj.sides.{side_name}.action.dv to draw thrust arrows). "
+                    f"Got components={comps!r}"
+                )
+
+        # Trajectories store actions as Command pytrees; pull the ImpulsiveManeuver
+        # component's `dv` field for the Δv quiver overlays.
+        guard_dv = np.asarray(self.traj.sides.guard.action.dv)
+        bandit_dv = np.asarray(self.traj.sides.bandit.action.dv)
         if self._mode == "3d":
             self._g_xyz = _positions_xyz(self.traj.env_state.guards)
             self._b_xyz = _positions_xyz(self.traj.env_state.bandits)
-            self._g_action = _action_to_plot(np.asarray(self.traj.sides.guard.action))
-            self._b_action = _action_to_plot(np.asarray(self.traj.sides.bandit.action))
+            self._g_action = _action_to_plot(guard_dv)
+            self._b_action = _action_to_plot(bandit_dv)
         else:
             self._g_xyz = _positions_xy(self.traj.env_state.guards)
             self._b_xyz = _positions_xy(self.traj.env_state.bandits)
-            self._g_action = _action_to_plot_2d(np.asarray(self.traj.sides.guard.action))
-            self._b_action = _action_to_plot_2d(np.asarray(self.traj.sides.bandit.action))
+            self._g_action = _action_to_plot_2d(guard_dv)
+            self._b_action = _action_to_plot_2d(bandit_dv)
 
         self._g_quat = _quat_history(self.traj.env_state.guards)
         self._b_quat = _quat_history(self.traj.env_state.bandits)

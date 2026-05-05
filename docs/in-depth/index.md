@@ -8,6 +8,8 @@ and "how to extend" sections.
   recipes. **Read this first.**
 - [State layout & adding a Power component](state-layout.md) — components,
   field maps, end-to-end example of adding a battery state-of-charge.
+- [Action components](action-components.md) — per-side `Command`
+  composition, the `(IMPULSIVE_MANEUVER,)` default, the LBG-with-comms recipe.
 - [Dynamics](dynamics.md) — HCW-RT vs HCW-RTN, actuator composition,
   registering a new dynamics module.
 - [Observations](observations.md) — channel struct, scope rules, the

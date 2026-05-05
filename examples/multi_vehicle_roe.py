@@ -68,8 +68,8 @@ def run() -> None:
     cfg = build_config()
     env = OrbitalGameEnv(cfg)
 
-    guard_policy = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
-    bandit_policy = ZeroControl(n_vehicles=cfg.n_bandits, action_dim=3)
+    guard_policy = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
+    bandit_policy = ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=cfg.n_bandits)
 
     def init_none(c, s, k):
         del c, s, k

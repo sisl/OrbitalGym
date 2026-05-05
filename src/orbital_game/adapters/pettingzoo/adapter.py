@@ -14,15 +14,10 @@ import numpy as np
 from gymnasium import spaces
 from pettingzoo import ParallelEnv
 
+from orbital_game.adapters._command_flatten import command_flat_dim, unflatten_command
 from orbital_game.env.core import OrbitalGameEnv
 from orbital_game.env.types import Actions, BySide
 from orbital_game.observations.types import flatten_observations_per_agent
-
-
-def _action_dim_from_dynamics(dynamics_key) -> int:
-    from orbital_game.registry import DynamicsKey
-
-    return 2 if dynamics_key is DynamicsKey.HCW_RT else 3
 
 
 class PettingZooAdapter(ParallelEnv):
@@ -42,10 +37,30 @@ class PettingZooAdapter(ParallelEnv):
 
         n_g = env.config.n_guards
         n_b = env.config.n_bandits
-        action_dim = _action_dim_from_dynamics(env.config.truth_dynamics)
-        self._action_dim = action_dim
         self._n_guards = n_g
         self._n_bandits = n_b
+
+        # Per-side Command pytree classes — built by env from the configured
+        # action components. Each agent's flat action is a slice of the
+        # side's flat layout (per_agent_dim = side_flat_dim // n_side).
+        self._guard_command_cls = env.guard_command_cls
+        self._bandit_command_cls = env.bandit_command_cls
+        self._guard_side_flat_dim = command_flat_dim(self._guard_command_cls)
+        self._bandit_side_flat_dim = command_flat_dim(self._bandit_command_cls)
+        # Per-agent flat dim = side flat dim / n_side. Component fields are
+        # all leading-axis n_side, so this division is exact.
+        #
+        # Note on multi-component layout: per-agent flat actions are
+        # concatenated across agents in `step`, then `unflatten_command`
+        # reconstitutes the side's Command. `unflatten_command` uses
+        # field-major layout (all-agents-of-field-1, then all-agents-of-field-2),
+        # which matches the natural concat order only when each side has at most
+        # one Command field. Currently every configured scenario uses
+        # ImpulsiveManeuver only (single `dv` field), so the ordering coincides.
+        # Multi-component PettingZoo support will need an agent-major <->
+        # field-major reshuffle at the per-agent boundary.
+        guard_per_agent_dim = self._guard_side_flat_dim // n_g
+        bandit_per_agent_dim = self._bandit_side_flat_dim // n_b
 
         self._guard_ids = [f"guard_{i}" for i in range(n_g)]
         self._bandit_ids = [f"bandit_{i}" for i in range(n_b)]
@@ -66,13 +81,21 @@ class PettingZooAdapter(ParallelEnv):
         bandit_obs_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=self._bandit_obs_shape, dtype=np.float32
         )
-        action_space = spaces.Box(low=-np.inf, high=np.inf, shape=(action_dim,), dtype=np.float32)
+        guard_action_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(guard_per_agent_dim,), dtype=np.float32
+        )
+        bandit_action_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(bandit_per_agent_dim,), dtype=np.float32
+        )
 
         self.observation_spaces = {
             **{aid: guard_obs_space for aid in self._guard_ids},
             **{aid: bandit_obs_space for aid in self._bandit_ids},
         }
-        self.action_spaces = {aid: action_space for aid in self.possible_agents}
+        self.action_spaces = {
+            **{aid: guard_action_space for aid in self._guard_ids},
+            **{aid: bandit_action_space for aid in self._bandit_ids},
+        }
 
     def reset(self, seed: int | None = None, options: dict | None = None):
         del options
@@ -90,13 +113,17 @@ class PettingZooAdapter(ParallelEnv):
     def step(self, actions: dict):
         if self._state is None:
             raise RuntimeError("step() called before reset()")
-        guard_actions = jnp.stack(
-            [jnp.asarray(actions[aid], dtype=jnp.float32) for aid in self._guard_ids]
+        # Per-agent flat actions stack to a side-flat vector, then unflatten
+        # into the side's Command pytree.
+        guard_flat = jnp.concatenate(
+            [jnp.asarray(actions[aid], dtype=jnp.float32).reshape(-1) for aid in self._guard_ids]
         )
-        bandit_actions = jnp.stack(
-            [jnp.asarray(actions[aid], dtype=jnp.float32) for aid in self._bandit_ids]
+        bandit_flat = jnp.concatenate(
+            [jnp.asarray(actions[aid], dtype=jnp.float32).reshape(-1) for aid in self._bandit_ids]
         )
-        env_actions = Actions(sides=BySide(guard=guard_actions, bandit=bandit_actions))
+        guard_command = unflatten_command(self._guard_command_cls, guard_flat)
+        bandit_command = unflatten_command(self._bandit_command_cls, bandit_flat)
+        env_actions = Actions(sides=BySide(guard=guard_command, bandit=bandit_command))
         self._rng_key, k_step = jax.random.split(self._rng_key, 2)
         step_out = self.env.step(k_step, self._state, env_actions)
         self._state = step_out.state

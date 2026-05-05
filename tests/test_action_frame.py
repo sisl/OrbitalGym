@@ -36,8 +36,11 @@ def test_action_in_rtn_with_eci_truth_rotates_correctly():
 
     # 1 m/s radial impulse in RTN.
     dv_rtn = jnp.array([[1.0, 0.0, 0.0]])
-    actions_with = Actions(sides=BySide(guard=dv_rtn, bandit=jnp.zeros((1, 3))))
-    actions_zero = Actions(sides=BySide(guard=jnp.zeros((1, 3)), bandit=jnp.zeros((1, 3))))
+    guard_cmd_with = env.guard_command_cls.zeros(1).replace(dv=dv_rtn)
+    guard_cmd_zero = env.guard_command_cls.zeros(1)
+    bandit_cmd_zero = env.bandit_command_cls.zeros(1)
+    actions_with = Actions(sides=BySide(guard=guard_cmd_with, bandit=bandit_cmd_zero))
+    actions_zero = Actions(sides=BySide(guard=guard_cmd_zero, bandit=bandit_cmd_zero))
 
     out_with = env.step(jax.random.PRNGKey(0), state, actions_with)
     out_zero = env.step(jax.random.PRNGKey(0), state, actions_zero)

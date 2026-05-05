@@ -27,8 +27,8 @@ def test_pe_diagnostic_two_panels(key):
     cfg = make_pursuit_evasion(dt=10.0, max_horizon_s=200.0, capture_distance_m=10.0)
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=1, action_dim=3),
-        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
     )
     init_ps = BySide(guard=_zero_init, bandit=_zero_init)
     traj = rollout(env, policies, init_ps, key, n_steps=15)
@@ -43,8 +43,8 @@ def test_lbg_diagnostic_two_panels_with_threshold(key):
     )
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=2, action_dim=3),
-        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=2),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
     )
     init_ps = BySide(guard=_zero_init, bandit=_zero_init)
     traj = rollout(env, policies, init_ps, key, n_steps=15)
@@ -61,8 +61,8 @@ def test_reward_diagnostic_dispatches_pe(key):
     cfg = make_pursuit_evasion(dt=10.0, max_horizon_s=200.0)
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=1, action_dim=3),
-        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
     )
     init_ps = BySide(guard=_zero_init, bandit=_zero_init)
     traj = rollout(env, policies, init_ps, key, n_steps=15)
@@ -76,8 +76,8 @@ def test_reward_diagnostic_dispatches_lbg(key):
     cfg = make_lady_bandit_guard(n_guards=1, n_bandits=1, dt=10.0, max_horizon_s=200.0)
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=1, action_dim=3),
-        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
     )
     init_ps = BySide(guard=_zero_init, bandit=_zero_init)
     traj = rollout(env, policies, init_ps, key, n_steps=15)
@@ -93,8 +93,8 @@ def test_sb_diagnostic_three_panels(key):
     cfg = make_sun_blocking(dt=10.0, max_horizon_s=200.0)
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=1, action_dim=3),
-        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
     )
     init_ps = BySide(guard=_zero_init, bandit=_zero_init)
     traj = rollout(env, policies, init_ps, key, n_steps=15)
@@ -110,8 +110,8 @@ def test_ob_diagnostic_four_panels(key):
     cfg = make_observation_blocking(dt=10.0, max_horizon_s=200.0)
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=1, action_dim=3),
-        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
     )
     init_ps = BySide(guard=_zero_init, bandit=_zero_init)
     traj = rollout(env, policies, init_ps, key, n_steps=15)
@@ -127,8 +127,8 @@ def test_reward_diagnostic_dispatches_sb(key):
     cfg = make_sun_blocking(dt=10.0, max_horizon_s=200.0)
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=1, action_dim=3),
-        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
     )
     init_ps = BySide(guard=_zero_init, bandit=_zero_init)
     traj = rollout(env, policies, init_ps, key, n_steps=15)
@@ -144,8 +144,8 @@ def test_reward_diagnostic_dispatches_ob(key):
     cfg = make_observation_blocking(dt=10.0, max_horizon_s=200.0)
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=1, action_dim=3),
-        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
     )
     init_ps = BySide(guard=_zero_init, bandit=_zero_init)
     traj = rollout(env, policies, init_ps, key, n_steps=15)

@@ -52,8 +52,9 @@ def test_customize_termination_walkthrough():
     view = SingleAgentView(env)
     state, obs, opp_ps = view.reset(jax.random.PRNGKey(0))
     del obs
+    controlled_cmd = env.guard_command_cls.zeros(cfg.n_guards)
     next_state, next_obs, reward, done, next_opp_ps, info = view.step(
-        jax.random.PRNGKey(1), state, jnp.zeros((cfg.n_guards, 3)), opp_ps
+        jax.random.PRNGKey(1), state, controlled_cmd, opp_ps
     )
     del next_state, next_obs, reward, next_opp_ps, info
     # `AndComposite` is exercised here to keep ruff F841 quiet and to smoke-test

@@ -29,8 +29,8 @@ class FullObservation:
     layout: Any
     epsilon: float = 1e-6
 
-    def __call__(self, env_state, side, params, key, t):
-        del params, key, t
+    def __call__(self, env_state, actions, side, params, key, t):
+        del actions, params, key, t  # default impls ignore actions
         own_truth, opp_truth = _truth_arrays_for_side(env_state, side.value)
         n_self = own_truth.shape[0]
         n_tgt = opp_truth.shape[0]

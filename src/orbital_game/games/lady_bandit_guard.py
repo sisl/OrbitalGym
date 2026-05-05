@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any
 
 from orbital_game.games.base import Game
 from orbital_game.registry import (
-    ActuatorKey,
     DynamicsKey,
     GameKey,
     StateComponentKey,
@@ -69,14 +68,18 @@ def make_lady_bandit_guard(
     bandit_params: VehicleParamsSpec | None = None,
     # IC sampling
     ic_sampler: ICSpec | None = None,
-    # Dynamics + actuators
+    # Dynamics
     truth_dynamics: DynamicsKey = DynamicsKey.HCW_RTN,
     policy_dynamics: DynamicsKey = DynamicsKey.HCW_RTN,
-    guard_actuator: ActuatorKey = ActuatorKey.IMPULSIVE,
-    bandit_actuator: ActuatorKey = ActuatorKey.IMPULSIVE,
     # Observation fns (None → ScenarioConfig.__post_init__ supplies FullObservation)
     guard_observation_fn: Any = None,
     bandit_observation_fn: Any = None,
+    # Decentralized-communication extension. When True, the guard side gains
+    # the COMMUNICATE action component and the reward function charges
+    # `comm_cost` per active broadcast. Bandit-side comms-leak observation
+    # is wired separately by the caller (see CommsLeakObservation).
+    with_communication: bool = False,
+    comm_cost: float = 5.0,
 ):
     """Builder for an LBG scenario.
 
@@ -144,8 +147,6 @@ def make_lady_bandit_guard(
         seed=seed,
         truth_dynamics=truth_dynamics,
         policy_dynamics=policy_dynamics,
-        guard_actuator=guard_actuator,
-        bandit_actuator=bandit_actuator,
         guard_observation_fn=guard_observation_fn,
         bandit_observation_fn=bandit_observation_fn,
         game=LadyBanditGuard(breach_distance_m=breach_distance_m),
@@ -157,4 +158,16 @@ def make_lady_bandit_guard(
         "termination_fn",
         MaxStepsOrBreach(max_steps=cfg.max_steps, breach_distance_m=breach_distance_m),
     )
+
+    if with_communication:
+        from orbital_game.registry import ActionComponentKey
+        from orbital_game.rewards.lbg_with_comms import LbgWithCommsReward
+
+        object.__setattr__(
+            cfg,
+            "guard_action_components",
+            (ActionComponentKey.IMPULSIVE_MANEUVER, ActionComponentKey.COMMUNICATE),
+        )
+        object.__setattr__(cfg, "reward_fn", LbgWithCommsReward(comm_cost=comm_cost))
+
     return cfg

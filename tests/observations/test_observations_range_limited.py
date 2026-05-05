@@ -39,7 +39,12 @@ def test_range_limited_visible_only_for_opposing_pairs_in_range():
 
     fn = RangeLimitedObservation(layout=layout, sensor_range_m=1000.0, sigma_range=0.0)
     out = fn(
-        env_state=env, side=Side.GUARD, params=None, key=jax.random.PRNGKey(0), t=jnp.array(0.0)
+        env_state=env,
+        actions=None,
+        side=Side.GUARD,
+        params=None,
+        key=jax.random.PRNGKey(0),
+        t=jnp.array(0.0),
     )
 
     assert len(out) == 1
@@ -60,7 +65,12 @@ def test_range_limited_h_matrix_selects_position_rows():
 
     fn = RangeLimitedObservation(layout=layout, sensor_range_m=1000.0, sigma_range=1.0)
     out = fn(
-        env_state=env, side=Side.GUARD, params=None, key=jax.random.PRNGKey(0), t=jnp.array(0.0)
+        env_state=env,
+        actions=None,
+        side=Side.GUARD,
+        params=None,
+        key=jax.random.PRNGKey(0),
+        t=jnp.array(0.0),
     )
     ch = out[0]
 
@@ -82,7 +92,12 @@ def test_range_limited_obs_at_in_range_pair_equals_target_position_when_no_noise
 
     fn = RangeLimitedObservation(layout=layout, sensor_range_m=1000.0, sigma_range=0.0)
     out = fn(
-        env_state=env, side=Side.GUARD, params=None, key=jax.random.PRNGKey(0), t=jnp.array(0.0)
+        env_state=env,
+        actions=None,
+        side=Side.GUARD,
+        params=None,
+        key=jax.random.PRNGKey(0),
+        t=jnp.array(0.0),
     )
     ch = out[0]
 

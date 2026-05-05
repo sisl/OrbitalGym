@@ -11,14 +11,19 @@ from orbital_game.env.types import BySide
 from orbital_game.rollout import rollout
 
 
-def _make_policies(n_guards: int, n_bandits: int) -> tuple[BySide, BySide]:
+def _make_policies(env: OrbitalGameEnv) -> tuple[BySide, BySide]:
+    guard_cmd_cls = env.guard_command_cls
+    bandit_cmd_cls = env.bandit_command_cls
+    n_guards = env.config.n_guards
+    n_bandits = env.config.n_bandits
+
     def guard_policy(ps, obs, key, t):
         del obs, key, t
-        return jnp.zeros((n_guards, 3)), ps
+        return guard_cmd_cls.zeros(n_guards), ps
 
     def bandit_policy(ps, obs, key, t):
         del obs, key, t
-        return jnp.zeros((n_bandits, 3)), ps
+        return bandit_cmd_cls.zeros(n_bandits), ps
 
     def init_none(config, env_state, key):
         del config, env_state, key
@@ -33,7 +38,7 @@ def _make_policies(n_guards: int, n_bandits: int) -> tuple[BySide, BySide]:
 def test_multi_vehicle_roe_runs_under_vmap():
     cfg = build_config()
     env = OrbitalGameEnv(cfg)
-    policies, init_fns = _make_policies(cfg.n_guards, cfg.n_bandits)
+    policies, init_fns = _make_policies(env)
 
     keys = jax.random.split(jax.random.PRNGKey(0), 8)
     batched = jax.vmap(lambda k: rollout(env, policies, init_fns, k, n_steps=10))

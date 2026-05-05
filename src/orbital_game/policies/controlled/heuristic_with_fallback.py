@@ -29,13 +29,19 @@ class HeuristicWithFallbackPolicy:
     policy_state semantics: a scalar confidence in [0, 1]. The wrapped
     primary's own state is not threaded through this class — primaries
     that need state should be wrapped with their own state-handling.
+
+    Only the `dv` field is gated by confidence. Non-`dv` Command fields
+    (e.g. `Communicate.active`, `Communicate.payload`) propagate from the
+    **primary** policy unchanged — the fallback's non-`dv` fields are
+    discarded. If the fallback should drive non-`dv` fields too, replace
+    this wrapper with a custom routing policy.
     """
 
     primary: Policy
     fallback: Policy
     threshold: float = 0.5
     n_vehicles: int = 0
-    action_dim: int = 0
+    command_cls: Any = None
 
     def __call__(
         self,
@@ -43,10 +49,17 @@ class HeuristicWithFallbackPolicy:
         obs: jax.Array,
         key: jax.Array,
         t: jax.Array,
-    ) -> tuple[jax.Array, Any]:
+    ) -> tuple[Any, Any]:
+        if self.command_cls is None:
+            raise ValueError(
+                "HeuristicWithFallbackPolicy was called before the env injected "
+                "`command_cls`. Use this policy via OrbitalGameEnv / "
+                "SingleAgentView, or pass command_cls explicitly."
+            )
         confidence = jnp.asarray(policy_state)
         k1, k2 = jax.random.split(key)
-        primary_action, _ = self.primary(None, obs, k1, t)
-        fallback_action, _ = self.fallback(None, obs, k2, t)
-        action = jnp.where(confidence >= self.threshold, primary_action, fallback_action)
-        return action, policy_state
+        primary_cmd, _ = self.primary(None, obs, k1, t)
+        fallback_cmd, _ = self.fallback(None, obs, k2, t)
+        chosen_dv = jnp.where(confidence >= self.threshold, primary_cmd.dv, fallback_cmd.dv)
+        # Take non-dv fields from the primary so e.g. Communicate.active is preserved.
+        return primary_cmd.replace(dv=chosen_dv), policy_state

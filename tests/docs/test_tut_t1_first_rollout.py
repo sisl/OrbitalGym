@@ -32,7 +32,7 @@ def test_t1_first_rollout_rt2d():
     env = OrbitalGameEnv(cfg)
     view = SingleAgentView(env)
 
-    guard_policy = ZeroControl(n_vehicles=cfg.n_guards, action_dim=2)
+    guard_policy = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
     traj = rollout_single_agent(
         view,
         guard_policy,

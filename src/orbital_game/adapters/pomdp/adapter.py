@@ -13,6 +13,12 @@ State is exposed as a flat JAX vector. The vector packs `StateLayout.flatten`
 ``step``. The reference orbit and ``ic_valid`` flag are captured from the
 env config at ``__init__`` time and treated as per-scenario constants.
 
+Actions are exposed as a flat vector that concatenates the guard side's
+flat-Command layout followed by the bandit side's flat-Command layout. The
+adapter unflattens back into the per-side Command pytrees before invoking
+``env.step``. Sizes come from
+``command_flat_dim(env.{guard,bandit}_command_cls)``.
+
 The adapter is **pure**: ``transition``, ``observation``, and ``reward`` are
 deterministic functions of their flat-vector arguments and never mutate
 adapter attributes. They compose with ``jax.vmap`` and ``jax.lax.scan``
@@ -25,15 +31,10 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
+from orbital_game.adapters._command_flatten import command_flat_dim, unflatten_command
 from orbital_game.env.core import EnvState, OrbitalGameEnv
 from orbital_game.env.types import Actions, BySide, Side
 from orbital_game.observations.types import flatten_observations
-
-
-def _action_dim_from_dynamics(dynamics_key) -> int:
-    from orbital_game.registry import DynamicsKey
-
-    return 2 if dynamics_key is DynamicsKey.HCW_RT else 3
 
 
 class POMDPAdapter:
@@ -46,7 +47,13 @@ class POMDPAdapter:
     def __init__(self, env: OrbitalGameEnv):
         self.env = env
         self.layout = env.layout
-        self._action_dim = _action_dim_from_dynamics(env.config.truth_dynamics)
+        # Per-side Command pytree classes — built by env from the configured
+        # action components. Each side's flat-action width is the sum of
+        # every component field's per-agent size, multiplied by n_agents.
+        self._guard_command_cls = env.guard_command_cls
+        self._bandit_command_cls = env.bandit_command_cls
+        self._guard_flat_dim = command_flat_dim(self._guard_command_cls)
+        self._bandit_flat_dim = command_flat_dim(self._bandit_command_cls)
         # Per-scenario constants — captured once, never mutated. The flat
         # state vector carries only (guards, bandits, t, step); reference
         # orbit and ic_valid are scenario-level metadata that don't change
@@ -63,7 +70,34 @@ class POMDPAdapter:
 
     @property
     def action_dim_per_side(self) -> int:
-        return self._action_dim
+        """Per-agent flat action width.
+
+        Both sides must agree on the per-agent dim for this property to be
+        meaningful (planners that call this typically assume a single
+        per-agent action width). When sides have different Command shapes,
+        callers should use ``guard_action_flat_dim`` / ``bandit_action_flat_dim``
+        directly.
+        """
+        guard_per_agent = self._guard_flat_dim // self.env.config.n_guards
+        bandit_per_agent = self._bandit_flat_dim // self.env.config.n_bandits
+        if guard_per_agent != bandit_per_agent:
+            raise ValueError(
+                "action_dim_per_side is ambiguous when guard and bandit Commands "
+                f"have different per-agent widths (guard={guard_per_agent}, "
+                f"bandit={bandit_per_agent}). Use guard_action_flat_dim / "
+                "bandit_action_flat_dim directly."
+            )
+        return guard_per_agent
+
+    @property
+    def guard_action_flat_dim(self) -> int:
+        """Total flat width of the guard side's Command pytree."""
+        return self._guard_flat_dim
+
+    @property
+    def bandit_action_flat_dim(self) -> int:
+        """Total flat width of the bandit side's Command pytree."""
+        return self._bandit_flat_dim
 
     def discount(self) -> float:
         """Episode-bounded → 1.0. Override per-game if needed."""
@@ -126,13 +160,13 @@ class POMDPAdapter:
         side: Side,
     ) -> jax.Array:
         """Return the side's observation at the next state."""
-        del a_flat
         next_state = self._unpack(s_next_flat)
+        actions = self._make_actions(a_flat)
         obs_fn = (
             self.env.guard_observation_fn if side is Side.GUARD else self.env.bandit_observation_fn
         )
         return flatten_observations(
-            obs_fn(next_state, side, self.env.config, jax.random.PRNGKey(0), next_state.t)
+            obs_fn(next_state, actions, side, self.env.config, jax.random.PRNGKey(0), next_state.t)
         )
 
     def reward(
@@ -153,9 +187,9 @@ class POMDPAdapter:
     # ---- helpers ----
 
     def _make_actions(self, a_flat: jax.Array) -> Actions:
-        n_g = self.env.config.n_guards
-        n_b = self.env.config.n_bandits
-        d = self._action_dim
-        guard_action = a_flat[: n_g * d].reshape(n_g, d)
-        bandit_action = a_flat[n_g * d : n_g * d + n_b * d].reshape(n_b, d)
-        return Actions(sides=BySide(guard=guard_action, bandit=bandit_action))
+        """Split a_flat into per-side slices and unflatten each into a Command."""
+        guard_flat = a_flat[: self._guard_flat_dim]
+        bandit_flat = a_flat[self._guard_flat_dim : self._guard_flat_dim + self._bandit_flat_dim]
+        guard_command = unflatten_command(self._guard_command_cls, guard_flat)
+        bandit_command = unflatten_command(self._bandit_command_cls, bandit_flat)
+        return Actions(sides=BySide(guard=guard_command, bandit=bandit_command))

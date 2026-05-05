@@ -27,7 +27,7 @@ class OrthogonalEvader:
 
     max_dv_mps: float = 0.05
     n_vehicles: int = 0
-    action_dim: int = 0
+    command_cls: Any = None
 
     def __call__(
         self,
@@ -35,8 +35,14 @@ class OrthogonalEvader:
         obs: jax.Array,
         key: jax.Array,
         t: jax.Array,
-    ) -> tuple[jax.Array, Any]:
+    ) -> tuple[Any, Any]:
         del key, t
+        if self.command_cls is None:
+            raise ValueError(
+                "OrthogonalEvader was called before the env injected `command_cls`. "
+                "Use this policy via OrbitalGameEnv / SingleAgentView, or pass "
+                "command_cls explicitly."
+            )
         own = obs[0:6]
         opp = obs[6:12]
         rel_v = opp[3:6] - own[3:6]
@@ -52,5 +58,6 @@ class OrthogonalEvader:
         ortho = jnp.where(proj_norm > 1e-6, proj, backup_proj)
         ortho_unit = ortho / (jnp.linalg.norm(ortho) + 1e-12)
         dv = ortho_unit * self.max_dv_mps
-        action = jnp.broadcast_to(dv, (self.n_vehicles, self.action_dim))
-        return action, policy_state
+        dv_per_vehicle = jnp.broadcast_to(dv, (self.n_vehicles, 3))
+        cmd = self.command_cls.zeros(self.n_vehicles).replace(dv=dv_per_vehicle)
+        return cmd, policy_state

@@ -30,8 +30,8 @@ class RangeLimitedObservation:
     sensor_range_m: float
     sigma_range: float = 1.0
 
-    def __call__(self, env_state, side, params, key, t):
-        del params, t
+    def __call__(self, env_state, actions, side, params, key, t):
+        del actions, params, t  # default impls ignore actions
         own_truth, opp_truth = _truth_arrays_for_side(env_state, side.value)
         n_self = own_truth.shape[0]
         n_tgt = opp_truth.shape[0]

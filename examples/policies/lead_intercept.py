@@ -26,15 +26,16 @@ class LeadInterceptPursuer:
         max_dv_mps: Magnitude of the impulse command, m/s.
         dt: Step size in seconds (used for one-step HCW propagation).
 
-    Env-populated dims (filled by OrbitalGameEnv at construction):
-        n_vehicles, action_dim
+    Env-populated knobs (filled by OrbitalGameEnv at construction):
+        n_vehicles: number of vehicles on this side
+        command_cls: per-side Command pytree class
     """
 
     max_dv_mps: float = 0.05
     dt: float = 10.0
 
     n_vehicles: int = 0
-    action_dim: int = 0
+    command_cls: Any = None
 
     def __call__(
         self,
@@ -42,7 +43,7 @@ class LeadInterceptPursuer:
         obs: jax.Array,
         key: jax.Array,
         t: jax.Array,
-    ) -> tuple[jax.Array, Any]:
+    ) -> tuple[Any, Any]:
         del key, t
         # FullObservation flattens the per-(observer, tracked) tensor as
         # [own_truth, opp_truth] — own side first, then opposing side.
@@ -62,6 +63,7 @@ class LeadInterceptPursuer:
         unit = direction / norm
         dv = unit * self.max_dv_mps
 
-        # Action shape (n_vehicles, action_dim) — single bandit, RTN.
-        action = jnp.broadcast_to(dv, (self.n_vehicles, self.action_dim))
-        return action, policy_state
+        # dv shape (n_vehicles, 3) — single bandit, RTN.
+        dv_per_vehicle = jnp.broadcast_to(dv, (self.n_vehicles, 3))
+        cmd = self.command_cls.zeros(self.n_vehicles).replace(dv=dv_per_vehicle)
+        return cmd, policy_state

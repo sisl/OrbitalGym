@@ -10,16 +10,26 @@ def test_indepth_observations_full():
     import jax
 
     from orbital_game import OrbitalGameEnv, make_lady_bandit_guard
-    from orbital_game.env.types import Side
+    from orbital_game.env.types import Actions, BySide, Side
 
     cfg = make_lady_bandit_guard(n_guards=1, n_bandits=1, seed=0)
     env = OrbitalGameEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     # Both sides expose their observation function as `env.<side>_observation_fn`.
-    # The protocol is `(env_state, side, params, key, t) -> tuple[Observation, ...]`.
+    # The protocol is `(env_state, actions, side, params, key, t) -> tuple[Observation, ...]`.
+    # `actions` is the full Actions pytree; pass identity (zeros) when calling
+    # outside an env.step to avoid information leakage.
+    identity_actions = Actions(
+        sides=BySide(
+            guard=env.guard_command_cls.zeros(cfg.n_guards),
+            bandit=env.bandit_command_cls.zeros(cfg.n_bandits),
+        )
+    )
     # The bundled `FullObservation` returns a single channel.
-    channels = env.guard_observation_fn(state, Side.GUARD, cfg, jax.random.PRNGKey(1), state.t)
+    channels = env.guard_observation_fn(
+        state, identity_actions, Side.GUARD, cfg, jax.random.PRNGKey(1), state.t
+    )
     assert isinstance(channels, tuple)
     channel = channels[0]
     # Each channel carries `obs`, `visible`, `obs_matrix`, `obs_noise`.
@@ -34,7 +44,7 @@ def test_indepth_observations_range_limited():
     import jax
 
     from orbital_game import OrbitalGameEnv, make_lady_bandit_guard
-    from orbital_game.env.types import Side
+    from orbital_game.env.types import Actions, BySide, Side
     from orbital_game.observations import RangeLimitedObservation
 
     cfg = make_lady_bandit_guard(n_guards=1, n_bandits=1, seed=0)
@@ -44,7 +54,13 @@ def test_indepth_observations_range_limited():
     # Swap in a RangeLimitedObservation channel — distance-gated per-pair
     # 3-D position measurement with Gaussian noise.
     obs_fn = RangeLimitedObservation(layout=env.layout, sensor_range_m=2000.0, sigma_range=1.0)
-    channels = obs_fn(state, Side.GUARD, cfg, jax.random.PRNGKey(1), state.t)
+    identity_actions = Actions(
+        sides=BySide(
+            guard=env.guard_command_cls.zeros(cfg.n_guards),
+            bandit=env.bandit_command_cls.zeros(cfg.n_bandits),
+        )
+    )
+    channels = obs_fn(state, identity_actions, Side.GUARD, cfg, jax.random.PRNGKey(1), state.t)
     channel = channels[0]
     # Per-pair shapes: obs is (N_self, N_total, 3), visible is (N_self, N_total).
     assert channel.obs.ndim == 3

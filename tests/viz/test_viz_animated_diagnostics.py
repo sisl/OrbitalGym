@@ -25,8 +25,8 @@ def _short_rollout(make_cfg):
     cfg = make_cfg(dt=10.0, max_horizon_s=200.0)
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=1, action_dim=3),
-        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
     )
     init_ps = BySide(guard=_zero_init, bandit=_zero_init)
     traj = rollout(env, policies, init_ps, jax.random.PRNGKey(0), n_steps=15)

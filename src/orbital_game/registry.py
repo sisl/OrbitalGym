@@ -54,8 +54,11 @@ class DynamicsKey(StrEnum):
     ASTROJAX_ORBIT = "astrojax_orbit"
 
 
-class ActuatorKey(StrEnum):
-    IMPULSIVE = "impulsive"
+class ActionComponentKey(StrEnum):
+    """Composable per-side action-pytree component."""
+
+    IMPULSIVE_MANEUVER = "impulsive_maneuver"  # batteries-included impulsive Δv + propellant
+    COMMUNICATE = "communicate"  # broadcast to other agents (Dec-POMDP comms)
 
 
 class PolicyKey(StrEnum):
@@ -69,6 +72,7 @@ class ObservationFnKey(StrEnum):
     ONBOARD_GPS = "onboard_gps_observation"
     RANGE_LIMITED = "range_limited_observation"
     COMPOSITE = "composite_observation"
+    COMMS_LEAK = "comms_leak_observation"
 
 
 class RewardFnKey(StrEnum):
@@ -76,6 +80,7 @@ class RewardFnKey(StrEnum):
     PURSUIT_EVASION = "pursuit_evasion_reward"
     SUN_BLOCKING = "sun_blocking_reward"
     OBSERVATION_BLOCKING = "observation_blocking_reward"  # added Phase 2 Task 5
+    LBG_WITH_COMMS = "lbg_with_comms_reward"
 
 
 class TerminationFnKey(StrEnum):
@@ -143,10 +148,9 @@ def register(
 
     DynamicsKey registrations REQUIRE both ``frame`` and ``kind`` — they describe
     a dynamics, and downstream code (dynamics validator, reference-orbit kind check)
-    depends on those attributes being populated. Other key types (ActuatorKey,
-    PolicyKey, ObservationFnKey, RewardFnKey, BeliefInitializerKey,
-    BeliefUpdaterKey, etc.) accept ``frame=None, kind=None`` since they don't
-    represent dynamics.
+    depends on those attributes being populated. Other key types (PolicyKey,
+    ObservationFnKey, RewardFnKey, BeliefInitializerKey, BeliefUpdaterKey, etc.)
+    accept ``frame=None, kind=None`` since they don't represent dynamics.
     """
     if isinstance(key, DynamicsKey):
         if frame is None:

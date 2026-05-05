@@ -26,7 +26,6 @@ import numpy as np
 from orbital_game.games._frames import vehicle_eci_position
 from orbital_game.games.base import Game
 from orbital_game.registry import (
-    ActuatorKey,
     DynamicsKey,
     GameKey,
     RewardFnKey,
@@ -237,11 +236,9 @@ def make_observation_blocking(
     bandit_params: VehicleParamsSpec | None = None,
     # IC sampling
     ic_sampler: ICSpec | None = None,
-    # Dynamics + actuators
+    # Dynamics
     truth_dynamics: DynamicsKey = DynamicsKey.HCW_RTN,
     policy_dynamics: DynamicsKey = DynamicsKey.HCW_RTN,
-    guard_actuator: ActuatorKey = ActuatorKey.IMPULSIVE,
-    bandit_actuator: ActuatorKey = ActuatorKey.IMPULSIVE,
     # Observation fns (None → ScenarioConfig.__post_init__ supplies FullObservation)
     guard_observation_fn: Any = None,
     bandit_observation_fn: Any = None,
@@ -299,8 +296,6 @@ def make_observation_blocking(
         seed=seed,
         truth_dynamics=truth_dynamics,
         policy_dynamics=policy_dynamics,
-        guard_actuator=guard_actuator,
-        bandit_actuator=bandit_actuator,
         guard_observation_fn=guard_observation_fn,
         bandit_observation_fn=bandit_observation_fn,
         game=ObservationBlocking(

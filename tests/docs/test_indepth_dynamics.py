@@ -40,7 +40,6 @@ def test_indepth_dynamics_hcw_rtn_step():
 def test_indepth_dynamics_actuator_composition():
     # --8<-- [start:actuator-composition]
     import jax
-    import jax.numpy as jnp
 
     from orbital_game import Actions, BySide, OrbitalGameEnv, make_lady_bandit_guard
 
@@ -52,8 +51,8 @@ def test_indepth_dynamics_actuator_composition():
     # dynamics step (state + Δv → next state) for each side.
     actions = Actions(
         sides=BySide(
-            guard=jnp.zeros((cfg.n_guards, 3)),
-            bandit=jnp.zeros((cfg.n_bandits, 3)),
+            guard=env.guard_command_cls.zeros(cfg.n_guards),
+            bandit=env.bandit_command_cls.zeros(cfg.n_bandits),
         )
     )
     step_output = env.step(jax.random.PRNGKey(1), state, actions)

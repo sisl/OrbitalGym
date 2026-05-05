@@ -26,8 +26,8 @@ def test_zero_zero_rollout_is_invariant_to_controlled_side():
     which side is 'controlled' — the symmetric core treats both identically."""
     cfg = build_config()
     env = OrbitalGameEnv(cfg)
-    g_pol = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
-    b_pol = ZeroControl(n_vehicles=cfg.n_bandits, action_dim=3)
+    g_pol = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
+    b_pol = ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=cfg.n_bandits)
 
     def init_none(c, s, k):
         del c, s, k
@@ -43,9 +43,11 @@ def test_zero_zero_rollout_is_invariant_to_controlled_side():
 
     cfg_swap = dataclasses.replace(cfg, controlled_side=Side.BANDIT)
     env_swap = OrbitalGameEnv(cfg_swap)
+    g_pol_swap = ZeroControl(command_cls=env_swap.guard_command_cls, n_vehicles=cfg_swap.n_guards)
+    b_pol_swap = ZeroControl(command_cls=env_swap.bandit_command_cls, n_vehicles=cfg_swap.n_bandits)
     traj_b = rollout(
         env_swap,
-        BySide(guard=g_pol, bandit=b_pol),
+        BySide(guard=g_pol_swap, bandit=b_pol_swap),
         BySide(guard=init_none, bandit=init_none),
         jax.random.PRNGKey(cfg_swap.seed),
         n_steps=cfg_swap.max_steps,

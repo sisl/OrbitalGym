@@ -40,8 +40,8 @@ def test_t2_rtn_scenario():
     # --8<-- [start:run-rollout]
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=cfg.n_guards, action_dim=3),
-        bandit=ZeroControl(n_vehicles=cfg.n_bandits, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=cfg.n_bandits),
     )
     init_ps = BySide(
         guard=lambda c, s, k: None,
@@ -90,8 +90,8 @@ def test_t2_plots_render():
     cfg = make_pursuit_evasion(n_guards=2, n_bandits=1, seed=0)
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=cfg.n_guards, action_dim=3),
-        bandit=ZeroControl(n_vehicles=cfg.n_bandits, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=cfg.n_bandits),
     )
     init_ps = BySide(
         guard=lambda c, s, k: None,

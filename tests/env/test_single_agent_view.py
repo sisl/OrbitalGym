@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import jax
-import jax.numpy as jnp
 
 from examples.reference_scenario import build_config
 from orbital_game.env.core import OrbitalGameEnv
@@ -34,7 +33,7 @@ def test_single_agent_view_step_runs_scripted_opponent():
     env = OrbitalGameEnv(cfg)
     view = SingleAgentView(env)
     state, obs, opp_ps = view.reset(jax.random.PRNGKey(0))
-    controlled_action = jnp.zeros((cfg.n_guards, 3))
+    controlled_action = env.guard_command_cls.zeros(cfg.n_guards)
     next_state, next_obs, reward, done, next_opp_ps, info = view.step(
         jax.random.PRNGKey(1), state, controlled_action, opp_ps
     )
@@ -56,8 +55,8 @@ def test_single_agent_view_consistency_with_symmetric_step():
     assert (state_a.bandits.rtn == state_b.bandits.rtn).all()
 
     # Step both with zero guard action; opponent ZeroControl produces zero too.
-    controlled_action = jnp.zeros((cfg.n_guards, 3))
-    bandit_zero = jnp.zeros((cfg.n_bandits, 3))
+    controlled_action = env.guard_command_cls.zeros(cfg.n_guards)
+    bandit_zero = env.bandit_command_cls.zeros(cfg.n_bandits)
 
     step_key = jax.random.PRNGKey(456)
     next_a_state, next_a_obs, reward_a, done_a, _ps, _info = view.step(

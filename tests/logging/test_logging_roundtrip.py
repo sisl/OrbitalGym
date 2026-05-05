@@ -51,11 +51,13 @@ def test_hdf5_save_load_roundtrip(tmp_path):
 
     cfg = _make_cfg()
     env = OrbitalGameEnv(cfg)
+    guard_cmd_cls = env.guard_command_cls
+    bandit_cmd_cls = env.bandit_command_cls
     traj = rollout(
         env,
         BySide(
-            guard=lambda ps, obs, k, t: (jnp.zeros((1, 3)), ps),
-            bandit=lambda ps, obs, k, t: (jnp.zeros((1, 3)), ps),
+            guard=lambda ps, obs, k, t: (guard_cmd_cls.zeros(1), ps),
+            bandit=lambda ps, obs, k, t: (bandit_cmd_cls.zeros(1), ps),
         ),
         BySide(
             guard=lambda c, es, k: None,
@@ -74,7 +76,8 @@ def test_hdf5_save_load_roundtrip(tmp_path):
     # Reward and action survive byte-equal through the round-trip.
     # New Trajectory stores per-side fields under "sides.guard.*" keys.
     assert jnp.allclose(loaded_traj["sides.guard.reward"], traj.sides.guard.reward)
-    assert jnp.allclose(loaded_traj["sides.guard.action"], traj.sides.guard.action)
+    # Action is a Command pytree; logger flattens to dotted keys per field.
+    assert jnp.allclose(loaded_traj["sides.guard.action.dv"], traj.sides.guard.action.dv)
     # Done bool array round-trips too (episode_done is the canonical latched flag).
     assert jnp.array_equal(loaded_traj["episode_done"], traj.episode_done)
 

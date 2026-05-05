@@ -26,7 +26,7 @@ def _rollout_min_dist(bandit_policy):
     cfg = dataclasses.replace(cfg, bandit_policy=bandit_policy)
     env = OrbitalGameEnv(cfg)
     view = SingleAgentView(env)
-    guard_policy = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
+    guard_policy = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
 
     traj = rollout_single_agent(
         view,

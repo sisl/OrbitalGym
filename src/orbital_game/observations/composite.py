@@ -24,10 +24,10 @@ class CompositeObservation:
 
     constituents: tuple
 
-    def __call__(self, env_state, side, params, key, t) -> tuple[Observation, ...]:
+    def __call__(self, env_state, actions, side, params, key, t) -> tuple[Observation, ...]:
         subkeys = jax.random.split(key, max(len(self.constituents), 1))
         result: list[Observation] = []
         for fn, k in zip(self.constituents, subkeys, strict=True):
-            channels = fn(env_state, side, params, k, t)
+            channels = fn(env_state, actions, side, params, k, t)
             result.extend(channels)
         return tuple(result)

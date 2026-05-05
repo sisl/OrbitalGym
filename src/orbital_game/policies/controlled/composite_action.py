@@ -17,12 +17,19 @@ from orbital_game.policies.base import Policy
 
 @dataclass(frozen=True)
 class CompositeActionPolicy:
-    """Sums actions from `base` and `offset`. Both must produce same-shape actions."""
+    """Sums actions from `base` and `offset`. Both must produce same-shape actions.
+
+    Only the `dv` field is summed. Non-`dv` Command fields (e.g. `Communicate.active`,
+    `Communicate.payload`) propagate from the **base** policy unchanged — the
+    offset policy's non-`dv` fields are discarded. This matches the typical
+    "scripted base + learned residual" usage where the residual is a Δv
+    correction only.
+    """
 
     base: Policy
     offset: Policy
     n_vehicles: int = 0
-    action_dim: int = 0
+    command_cls: Any = None
 
     def __call__(
         self,
@@ -30,8 +37,15 @@ class CompositeActionPolicy:
         obs: jax.Array,
         key: jax.Array,
         t: jax.Array,
-    ) -> tuple[jax.Array, Any]:
+    ) -> tuple[Any, Any]:
+        if self.command_cls is None:
+            raise ValueError(
+                "CompositeActionPolicy was called before the env injected "
+                "`command_cls`. Use this policy via OrbitalGameEnv / "
+                "SingleAgentView, or pass command_cls explicitly."
+            )
         k1, k2 = jax.random.split(key)
-        base_action, _ = self.base(None, obs, k1, t)
-        offset_action, _ = self.offset(None, obs, k2, t)
-        return base_action + offset_action, policy_state
+        base_cmd, _ = self.base(None, obs, k1, t)
+        offset_cmd, _ = self.offset(None, obs, k2, t)
+        # Start from base_cmd to preserve non-dv fields; only update dv.
+        return base_cmd.replace(dv=base_cmd.dv + offset_cmd.dv), policy_state

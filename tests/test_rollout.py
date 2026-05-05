@@ -48,14 +48,19 @@ def _make_env(max_horizon_s: float = 2000.0) -> OrbitalGameEnv:
     return OrbitalGameEnv(_make_cfg(max_horizon_s=max_horizon_s))
 
 
-def _zero_policies(n_guards: int = 1, n_bandits: int = 1) -> BySide:
+def _zero_policies(env: OrbitalGameEnv) -> BySide:
+    n_guards = env.config.n_guards
+    n_bandits = env.config.n_bandits
+    guard_command_cls = env.guard_command_cls
+    bandit_command_cls = env.bandit_command_cls
+
     def guard_policy(policy_state, obs, key, t):
         del obs, key, t
-        return jnp.zeros((n_guards, 3)), policy_state
+        return guard_command_cls.zeros(n_guards), policy_state
 
     def bandit_policy(policy_state, obs, key, t):
         del obs, key, t
-        return jnp.zeros((n_bandits, 3)), policy_state
+        return bandit_command_cls.zeros(n_bandits), policy_state
 
     return BySide(guard=guard_policy, bandit=bandit_policy)
 
@@ -70,24 +75,24 @@ def _null_init_fns() -> BySide:
 
 def test_rollout_returns_trajectory_with_leading_T_axis():  # noqa: N802
     env = _make_env()
-    traj = rollout(env, _zero_policies(), _null_init_fns(), jax.random.PRNGKey(0), n_steps=20)
+    traj = rollout(env, _zero_policies(env), _null_init_fns(), jax.random.PRNGKey(0), n_steps=20)
     assert traj.sides.guard.reward.shape == (20,)
-    assert traj.sides.guard.action.shape == (20, 1, 3)
+    assert traj.sides.guard.action.dv.shape == (20, 1, 3)
     assert traj.episode_done.shape == (20,)
 
 
 def test_rollout_is_deterministic_under_same_key():
     env = _make_env()
     key = jax.random.PRNGKey(7)
-    t1 = rollout(env, _zero_policies(), _null_init_fns(), key, n_steps=10)
-    t2 = rollout(env, _zero_policies(), _null_init_fns(), key, n_steps=10)
+    t1 = rollout(env, _zero_policies(env), _null_init_fns(), key, n_steps=10)
+    t2 = rollout(env, _zero_policies(env), _null_init_fns(), key, n_steps=10)
     assert jnp.allclose(t1.sides.guard.reward, t2.sides.guard.reward)
 
 
 def test_vmap_rollout_over_seeds_produces_batched_trajectories():
     env = _make_env()
     keys = jax.random.split(jax.random.PRNGKey(0), 4)
-    batched = jax.vmap(lambda k: rollout(env, _zero_policies(), _null_init_fns(), k, n_steps=10))
+    batched = jax.vmap(lambda k: rollout(env, _zero_policies(env), _null_init_fns(), k, n_steps=10))
     t = batched(keys)
     assert t.sides.guard.reward.shape == (4, 10)
     # Different seeds → different rewards (sanity check that the vmap axis is real).
@@ -101,7 +106,7 @@ def test_rollout_freezes_state_and_zeros_reward_after_termination():
     onward, the rollout freezes: logged env_state.step stays at 3, reward 0,
     done latched True."""
     env = _make_env(max_horizon_s=30.0)  # max_steps = 3
-    traj = rollout(env, _zero_policies(), _null_init_fns(), jax.random.PRNGKey(0), n_steps=10)
+    traj = rollout(env, _zero_policies(env), _null_init_fns(), jax.random.PRNGKey(0), n_steps=10)
 
     # Logged env_state.step at each scan index (pre-step input state):
     # [0, 1, 2, 3, 3, 3, 3, 3, 3, 3]

@@ -30,7 +30,7 @@ class JitteredPolicy:
     base: Policy
     sigma: float = 0.01
     n_vehicles: int = 0
-    action_dim: int = 0
+    command_cls: Any = None
 
     def __call__(
         self,
@@ -38,8 +38,14 @@ class JitteredPolicy:
         obs: jax.Array,
         key: jax.Array,
         t: jax.Array,
-    ) -> tuple[jax.Array, Any]:
+    ) -> tuple[Any, Any]:
+        if self.command_cls is None:
+            raise ValueError(
+                "JitteredPolicy was called before the env injected `command_cls`. "
+                "Use this policy via OrbitalGameEnv / SingleAgentView, or pass "
+                "command_cls explicitly."
+            )
         k1, k2 = jax.random.split(key)
-        base_action, next_state = self.base(policy_state, obs, k1, t)
-        noise = self.sigma * jax.random.normal(k2, shape=base_action.shape)
-        return base_action + noise, next_state
+        base_cmd, next_state = self.base(policy_state, obs, k1, t)
+        noise = self.sigma * jax.random.normal(k2, shape=base_cmd.dv.shape)
+        return base_cmd.replace(dv=base_cmd.dv + noise), next_state

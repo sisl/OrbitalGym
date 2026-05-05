@@ -19,8 +19,8 @@ def _init_none(c, s, k):
 def test_trajectory_axis_order():
     cfg = build_config()
     env = OrbitalGameEnv(cfg)
-    g_pol = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
-    b_pol = ZeroControl(n_vehicles=cfg.n_bandits, action_dim=3)
+    g_pol = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
+    b_pol = ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=cfg.n_bandits)
 
     traj = rollout(
         env,
@@ -30,9 +30,9 @@ def test_trajectory_axis_order():
         n_steps=cfg.max_steps,
     )
     n_t = cfg.max_steps
-    # Per-side action: (T, N_side, action_dim)
-    assert traj.sides.guard.action.shape == (n_t, cfg.n_guards, 3)
-    assert traj.sides.bandit.action.shape == (n_t, cfg.n_bandits, 3)
+    # Per-side action: Command pytree with (T, N_side, action_dim) on `dv`
+    assert traj.sides.guard.action.dv.shape == (n_t, cfg.n_guards, 3)
+    assert traj.sides.bandit.action.dv.shape == (n_t, cfg.n_bandits, 3)
     # Per-side obs (PER_SIDE scope): (T, obs_dim) — no vehicle axis
     assert traj.sides.guard.obs.ndim == 2
     assert traj.sides.bandit.obs.ndim == 2
@@ -47,8 +47,8 @@ def test_trajectory_vmap_seeds():
     """vmap over a batch of seeds adds a leading B axis to every leaf."""
     cfg = build_config()
     env = OrbitalGameEnv(cfg)
-    g_pol = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
-    b_pol = ZeroControl(n_vehicles=cfg.n_bandits, action_dim=3)
+    g_pol = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
+    b_pol = ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=cfg.n_bandits)
 
     def _run(key):
         return rollout(
@@ -62,5 +62,5 @@ def test_trajectory_vmap_seeds():
     keys = jax.random.split(jax.random.PRNGKey(0), 4)
     batched = jax.vmap(_run)(keys)
     n_t = cfg.max_steps
-    assert batched.sides.guard.action.shape == (4, n_t, cfg.n_guards, 3)
+    assert batched.sides.guard.action.dv.shape == (4, n_t, cfg.n_guards, 3)
     assert batched.episode_done.shape == (4, n_t)

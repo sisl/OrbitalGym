@@ -43,13 +43,11 @@ def _make_cfg() -> ScenarioConfig:
     )
 
 
-def _make_actions(cfg: ScenarioConfig, guard_action: jnp.ndarray) -> Actions:
-    return Actions(
-        sides=BySide(
-            guard=guard_action,
-            bandit=jnp.zeros((cfg.n_bandits, 3)),
-        )
-    )
+def _make_actions(env: OrbitalGameEnv, guard_dv: jnp.ndarray) -> Actions:
+    cfg = env.config
+    guard_cmd = env.guard_command_cls.zeros(cfg.n_guards).replace(dv=guard_dv)
+    bandit_cmd = env.bandit_command_cls.zeros(cfg.n_bandits)
+    return Actions(sides=BySide(guard=guard_cmd, bandit=bandit_cmd))
 
 
 def test_env_reset_is_deterministic_under_same_key():
@@ -71,7 +69,7 @@ def test_env_step_is_deterministic_under_same_key():
     env = OrbitalGameEnv(cfg)
     key = jax.random.PRNGKey(42)
     s0, _ = env.reset(key)
-    actions = _make_actions(cfg, jnp.zeros((1, 3)))
+    actions = _make_actions(env, jnp.zeros((1, 3)))
     step_key = jax.random.PRNGKey(99)
     out_a = env.step(step_key, s0, actions)
     out_b = env.step(step_key, s0, actions)
@@ -86,7 +84,7 @@ def test_env_step_increments_step_counter_and_time():
     s0, _ = env.reset(key)
     assert int(s0.step) == 0
     assert float(s0.t) == 0.0
-    actions = _make_actions(cfg, jnp.zeros((1, 3)))
+    actions = _make_actions(env, jnp.zeros((1, 3)))
     step_out = env.step(jax.random.PRNGKey(1), s0, actions)
     assert int(step_out.state.step) == 1
     assert float(step_out.state.t) == 10.0  # dt
@@ -127,12 +125,7 @@ def test_env_runs_end_to_end_with_rt_2d_dynamics():
     assert s0.guards.rt.shape == (1, 4)
     assert s0.bandits.rt.shape == (1, 4)
     # Guard action is 2D in RT scenarios.
-    actions = Actions(
-        sides=BySide(
-            guard=jnp.zeros((1, 2)),
-            bandit=jnp.zeros((1, 2)),
-        )
-    )
+    actions = _make_actions(env, jnp.zeros((1, 2)))
     step_out = env.step(jax.random.PRNGKey(1), s0, actions)
     assert step_out.state.guards.rt.shape == (1, 4)
     assert jnp.isfinite(step_out.outputs.guard.reward)

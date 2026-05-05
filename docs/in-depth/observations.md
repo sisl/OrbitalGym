@@ -6,7 +6,7 @@ ship in the box; you can compose them or write your own.
 ## The protocol
 
 ```
-observation_fn: (env_state, side, params, key, t) → tuple[Observation, ...]
+observation_fn: (env_state, actions, side, params, key, t) → tuple[Observation, ...]
 ```
 
 A function returns a **tuple** of `Observation` channels. Each

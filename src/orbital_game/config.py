@@ -2,8 +2,8 @@
 
 Component references that have per-instance knobs are held as typed instances
 (set via __post_init__ defaults or passed directly by the caller). Components
-with no per-instance knobs (dynamics, actuators) stay as enum keys for
-cheap equality + JSON round-trips.
+with no per-instance knobs (dynamics) stay as enum keys for cheap equality
++ JSON round-trips.
 
 Scenario horizon is specified in physical time (dt + max_horizon_s); the
 discrete step count is a derived property.
@@ -22,7 +22,7 @@ import jax.numpy as jnp
 from orbital_game.games.base import Game, NoGame
 from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.registry import (
-    ActuatorKey,
+    ActionComponentKey,
     BeliefInitializerKey,
     BeliefUpdaterKey,
     DynamicsKey,
@@ -90,16 +90,25 @@ class ScenarioConfig:
     # should read the resolved field, not this input field.
     reference_orbit_dynamics: Any = None
     reference_orbit_dynamics_resolved: Any = DynamicsKey.KEPLERIAN_ECI
-    guard_actuator: ActuatorKey = ActuatorKey.IMPULSIVE
-    bandit_actuator: ActuatorKey = ActuatorKey.IMPULSIVE
 
-    # Frame in which actuator-emitted Δv is expressed. ``env.step()`` rotates
-    # the actuator output from this frame into the truth-dynamics frame using
-    # ``convert_action`` before applying it. When left as ``None`` (the
-    # default), it resolves in __post_init__ to the truth_dynamics frame —
-    # this is the no-op-conversion case (action arrives already in the truth
-    # frame). Users wiring an RTN policy against an ECI truth, etc., set this
-    # explicitly to the policy's emission frame.
+    # Per-side action-pytree composition. A tuple of ActionComponentKeys; each
+    # component contributes named fields to the side's Command pytree and an
+    # `apply` method invoked by env.step in registration order. Default
+    # (IMPULSIVE_MANEUVER,) gives single-impulse impulsive Δv per step.
+    guard_action_components: tuple[ActionComponentKey, ...] = (
+        ActionComponentKey.IMPULSIVE_MANEUVER,
+    )
+    bandit_action_components: tuple[ActionComponentKey, ...] = (
+        ActionComponentKey.IMPULSIVE_MANEUVER,
+    )
+
+    # Frame in which the action-component-emitted Δv is expressed. ``env.step()``
+    # (via ``ImpulsiveManeuver.apply``) rotates the Δv from this frame into the
+    # truth-dynamics frame using ``convert_action`` before applying it. When
+    # left as ``None`` (the default), it resolves in __post_init__ to the
+    # truth_dynamics frame — this is the no-op-conversion case (action arrives
+    # already in the truth frame). Users wiring an RTN policy against an ECI
+    # truth, etc., set this explicitly to the policy's emission frame.
     action_frame: Frame | None = None
 
     # Derived: per-side components auto-extended with views for every frame
@@ -151,6 +160,13 @@ class ScenarioConfig:
             raise ValueError("max_horizon_s must be > 0")
         if self.max_horizon_s < self.dt:
             raise ValueError("max_horizon_s must be >= dt")
+        # Empty action-component tuples produce a Command pytree with no fields,
+        # which makes `flatten_command` raise on `jnp.concatenate([])`. Reject
+        # at construction so the failure surface is the config, not the adapter.
+        if not self.guard_action_components:
+            raise ValueError("guard_action_components must contain at least one component")
+        if not self.bandit_action_components:
+            raise ValueError("bandit_action_components must contain at least one component")
 
         # The spatial state component must match the truth dynamics frame. Truth
         # is the authoritative role; policy/belief frames need not be in the
@@ -446,8 +462,6 @@ _ENUM_FIELDS: dict[str, type[Enum]] = {
     "policy_dynamics": DynamicsKey,
     "belief_dynamics": DynamicsKey,
     "reference_orbit_dynamics": DynamicsKey,
-    "guard_actuator": ActuatorKey,
-    "bandit_actuator": ActuatorKey,
     "action_frame": Frame,
 }
 
@@ -530,6 +544,8 @@ def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> Scen
         v = raw[f.name]
         if f.name in ("guard_components", "bandit_components"):
             kwargs[f.name] = tuple(StateComponentKey(x) for x in v)
+        elif f.name in ("guard_action_components", "bandit_action_components"):
+            kwargs[f.name] = tuple(ActionComponentKey(x) for x in v)
         elif f.name in _ENUM_FIELDS:
             # Optional enum fields (e.g. reference_orbit_dynamics) may be stored
             # as None — leave absent so __post_init__ resolves the default.

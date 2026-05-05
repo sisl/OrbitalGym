@@ -37,7 +37,7 @@ class SunTrackerBlocker:
     sun_dir_rtn: jax.Array = field(default_factory=_default_sun_dir)
     max_dv_mps: float = 0.05
     n_vehicles: int = 0
-    action_dim: int = 0
+    command_cls: Any = None
 
     def __call__(
         self,
@@ -45,8 +45,14 @@ class SunTrackerBlocker:
         obs: jax.Array,
         key: jax.Array,
         t: jax.Array,
-    ) -> tuple[jax.Array, Any]:
+    ) -> tuple[Any, Any]:
         del key, t
+        if self.command_cls is None:
+            raise ValueError(
+                "SunTrackerBlocker was called before the env injected `command_cls`. "
+                "Use this policy via OrbitalGameEnv / SingleAgentView, or pass "
+                "command_cls explicitly."
+            )
         own = obs[0:6]
         opp = obs[6:12]
         rel = opp[0:3] - own[0:3]
@@ -57,5 +63,6 @@ class SunTrackerBlocker:
         sign = jnp.where(jnp.abs(scalar) > 1e-9, jnp.sign(scalar), 1.0)
         direction = sun_unit * sign
         dv = direction * self.max_dv_mps
-        action = jnp.broadcast_to(dv, (self.n_vehicles, self.action_dim))
-        return action, policy_state
+        dv_per_vehicle = jnp.broadcast_to(dv, (self.n_vehicles, 3))
+        cmd = self.command_cls.zeros(self.n_vehicles).replace(dv=dv_per_vehicle)
+        return cmd, policy_state

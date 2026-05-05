@@ -6,7 +6,6 @@ import pytest
 
 from orbital_game import registry as _registry
 from orbital_game.registry import (
-    ActuatorKey,
     BeliefInitializerKey,
     BeliefUpdaterKey,
     DynamicsKey,
@@ -75,7 +74,6 @@ def test_each_enum_has_at_least_one_member():
     for enum_cls in (
         StateComponentKey,
         DynamicsKey,
-        ActuatorKey,
         PolicyKey,
         ObservationFnKey,
         RewardFnKey,

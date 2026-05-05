@@ -60,16 +60,16 @@ def test_register_attaches_frame_and_kind():
 
 
 def test_register_without_frame_kind_still_works():
-    # Non-DynamicsKey keys (e.g. ActuatorKey) don't represent dynamics, so
+    # Non-DynamicsKey keys (e.g. PolicyKey) don't represent dynamics, so
     # frame/kind metadata is optional. DynamicsKey itself requires both —
     # see test_register_dynamics_key_requires_frame / _kind below.
-    from orbital_game.registry import ActuatorKey
+    from orbital_game.registry import PolicyKey
 
-    @register(ActuatorKey.IMPULSIVE)
+    @register(PolicyKey.ZERO_CONTROL)
     def f(state, dv, params, dt):
         return state
 
-    assert resolve(ActuatorKey.IMPULSIVE) is f
+    assert resolve(PolicyKey.ZERO_CONTROL) is f
     assert getattr(f, "frame", None) is None
     assert getattr(f, "kind", None) is None
 
@@ -101,18 +101,18 @@ def test_register_dynamics_key_requires_kind():
 
 
 def test_register_non_dynamics_key_allows_no_metadata():
-    """ActuatorKey (and other non-DynamicsKey) registrations work without frame/kind."""
+    """Non-DynamicsKey (e.g. PolicyKey) registrations work without frame/kind."""
     from dataclasses import dataclass
 
-    from orbital_game.registry import ActuatorKey, register, resolve
+    from orbital_game.registry import PolicyKey, register, resolve
 
-    @register(ActuatorKey.IMPULSIVE)
+    @register(PolicyKey.ZERO_CONTROL)
     @dataclass(frozen=True)
-    class FakeActuator:
-        track_mass: bool = False
+    class FakePolicy:
+        knob: bool = False
 
-    fn = resolve(ActuatorKey.IMPULSIVE)
-    assert fn is FakeActuator
+    fn = resolve(PolicyKey.ZERO_CONTROL)
+    assert fn is FakePolicy
 
 
 def test_hcw_rt_has_frame_and_kind():

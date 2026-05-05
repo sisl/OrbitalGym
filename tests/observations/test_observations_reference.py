@@ -38,7 +38,12 @@ def test_full_observation_returns_single_channel_tuple():
 
     fn = FullObservation(layout=layout)
     out = fn(
-        env_state=env, side=Side.GUARD, params=None, key=jax.random.PRNGKey(0), t=jnp.array(0.0)
+        env_state=env,
+        actions=None,
+        side=Side.GUARD,
+        params=None,
+        key=jax.random.PRNGKey(0),
+        t=jnp.array(0.0),
     )
 
     assert isinstance(out, tuple)
@@ -71,10 +76,20 @@ def test_full_observation_side_swaps_own_and_opposing():
 
     fn = FullObservation(layout=layout)
     out_g = fn(
-        env_state=env, side=Side.GUARD, params=None, key=jax.random.PRNGKey(0), t=jnp.array(0.0)
+        env_state=env,
+        actions=None,
+        side=Side.GUARD,
+        params=None,
+        key=jax.random.PRNGKey(0),
+        t=jnp.array(0.0),
     )
     out_b = fn(
-        env_state=env, side=Side.BANDIT, params=None, key=jax.random.PRNGKey(0), t=jnp.array(0.0)
+        env_state=env,
+        actions=None,
+        side=Side.BANDIT,
+        params=None,
+        key=jax.random.PRNGKey(0),
+        t=jnp.array(0.0),
     )
 
     # Guard side: own (1) first, then bandits (2). N_obs=1, N_total=3.

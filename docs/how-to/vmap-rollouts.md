@@ -15,7 +15,7 @@ from orbital_game.rollout import rollout_single_agent
 cfg = make_pursuit_evasion(seed=0)
 env = OrbitalGameEnv(cfg)
 view = SingleAgentView(env)
-policy = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
+policy = ZeroControl(n_vehicles=cfg.n_guards, command_cls=env.guard_command_cls)
 
 def run_one(seed):
     return rollout_single_agent(view, policy, lambda c, s, k: None,

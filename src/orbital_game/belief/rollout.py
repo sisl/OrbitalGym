@@ -13,6 +13,29 @@ import jax.numpy as jnp
 
 from orbital_game.env.types import Actions, BySide, Side, SideTrajectory, Trajectory
 from orbital_game.observations.types import flatten_observations
+from orbital_game.registry import ActionComponentKey
+
+
+def _require_impulsive_maneuver(config: Any, *, where: str) -> None:
+    """Fail fast at construction if `dv` is not on the assembled Command pytree.
+
+    `BeliefRollout` and (downstream) belief updaters read
+    `actions.sides.X.dv` to predict belief means under control, so both sides'
+    action components must include `IMPULSIVE_MANEUVER`. Without this check,
+    a comms-only side would raise an opaque AttributeError deep inside the
+    rollout's lax.scan body.
+    """
+    g = tuple(config.guard_action_components)
+    b = tuple(config.bandit_action_components)
+    has_g = ActionComponentKey.IMPULSIVE_MANEUVER in g
+    has_b = ActionComponentKey.IMPULSIVE_MANEUVER in b
+    if has_g and has_b:
+        return
+    raise ValueError(
+        f"{where} requires IMPULSIVE_MANEUVER in guard_action_components and "
+        f"bandit_action_components (it reads action.sides.X.dv to predict "
+        f"belief). Got: guard={g!r}, bandit={b!r}"
+    )
 
 
 class BeliefRollout:
@@ -26,6 +49,7 @@ class BeliefRollout:
         bandit_belief_initializer: Any,
         bandit_belief_updater: Any,
     ):
+        _require_impulsive_maneuver(env.config, where="BeliefRollout")
         self.env = env
         self.guard_belief_initializer = guard_belief_initializer
         self.guard_belief_updater = guard_belief_updater
@@ -50,17 +74,17 @@ class BeliefRollout:
         k_env, k_g_obs, k_b_obs, k_g_upd, k_b_upd = jax.random.split(key, 5)
         step_out = self.env.step(k_env, state, actions)
         guard_obs = self.env.guard_observation_fn(
-            step_out.state, Side.GUARD, self.env.config, k_g_obs, step_out.state.t
+            step_out.state, actions, Side.GUARD, self.env.config, k_g_obs, step_out.state.t
         )
         bandit_obs = self.env.bandit_observation_fn(
-            step_out.state, Side.BANDIT, self.env.config, k_b_obs, step_out.state.t
+            step_out.state, actions, Side.BANDIT, self.env.config, k_b_obs, step_out.state.t
         )
         next_beliefs = BySide(
             guard=self.guard_belief_updater(
-                beliefs.guard, guard_obs, actions.sides.guard, Side.GUARD, k_g_upd
+                beliefs.guard, guard_obs, actions.sides.guard.dv, Side.GUARD, k_g_upd
             ),
             bandit=self.bandit_belief_updater(
-                beliefs.bandit, bandit_obs, actions.sides.bandit, Side.BANDIT, k_b_upd
+                beliefs.bandit, bandit_obs, actions.sides.bandit.dv, Side.BANDIT, k_b_upd
             ),
         )
         return step_out.state, next_beliefs, step_out
@@ -105,16 +129,16 @@ def run_belief_rollout(
         next_es = step_out.state
 
         guard_obs_channels = env.guard_observation_fn(
-            next_es, Side.GUARD, env.config, k_g_obs, next_es.t
+            next_es, actions, Side.GUARD, env.config, k_g_obs, next_es.t
         )
         bandit_obs_channels = env.bandit_observation_fn(
-            next_es, Side.BANDIT, env.config, k_b_obs, next_es.t
+            next_es, actions, Side.BANDIT, env.config, k_b_obs, next_es.t
         )
         next_belief_g = belief_rollout.guard_belief_updater(
-            belief_g, guard_obs_channels, action_g, Side.GUARD, k_g_upd
+            belief_g, guard_obs_channels, action_g.dv, Side.GUARD, k_g_upd
         )
         next_belief_b = belief_rollout.bandit_belief_updater(
-            belief_b, bandit_obs_channels, action_b, Side.BANDIT, k_b_upd
+            belief_b, bandit_obs_channels, action_b.dv, Side.BANDIT, k_b_upd
         )
 
         next_obs_g = flatten_observations(step_out.outputs.guard.obs)

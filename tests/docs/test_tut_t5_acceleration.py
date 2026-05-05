@@ -29,7 +29,7 @@ def test_t5_vmap_over_seeds():
     cfg = make_pursuit_evasion(seed=0, max_horizon_s=1000.0)
     env = OrbitalGameEnv(cfg)
     view = SingleAgentView(env)
-    guard_policy = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
+    guard_policy = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
 
     # --8<-- [start:vmap-rollout]
     def run_one(seed: jax.Array):

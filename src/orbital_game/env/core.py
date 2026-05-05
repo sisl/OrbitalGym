@@ -1,6 +1,6 @@
 """OrbitalGameEnv — symmetric multi-agent core.
 
-Wires together: state classes (per scenario), dynamics, actuators,
+Wires together: state classes (per scenario), dynamics, action components,
 observation fns, reward fn, termination fn, IC sampler. Exposes reset / step
 with a symmetric API — both sides run identical machinery. Callers (typically
 SingleAgentView) supply both sides' actions.
@@ -17,16 +17,22 @@ import flax.struct
 import jax
 import jax.numpy as jnp
 
-from orbital_game.actuators.impulsive import ImpulsiveActuator
+from orbital_game.actions.assemble import build_command_class
+from orbital_game.actions.components import Communicate, ImpulsiveManeuver
 from orbital_game.config import ScenarioConfig
 from orbital_game.dynamics.hcw import hcw_rt_step, hcw_rtn_step
 from orbital_game.dynamics.j2 import j2_eci_step
 from orbital_game.dynamics.keplerian import keplerian_eci_step
 from orbital_game.env.types import Actions, BySide, Side, SideOutput, StepOutput
-from orbital_game.frames.conversions import convert_action, convert_state
+from orbital_game.frames.conversions import convert_state
 from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.reference_orbit import mean_motion as _ref_mean_motion
-from orbital_game.registry import ActuatorKey, DynamicsKey, Frame, StateComponentKey
+from orbital_game.registry import (
+    ActionComponentKey,
+    DynamicsKey,
+    Frame,
+    StateComponentKey,
+)
 from orbital_game.state.assemble import build_state_class
 from orbital_game.state.components import (
     Attitude,
@@ -47,6 +53,16 @@ _COMP_LOOKUP = {
     StateComponentKey.POWER: Power,
     StateComponentKey.ATTITUDE: Attitude,
     StateComponentKey.BODY_RATES: BodyRates,
+}
+
+# Mirror of `_COMP_LOOKUP` for action components. Resolves an
+# ``ActionComponentKey`` to the dataclass that backs it. The env builds a
+# concrete instance per side from this class, threading scenario-derived knobs
+# (truth_dynamics, frames, mass tracking) into ``ImpulsiveManeuver`` and
+# constructing ``Communicate`` directly.
+_ACTION_COMP_LOOKUP: dict[ActionComponentKey, type] = {
+    ActionComponentKey.IMPULSIVE_MANEUVER: ImpulsiveManeuver,
+    ActionComponentKey.COMMUNICATE: Communicate,
 }
 
 _DYN_LOOKUP = {
@@ -139,18 +155,6 @@ class EnvState:
     ic_valid: jax.Array = flax.struct.field(default_factory=lambda: jnp.asarray(True))
 
 
-def _make_actuator(key: ActuatorKey, track_mass: bool):
-    if key == ActuatorKey.IMPULSIVE:
-        return ImpulsiveActuator(track_mass=track_mass)
-    raise ValueError(f"Unknown actuator key: {key!r}")
-
-
-def _apply_propellant(state, dp: jax.Array):
-    if hasattr(state, "propellant_mass"):
-        return state.replace(propellant_mass=jnp.maximum(state.propellant_mass - dp, 0.0))
-    return state
-
-
 class OrbitalGameEnv:
     """Composed environment. reset / step are pure functions under the hood."""
 
@@ -180,8 +184,6 @@ class OrbitalGameEnv:
 
         guard_track_mass = Mass in guard_comps
         bandit_track_mass = Mass in bandit_comps
-        self.guard_actuator = _make_actuator(config.guard_actuator, guard_track_mass)
-        self.bandit_actuator = _make_actuator(config.bandit_actuator, bandit_track_mass)
 
         self.truth_dynamics = _resolve_dynamics_callable(config.truth_dynamics)
         self.policy_dynamics = _resolve_dynamics_callable(config.policy_dynamics)
@@ -210,6 +212,43 @@ class OrbitalGameEnv:
             if c in _COMPONENT_TO_FRAME
         )
 
+        # Build per-side Command pytree class from configured ActionComponents.
+        # Component instances are constructed with scenario-derived knobs
+        # (truth_dynamics, frames, mass tracking) so the env step's fold can
+        # call component.apply(...) without re-resolving config every tick.
+        def _build_component_instances(component_keys, track_mass: bool):
+            instances = []
+            classes = []
+            for key in component_keys:
+                cls = _ACTION_COMP_LOOKUP[key]
+                if cls is ImpulsiveManeuver:
+                    inst = ImpulsiveManeuver(
+                        truth_dynamics=self.truth_dynamics,
+                        action_frame=self.action_frame,
+                        truth_frame=self.truth_frame,
+                        track_mass=track_mass,
+                    )
+                elif cls is Communicate:
+                    inst = Communicate()
+                else:
+                    raise ValueError(f"No instance constructor for action component {key!r}")
+                instances.append(inst)
+                classes.append(cls)
+            return tuple(instances), tuple(classes)
+
+        guard_instances, guard_classes = _build_component_instances(
+            config.guard_action_components, guard_track_mass
+        )
+        bandit_instances, bandit_classes = _build_component_instances(
+            config.bandit_action_components, bandit_track_mass
+        )
+        self.guard_action_component_instances = guard_instances
+        self.bandit_action_component_instances = bandit_instances
+        self.guard_command_cls = build_command_class(guard_classes, config.n_guards, "GuardCommand")
+        self.bandit_command_cls = build_command_class(
+            bandit_classes, config.n_bandits, "BanditCommand"
+        )
+
         # Typed-instance components come directly from the config (populated by
         # ScenarioConfig.__post_init__ defaults or overridden by the caller).
         self.guard_observation_fn = config.guard_observation_fn
@@ -220,6 +259,46 @@ class OrbitalGameEnv:
         # sigmas, and (in the future) the sampler variant. The env just holds
         # the reference.
         self.ic_sampler = config.ic_sampler
+
+        # Preflight: components depending on COMMUNICATE wiring (CommsLeak
+        # observation reads guard `active`; LbgWithCommsReward reads it for
+        # the comm-cost term) must have COMMUNICATE in guard_action_components.
+        # Catching this at construction beats a late AttributeError downstream.
+        self._validate_comms_wiring()
+
+    def _validate_comms_wiring(self) -> None:
+        """Fail fast when CommsLeak / LbgWithComms is wired without COMMUNICATE.
+
+        Both consumers read ``actions.sides.guard.active``; without the
+        Communicate component on the guard side, the field doesn't exist on
+        the assembled Command pytree and the call would raise AttributeError
+        later, often deep inside a jit trace where the message is opaque.
+        """
+        from orbital_game.observations.comms_leak import CommsLeakObservation
+        from orbital_game.observations.composite import CompositeObservation
+        from orbital_game.rewards.lbg_with_comms import LbgWithCommsReward
+
+        def _walk_observation(fn) -> bool:
+            if isinstance(fn, CommsLeakObservation):
+                return True
+            if isinstance(fn, CompositeObservation):
+                return any(_walk_observation(c) for c in fn.constituents)
+            return False
+
+        needs_comms = (
+            _walk_observation(self.guard_observation_fn)
+            or _walk_observation(self.bandit_observation_fn)
+            or isinstance(self.reward_fn, LbgWithCommsReward)
+        )
+        if not needs_comms:
+            return
+        if ActionComponentKey.COMMUNICATE not in self.config.guard_action_components:
+            raise ValueError(
+                "CommsLeakObservation / LbgWithCommsReward requires "
+                "ActionComponentKey.COMMUNICATE in guard_action_components "
+                "(both consumers read action.sides.guard.active). Got: "
+                f"guard_action_components={self.config.guard_action_components!r}"
+            )
 
     def reset(self, key: jax.Array) -> tuple[EnvState, BySide]:
         """Reset returns (env_state, BySide(guard=SideOutput, bandit=SideOutput))."""
@@ -258,8 +337,18 @@ class OrbitalGameEnv:
             reference_orbit=self.config.reference_orbit,
             ic_valid=ok,
         )
-        obs_g = self.guard_observation_fn(state, Side.GUARD, self.config, k_obs_g, state.t)
-        obs_b = self.bandit_observation_fn(state, Side.BANDIT, self.config, k_obs_b, state.t)
+        identity_actions = Actions(
+            sides=BySide(
+                guard=self.guard_command_cls.zeros(self.config.n_guards),
+                bandit=self.bandit_command_cls.zeros(self.config.n_bandits),
+            )
+        )
+        obs_g = self.guard_observation_fn(
+            state, identity_actions, Side.GUARD, self.config, k_obs_g, state.t
+        )
+        obs_b = self.bandit_observation_fn(
+            state, identity_actions, Side.BANDIT, self.config, k_obs_b, state.t
+        )
         initial_done = jnp.asarray(False)
         initial_outputs = BySide(
             guard=SideOutput(obs=obs_g, reward=jnp.asarray(0.0), done=initial_done),
@@ -332,9 +421,6 @@ class OrbitalGameEnv:
     def step(self, key: jax.Array, state: EnvState, actions: Actions) -> StepOutput:
         """Symmetric step. Both sides run through identical machinery."""
         k_dyn, k_obs_g, k_obs_b = jax.random.split(key, 3)
-        del k_dyn  # reserved for stochastic dynamics
-        guard_action = actions.sides.guard
-        bandit_action = actions.sides.bandit
 
         # Pre-propagation reference, used to rotate the impulsive Δv (which is
         # applied at the START of the step). The post-propagation reference is
@@ -357,49 +443,37 @@ class OrbitalGameEnv:
             velocity_eci=ref_next6[0, 3:],
         )
 
-        # Symmetric per-side dynamics step.
-        applied_guard, dprop_guard = self.guard_actuator.apply(
-            guard_action, state.guards, self.guard_params, self.config.dt
-        )
-        applied_bandit, dprop_bandit = self.bandit_actuator.apply(
-            bandit_action, state.bandits, self.bandit_params, self.config.dt
-        )
+        # Per-side action-component fold. Each component reads its slice of
+        # the side's Command pytree and returns the post-component side state.
+        # ImpulsiveManeuver subsumes the impulsive Δv application + frame-conversion +
+        # `truth_dynamics` calls that previously lived inline in env.step.
+        next_guards = state.guards
+        for component in self.guard_action_component_instances:
+            next_guards = component.apply(
+                actions.sides.guard,
+                next_guards,
+                self.guard_params,
+                self.config.dt,
+                ref_pre_eci6,
+                k_dyn,
+            )
 
-        # Rotate the actuator-emitted Δv from cfg.action_frame into the truth
-        # dynamics frame. Use the *start-of-step* reference orbit
-        # (ref_pre_eci6): the impulsive Δv is applied at the start of the
-        # interval, so the frame in which it is expressed is anchored at the
-        # pre-step reference. When src == dst, convert_action short-circuits
-        # to identity (no-op).
-        dv_g_truth = convert_action(
-            applied_guard.dv, self.action_frame, self.truth_frame, ref_pre_eci6
-        )
-        dv_b_truth = convert_action(
-            applied_bandit.dv, self.action_frame, self.truth_frame, ref_pre_eci6
-        )
-
-        truth_field_name = _truth_field(self.truth_frame)
-        new_guard_truth = self.truth_dynamics(
-            getattr(state.guards, truth_field_name),
-            dv_g_truth,
-            self.guard_params,
-            self.config.dt,
-        )
-        new_bandit_truth = self.truth_dynamics(
-            getattr(state.bandits, truth_field_name),
-            dv_b_truth,
-            self.bandit_params,
-            self.config.dt,
-        )
-        next_guards = state.guards.replace(**{truth_field_name: new_guard_truth})
-        next_bandits = state.bandits.replace(**{truth_field_name: new_bandit_truth})
-        next_guards = _apply_propellant(next_guards, dprop_guard)
-        next_bandits = _apply_propellant(next_bandits, dprop_bandit)
+        next_bandits = state.bandits
+        for component in self.bandit_action_component_instances:
+            next_bandits = component.apply(
+                actions.sides.bandit,
+                next_bandits,
+                self.bandit_params,
+                self.config.dt,
+                ref_pre_eci6,
+                k_dyn,
+            )
 
         # Materialize every non-truth frame from the post-step truth array. Use
         # the *propagated* reference orbit (ref_next) so derived views are
         # consistent with the truth state at t+dt. HCW-only scenarios skip this
         # because the only spatial frame is the truth frame.
+        truth_field_name = _truth_field(self.truth_frame)
         ref_eci6 = jnp.concatenate([ref_next.position_eci, ref_next.velocity_eci])
         next_guards = _materialize_derived_views(
             next_guards,
@@ -426,10 +500,10 @@ class OrbitalGameEnv:
 
         # Per-side observations + rewards.
         obs_g = self.guard_observation_fn(
-            next_state, Side.GUARD, self.config, k_obs_g, next_state.t
+            next_state, actions, Side.GUARD, self.config, k_obs_g, next_state.t
         )
         obs_b = self.bandit_observation_fn(
-            next_state, Side.BANDIT, self.config, k_obs_b, next_state.t
+            next_state, actions, Side.BANDIT, self.config, k_obs_b, next_state.t
         )
         reward_g = self.reward_fn(state, actions, next_state, Side.GUARD, self.config, state.t)
         reward_b = self.reward_fn(state, actions, next_state, Side.BANDIT, self.config, state.t)

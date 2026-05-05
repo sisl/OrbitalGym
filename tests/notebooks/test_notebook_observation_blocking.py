@@ -60,8 +60,8 @@ def test_ob_notebook_core_path():
     )
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=cfg.n_guards, action_dim=3),
-        bandit=ZeroControl(n_vehicles=cfg.n_bandits, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=cfg.n_bandits),
     )
     init_ps = BySide(guard=_zero_init, bandit=_zero_init)
     traj = rollout(env, policies, init_ps, jax.random.PRNGKey(42), n_steps=10)

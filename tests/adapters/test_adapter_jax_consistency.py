@@ -85,6 +85,7 @@ def test_pettingzoo_adapter_consistency_with_direct_env():
 def test_pomdp_adapter_consistency_with_direct_env():
     """POMDPAdapter.transition produces the same flat state as
     layout.flatten(env.step(...).state)."""
+    from orbital_game.adapters._command_flatten import unflatten_command
     from orbital_game.adapters.pomdp import POMDPAdapter
 
     cfg = build_config()
@@ -106,17 +107,18 @@ def test_pomdp_adapter_consistency_with_direct_env():
         np.asarray(s0[-1]), np.asarray(state_direct.step).astype(s0.dtype)
     )
 
-    # Now step once.
-    n_g = cfg.n_guards
-    n_b = cfg.n_bandits
-    d = adapter.action_dim_per_side
-    a = jnp.zeros(n_g * d + n_b * d)
-    actions_direct = Actions(
-        sides=BySide(
-            guard=a[: n_g * d].reshape(n_g, d),
-            bandit=a[n_g * d : n_g * d + n_b * d].reshape(n_b, d),
-        )
+    # Now step once. Build the flat action vector and unflatten into the
+    # per-side Command pytrees so the direct path matches the adapter contract.
+    a = jnp.zeros(adapter.guard_action_flat_dim + adapter.bandit_action_flat_dim)
+    guard_command = unflatten_command(env.guard_command_cls, a[: adapter.guard_action_flat_dim])
+    bandit_command = unflatten_command(
+        env.bandit_command_cls,
+        a[
+            adapter.guard_action_flat_dim : adapter.guard_action_flat_dim
+            + adapter.bandit_action_flat_dim
+        ],
     )
+    actions_direct = Actions(sides=BySide(guard=guard_command, bandit=bandit_command))
     step_out_direct = env.step(jax.random.PRNGKey(1), state_direct, actions_direct)
     s_next_xy_expected = env.layout.flatten(
         step_out_direct.state.guards, step_out_direct.state.bandits

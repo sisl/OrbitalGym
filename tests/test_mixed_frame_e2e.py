@@ -58,10 +58,14 @@ def test_keplerian_truth_hcw_policy_relative_trajectory_close_to_pure_hcw():
         **common,
     )
 
-    actions = Actions(sides=BySide(guard=jnp.zeros((1, 3)), bandit=jnp.zeros((1, 3))))
-
     def _final_rtn(cfg):
         env = OrbitalGameEnv(cfg)
+        actions = Actions(
+            sides=BySide(
+                guard=env.guard_command_cls.zeros(1),
+                bandit=env.bandit_command_cls.zeros(1),
+            )
+        )
         state, _ = env.reset(jax.random.PRNGKey(0))
         for i in range(int(cfg.max_horizon_s / cfg.dt)):
             state = env.step(jax.random.PRNGKey(i), state, actions).state
@@ -130,10 +134,15 @@ def test_j2_truth_drifts_relative_to_keplerian_truth():
         dt=60.0,
         max_horizon_s=period_s * n_orbits,
     )
-    actions = Actions(sides=BySide(guard=jnp.zeros((1, 3)), bandit=jnp.zeros((1, 3))))
 
     def _final_along_track(cfg):
         env = OrbitalGameEnv(cfg)
+        actions = Actions(
+            sides=BySide(
+                guard=env.guard_command_cls.zeros(1),
+                bandit=env.bandit_command_cls.zeros(1),
+            )
+        )
         state, _ = env.reset(jax.random.PRNGKey(0))
         for i in range(int(cfg.max_horizon_s / cfg.dt)):
             state = env.step(jax.random.PRNGKey(i), state, actions).state

@@ -43,8 +43,8 @@ def test_pe_reward_is_zero_sum():
     state, _outs = env.reset(jax.random.PRNGKey(0))
     actions = Actions(
         sides=BySide(
-            guard=jnp.zeros((cfg.n_guards, 3)),
-            bandit=jnp.zeros((cfg.n_bandits, 3)),
+            guard=env.guard_command_cls.zeros(cfg.n_guards),
+            bandit=env.bandit_command_cls.zeros(cfg.n_bandits),
         )
     )
     out = env.step(jax.random.PRNGKey(1), state, actions)

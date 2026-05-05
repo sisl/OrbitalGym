@@ -10,8 +10,8 @@ from orbital_game.rollout import rollout
 
 cfg = make_pursuit_evasion()
 env = OrbitalGameEnv(cfg)
-guard = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
-bandit = ZeroControl(n_vehicles=cfg.n_bandits, action_dim=3)
+guard = ZeroControl(n_vehicles=cfg.n_guards, command_cls=env.guard_command_cls)
+bandit = ZeroControl(n_vehicles=cfg.n_bandits, command_cls=env.bandit_command_cls)
 traj = rollout(env, BySide(guard=guard, bandit=bandit),
                BySide(guard=lambda c, s, k: None, bandit=lambda c, s, k: None),
                jax.random.PRNGKey(0), n_steps=cfg.max_steps)

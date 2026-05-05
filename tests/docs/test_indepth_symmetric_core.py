@@ -32,7 +32,7 @@ def test_indepth_symmetric_core():
     cfg = make_pursuit_evasion(n_guards=2, n_bandits=1, seed=0, max_horizon_s=1000.0)
     env = OrbitalGameEnv(cfg)
     view = SingleAgentView(env)
-    guard_policy = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
+    guard_policy = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
     traj = rollout_single_agent(
         view,
         guard_policy,
@@ -42,7 +42,7 @@ def test_indepth_symmetric_core():
     )
 
     # T=time, N=vehicle, feature
-    assert traj.sides.guard.action.shape == (cfg.max_steps, cfg.n_guards, 3)
+    assert traj.sides.guard.action.dv.shape == (cfg.max_steps, cfg.n_guards, 3)
     assert traj.sides.guard.reward.shape == (cfg.max_steps,)
     assert traj.env_state.guards.rtn.shape == (cfg.max_steps, cfg.n_guards, 6)
     # --8<-- [end:rollout-shapes]
@@ -80,7 +80,7 @@ def test_indepth_symmetric_core():
 
     seeds = jax.vmap(jax.random.PRNGKey)(jnp.arange(4))
     batched = jax.jit(jax.vmap(run_one))(seeds)
-    assert batched.sides.guard.action.shape == (4, cfg.max_steps, cfg.n_guards, 3)
+    assert batched.sides.guard.action.dv.shape == (4, cfg.max_steps, cfg.n_guards, 3)
     # B=batch, T=time, N=vehicle, feature
     # --8<-- [end:vmap-shape]
 

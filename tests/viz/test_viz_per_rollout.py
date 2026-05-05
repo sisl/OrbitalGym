@@ -26,8 +26,8 @@ def lbg_traj_2g_2b(key):
     cfg = make_lady_bandit_guard(n_guards=2, n_bandits=2, dt=10.0, max_horizon_s=200.0)
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=2, action_dim=3),
-        bandit=ZeroControl(n_vehicles=2, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=2),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=2),
     )
     init_ps = BySide(guard=lambda c, s, k: None, bandit=lambda c, s, k: None)
     return rollout(env, policies, init_ps, key, n_steps=15)
@@ -38,8 +38,8 @@ def pe_traj_no_mass(key):
     cfg = make_pursuit_evasion(dt=10.0, max_horizon_s=200.0)
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=1, action_dim=3),
-        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
     )
     init_ps = BySide(guard=lambda c, s, k: None, bandit=lambda c, s, k: None)
     return rollout(env, policies, init_ps, key, n_steps=15)

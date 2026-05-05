@@ -12,6 +12,7 @@ import jax.numpy as jnp
 import pytest
 
 from orbital_game.policies.heuristic import SunTrackerBlocker
+from tests.policies._helpers import make_impulsive_maneuver_command_cls
 
 
 def test_sun_tracker_thrusts_toward_opponent_sun_line():
@@ -21,13 +22,13 @@ def test_sun_tracker_thrusts_toward_opponent_sun_line():
         sun_dir_rtn=sun_dir_rtn,
         max_dv_mps=0.05,
         n_vehicles=1,
-        action_dim=3,
+        command_cls=make_impulsive_maneuver_command_cls(1),
     )
     own = jnp.array([0.0, 100.0, 0.0, 0.0, 0.0, 0.0])
     opp = jnp.array([0.0, 200.0, 0.0, 0.0, 0.0, 0.0])
     obs = jnp.concatenate([own, opp])
-    action, _ = p(None, obs, jax.random.PRNGKey(0), jnp.asarray(0))
+    cmd, _ = p(None, obs, jax.random.PRNGKey(0), jnp.asarray(0))
     # Action should have a positive +x component (toward the Sun-side of the opponent).
-    assert action.shape == (1, 3)
-    assert float(action[0, 0]) > 0.0
-    assert pytest.approx(float(jnp.linalg.norm(action[0])), abs=1e-6) == 0.05
+    assert cmd.dv.shape == (1, 3)
+    assert float(cmd.dv[0, 0]) > 0.0
+    assert pytest.approx(float(jnp.linalg.norm(cmd.dv[0])), abs=1e-6) == 0.05

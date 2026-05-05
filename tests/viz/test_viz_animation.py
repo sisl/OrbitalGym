@@ -50,8 +50,8 @@ def basic_cfg_and_traj(key):
     cfg = make_lady_bandit_guard(n_guards=1, n_bandits=1, dt=10.0, max_horizon_s=200.0)
     env = OrbitalGameEnv(cfg)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=1, action_dim=3),
-        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
     )
     init_ps = BySide(guard=_zero_init, bandit=_zero_init)
     traj = rollout(env, policies, init_ps, key, n_steps=12)
@@ -93,8 +93,8 @@ def range_limited_cfg_traj_belief(key):
 
     br = BeliefRollout(env, init, updater, init, updater)
     policies = BySide(
-        guard=ZeroControl(n_vehicles=1, action_dim=3),
-        bandit=ZeroControl(n_vehicles=1, action_dim=3),
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
     )
     init_ps = BySide(guard=_zero_init, bandit=_zero_init)
     traj, belief_history = run_belief_rollout(br, policies, init_ps, key, n_steps=12)

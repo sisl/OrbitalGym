@@ -26,7 +26,7 @@ class BeliefConditionedPolicy:
 
     base: Policy
     n_vehicles: int = 0
-    action_dim: int = 0
+    command_cls: Any = None
 
     def __call__(
         self,
@@ -34,8 +34,14 @@ class BeliefConditionedPolicy:
         obs: jax.Array,
         key: jax.Array,
         t: jax.Array,
-    ) -> tuple[jax.Array, Any]:
+    ) -> tuple[Any, Any]:
+        if self.command_cls is None:
+            raise ValueError(
+                "BeliefConditionedPolicy was called before the env injected "
+                "`command_cls`. Use this policy via OrbitalGameEnv / "
+                "SingleAgentView, or pass command_cls explicitly."
+            )
         belief_mean, base_state = policy_state
         augmented_obs = jnp.concatenate([belief_mean, obs])
-        action, next_base_state = self.base(base_state, augmented_obs, key, t)
-        return action, (belief_mean, next_base_state)
+        cmd, next_base_state = self.base(base_state, augmented_obs, key, t)
+        return cmd, (belief_mean, next_base_state)

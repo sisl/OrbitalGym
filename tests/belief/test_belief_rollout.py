@@ -74,14 +74,51 @@ def test_belief_rollout_step_advances_belief_with_predict_and_correct():
     state, beliefs = rollout.reset(jax.random.PRNGKey(0))
     actions = Actions(
         sides=BySide(
-            guard=jnp.zeros((cfg.n_guards, 3)),
-            bandit=jnp.zeros((cfg.n_bandits, 3)),
+            guard=env.guard_command_cls.zeros(cfg.n_guards),
+            bandit=env.bandit_command_cls.zeros(cfg.n_bandits),
         )
     )
     state2, beliefs2, _step = rollout.step(jax.random.PRNGKey(1), state, beliefs, actions)
     initial_trace = float(jnp.trace(beliefs.guard.cov[0, 1]))
     after_trace = float(jnp.trace(beliefs2.guard.cov[0, 1]))
     assert after_trace < initial_trace
+
+
+def test_belief_rollout_without_impulsive_maneuver_raises():
+    """`BeliefRollout` reads `actions.sides.X.dv` to drive belief prediction,
+    so both sides must wire IMPULSIVE_MANEUVER. Construction must fail loudly
+    when this isn't the case (rather than crashing inside the scan body).
+    """
+    import dataclasses
+
+    import pytest
+
+    from orbital_game.registry import ActionComponentKey
+
+    cfg = make_lady_bandit_guard(n_guards=1, n_bandits=1)
+    cfg_no_dv = dataclasses.replace(
+        cfg,
+        guard_action_components=(ActionComponentKey.COMMUNICATE,),
+        bandit_action_components=(ActionComponentKey.COMMUNICATE,),
+    )
+    env = _make_env(cfg_no_dv)
+    init = KFFromTruthInitializer(
+        layout=_LayoutAdapter(cfg.n_guards, cfg.n_bandits, 6),
+        variance_diag=jnp.ones(6),
+    )
+    upd = KFBeliefUpdater(
+        stm=jnp.eye(6),
+        control_matrix=jnp.zeros((6, 3)),
+        process_noise=jnp.eye(6) * 0.01,
+    )
+    with pytest.raises(ValueError, match="IMPULSIVE_MANEUVER"):
+        BeliefRollout(
+            env=env,
+            guard_belief_initializer=init,
+            guard_belief_updater=upd,
+            bandit_belief_initializer=init,
+            bandit_belief_updater=upd,
+        )
 
 
 # --- Helpers ---

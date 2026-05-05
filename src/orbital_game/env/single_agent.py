@@ -20,28 +20,16 @@ from orbital_game.env.types import Actions, BySide, Side
 from orbital_game.observations.types import flatten_observations
 
 
-def _resolve_policy(cfg, side: Side, n_vehicles: int, action_dim: int):
-    """Pull the policy for `side` from cfg, populating dims.
+def _resolve_policy(cfg, side: Side, n_vehicles: int, command_cls):
+    """Pull the policy for `side` from cfg, populating dims + Command class.
 
     `cfg.{side}_policy` is guaranteed to be a Policy instance by
     `ScenarioConfig.__post_init__` (defaults to `ZeroControl()` if the
-    builder didn't supply one). Missing or None means a misconfigured
-    cfg — let the AttributeError or `dataclasses.replace` failure
-    surface; do not substitute a silent default.
+    builder didn't supply one).
     """
     field_name = f"{side.value}_policy"
     spec = getattr(cfg, field_name)
-    return dataclasses.replace(spec, n_vehicles=n_vehicles, action_dim=action_dim)
-
-
-def _action_dim_from_dynamics(dynamics_key) -> int:
-    """Recover action_dim without importing the env's private helper.
-
-    Mirrors env/core.py's _dyn_action_dim: HCW_RT → 2, HCW_RTN → 3.
-    """
-    from orbital_game.registry import DynamicsKey
-
-    return 2 if dynamics_key is DynamicsKey.HCW_RT else 3
+    return dataclasses.replace(spec, n_vehicles=n_vehicles, command_cls=command_cls)
 
 
 class SingleAgentView:
@@ -59,8 +47,12 @@ class SingleAgentView:
         self.controlled_side: Side = env.config.controlled_side
         self.opponent_side: Side = self.controlled_side.opposite()
         opp_n = env.config.n_guards if self.opponent_side is Side.GUARD else env.config.n_bandits
-        action_dim = _action_dim_from_dynamics(env.config.truth_dynamics)
-        self.opponent_policy = _resolve_policy(env.config, self.opponent_side, opp_n, action_dim)
+        opp_command_cls = (
+            env.guard_command_cls if self.opponent_side is Side.GUARD else env.bandit_command_cls
+        )
+        self.opponent_policy = _resolve_policy(
+            env.config, self.opponent_side, opp_n, opp_command_cls
+        )
 
     def reset(self, key: jax.Array):
         """Returns (env_state, obs_controlled, opponent_policy_state)."""
@@ -85,7 +77,15 @@ class SingleAgentView:
             if self.opponent_side is Side.BANDIT
             else self.env.guard_observation_fn
         )
-        opp_obs_raw = opp_obs_fn(state, self.opponent_side, self.config, k_opp, state.t)
+        identity_actions = Actions(
+            sides=BySide(
+                guard=self.env.guard_command_cls.zeros(self.config.n_guards),
+                bandit=self.env.bandit_command_cls.zeros(self.config.n_bandits),
+            )
+        )
+        opp_obs_raw = opp_obs_fn(
+            state, identity_actions, self.opponent_side, self.config, k_opp, state.t
+        )
         opp_obs = flatten_observations(opp_obs_raw)
         opp_action, next_opp_ps = self.opponent_policy(opp_policy_state, opp_obs, k_opp, state.t)
         if self.controlled_side is Side.GUARD:

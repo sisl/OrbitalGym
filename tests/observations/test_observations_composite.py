@@ -38,7 +38,12 @@ def test_composite_concatenates_constituent_channels():
     comp = CompositeObservation(constituents=(gps, rng))
 
     out = comp(
-        env_state=env, side=Side.GUARD, params=None, key=jax.random.PRNGKey(0), t=jnp.array(0.0)
+        env_state=env,
+        actions=None,
+        side=Side.GUARD,
+        params=None,
+        key=jax.random.PRNGKey(0),
+        t=jnp.array(0.0),
     )
 
     assert len(out) == 2
@@ -57,10 +62,20 @@ def test_composite_with_one_constituent_passes_through():
     comp = CompositeObservation(constituents=(gps,))
 
     out_comp = comp(
-        env_state=env, side=Side.GUARD, params=None, key=jax.random.PRNGKey(0), t=jnp.array(0.0)
+        env_state=env,
+        actions=None,
+        side=Side.GUARD,
+        params=None,
+        key=jax.random.PRNGKey(0),
+        t=jnp.array(0.0),
     )
     out_direct = gps(
-        env_state=env, side=Side.GUARD, params=None, key=jax.random.PRNGKey(0), t=jnp.array(0.0)
+        env_state=env,
+        actions=None,
+        side=Side.GUARD,
+        params=None,
+        key=jax.random.PRNGKey(0),
+        t=jnp.array(0.0),
     )
     assert len(out_comp) == len(out_direct)
     for a, b in zip(out_comp, out_direct, strict=True):

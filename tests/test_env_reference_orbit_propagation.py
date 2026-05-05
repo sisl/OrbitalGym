@@ -2,13 +2,13 @@ import jax
 import jax.numpy as jnp
 
 
-def _zero_actions(cfg):
+def _zero_actions(env):
     from orbital_game.env.types import Actions, BySide
 
     return Actions(
         sides=BySide(
-            guard=jnp.zeros((cfg.n_guards, 3)),
-            bandit=jnp.zeros((cfg.n_bandits, 3)),
+            guard=env.guard_command_cls.zeros(env.config.n_guards),
+            bandit=env.bandit_command_cls.zeros(env.config.n_bandits),
         )
     )
 
@@ -25,7 +25,7 @@ def test_reference_orbit_advances_under_keplerian():
     env = OrbitalGameEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     initial_pos = state.reference_orbit.position_eci
-    actions = _zero_actions(cfg)
+    actions = _zero_actions(env)
     next_step = env.step(jax.random.PRNGKey(1), state, actions)
     next_pos = next_step.state.reference_orbit.position_eci
     delta = float(jnp.linalg.norm(next_pos - initial_pos))
@@ -42,6 +42,6 @@ def test_hcw_state_finite_after_propagation():
     cfg = _minimal_cfg()
     env = OrbitalGameEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(42))
-    actions = _zero_actions(cfg)
+    actions = _zero_actions(env)
     out = env.step(jax.random.PRNGKey(1), state, actions)
     assert not jnp.any(jnp.isnan(out.state.guards.rtn))

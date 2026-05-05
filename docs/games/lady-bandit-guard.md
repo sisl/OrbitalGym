@@ -9,8 +9,9 @@ from orbital_game.policies import ZeroControl
 from orbital_game.rollout import rollout_single_agent
 
 cfg = make_lady_bandit_guard()
-view = SingleAgentView(OrbitalGameEnv(cfg))
-guard = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
+env = OrbitalGameEnv(cfg)
+view = SingleAgentView(env)
+guard = ZeroControl(n_vehicles=cfg.n_guards, command_cls=env.guard_command_cls)
 traj = rollout_single_agent(view, guard, lambda c, s, k: None,
                             jax.random.PRNGKey(0), n_steps=cfg.max_steps)
 ```

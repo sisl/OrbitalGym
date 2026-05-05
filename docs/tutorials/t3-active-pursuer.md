@@ -42,15 +42,18 @@ def __call__(
 - `key` — JAX PRNG subkey.
 - `t` — step counter as a scalar JAX array.
 
-Returns `(action, next_policy_state)`. `action` has shape
-`(n_vehicles, action_dim)`. For a 1-bandit RTN game, `(1, 3)` —
+Returns `(action, next_policy_state)`. `action` is the per-side
+`Command` pytree (built by `build_command_class` from the registered
+action components). For a 1-bandit RTN game with the default
+`(IMPULSIVE_MANEUVER,)` component tuple, `action.dv` has shape `(1, 3)` —
 three components of `Δv` in the rotating frame.
 
-## n_vehicles and action_dim injection
+## n_vehicles and command_cls injection
 
-Implementations declare `n_vehicles` and `action_dim` as fields with
-default 0. The env populates them at construction via
-`dataclasses.replace`. Keep the defaults at 0 — never hard-code.
+Implementations declare `n_vehicles: int = 0` and
+`command_cls: Any = None` as fields. The env populates them at
+construction via `dataclasses.replace`. Keep the defaults — never
+hard-code.
 
 ## Build the policy
 

@@ -57,6 +57,7 @@ nav = [
     { "Overview" = "in-depth/index.md" },
     { "Symmetric core & data shapes" = "in-depth/symmetric-core.md" },
     { "State layout & adding a Power component" = "in-depth/state-layout.md" },
+    { "Action components" = "in-depth/action-components.md" },
     { "Dynamics" = "in-depth/dynamics.md" },
     { "Observations" = "in-depth/observations.md" },
     { "Belief" = "in-depth/belief.md" },

@@ -64,7 +64,7 @@ Gallery: [`JitteredPolicy`](gallery.md#jitteredpolicy).
 
 ## Pitfalls
 
-- **Why the `n_vehicles=0` and `action_dim=0` defaults?** The env
+- **Why the `n_vehicles=0` and `command_cls=None` defaults?** The env
   populates these via `dataclasses.replace` at construction;
   hard-coding them defeats portability across scenarios.
 - **Why must side identity be static?** `Side` is a Python `StrEnum`,

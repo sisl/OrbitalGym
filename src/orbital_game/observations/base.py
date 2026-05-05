@@ -25,11 +25,18 @@ class ObservationFn(Protocol):
 
     Returns a tuple of `Observation` channels. Most implementations return one
     channel; composite functions return more.
+
+    `actions` is the full `Actions` pytree (both sides). When the observation
+    fn is called pre-step (env.reset, single_agent's pre-decision opp obs),
+    `actions` is the identity Command for both sides — no information leakage
+    from a hypothetical step. When called post-step (env.step), `actions` is
+    the action that produced `next_state`.
     """
 
     def __call__(
         self,
         env_state: Any,
+        actions: Any,  # Actions — kept Any to avoid circular import on env.types
         side: Side,
         params: Any,
         key: jax.Array,

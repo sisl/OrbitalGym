@@ -46,13 +46,14 @@ def test_customize_rewards_walkthrough():
     # --8<-- [end:wire-it-up]
 
     view = SingleAgentView(env)
-    guard = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
+    guard = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
     del guard  # smoke check; we drive zero actions directly below
     # Smoke check: env constructs and steps without crashing.
     state, obs, opp_ps = view.reset(jax.random.PRNGKey(0))
     del obs
+    controlled_cmd = env.guard_command_cls.zeros(cfg.n_guards)
     next_state, next_obs, reward, done, next_opp_ps, info = view.step(
-        jax.random.PRNGKey(1), state, jnp.zeros((cfg.n_guards, 3)), opp_ps
+        jax.random.PRNGKey(1), state, controlled_cmd, opp_ps
     )
     del next_state, next_obs, done, next_opp_ps, info
     assert reward.shape == ()

@@ -15,7 +15,7 @@ import jax.numpy as jnp
 
 from orbital_game.belief.kf import KFBeliefUpdater, KFFromTruthInitializer
 from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Side
+from orbital_game.env.types import Actions, BySide, Side
 from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard
 from orbital_game.observations.range_limited import RangeLimitedObservation
 
@@ -62,7 +62,13 @@ def test_three_bandits_two_in_range_one_out_belief_propagates_correctly():
     belief = init(state, Side.GUARD, jax.random.PRNGKey(1))
     initial_cov = belief.cov  # (1, 4, 6, 6)
 
-    obs_channels = obs_fn(state, Side.GUARD, cfg, jax.random.PRNGKey(2), state.t)
+    identity_actions = Actions(
+        sides=BySide(
+            guard=env.guard_command_cls.zeros(env.config.n_guards),
+            bandit=env.bandit_command_cls.zeros(env.config.n_bandits),
+        )
+    )
+    obs_channels = obs_fn(state, identity_actions, Side.GUARD, cfg, jax.random.PRNGKey(2), state.t)
     new_belief = upd(
         belief, obs_channels, jnp.zeros((n_guards, 3)), Side.GUARD, jax.random.PRNGKey(3)
     )

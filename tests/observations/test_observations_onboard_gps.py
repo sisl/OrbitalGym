@@ -36,7 +36,12 @@ def test_onboard_gps_visible_only_for_self_pair():
 
     fn = OnboardGPSObservation(layout=layout, sigma_gps=0.1)
     out = fn(
-        env_state=env, side=Side.GUARD, params=None, key=jax.random.PRNGKey(0), t=jnp.array(0.0)
+        env_state=env,
+        actions=None,
+        side=Side.GUARD,
+        params=None,
+        key=jax.random.PRNGKey(0),
+        t=jnp.array(0.0),
     )
 
     assert len(out) == 1
@@ -59,7 +64,14 @@ def test_onboard_gps_obs_at_self_pair_equals_own_truth_with_noise_variance_consi
 
     fn = OnboardGPSObservation(layout=layout, sigma_gps=sigma)
     key = jax.random.PRNGKey(42)
-    out = fn(env_state=env, side=Side.GUARD, params=None, key=key, t=jnp.array(0.0))
+    out = fn(
+        env_state=env,
+        actions=None,
+        side=Side.GUARD,
+        params=None,
+        key=key,
+        t=jnp.array(0.0),
+    )
     ch = out[0]
 
     assert jnp.allclose(ch.obs_noise, jnp.eye(d) * sigma**2)
@@ -79,7 +91,12 @@ def test_onboard_gps_zero_noise_returns_truth_at_self_pair():
 
     fn = OnboardGPSObservation(layout=layout, sigma_gps=0.0)
     out = fn(
-        env_state=env, side=Side.GUARD, params=None, key=jax.random.PRNGKey(0), t=jnp.array(0.0)
+        env_state=env,
+        actions=None,
+        side=Side.GUARD,
+        params=None,
+        key=jax.random.PRNGKey(0),
+        t=jnp.array(0.0),
     )
     ch = out[0]
 

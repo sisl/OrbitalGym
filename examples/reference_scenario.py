@@ -46,7 +46,7 @@ def run(hdf5_path: Path, plots_dir: Path) -> None:
     view = SingleAgentView(env)
 
     # Controlled side's policy (zero-control guard for this reference scenario)
-    controlled_policy = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
+    controlled_policy = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
 
     def init_none(c, s, k):
         del c, s, k

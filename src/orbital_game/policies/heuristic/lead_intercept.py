@@ -28,7 +28,7 @@ class LeadInterceptPursuer:
     max_dv_mps: float = 0.05
     dt: float = 10.0
     n_vehicles: int = 0
-    action_dim: int = 0
+    command_cls: Any = None
 
     def __call__(
         self,
@@ -36,8 +36,14 @@ class LeadInterceptPursuer:
         obs: jax.Array,
         key: jax.Array,
         t: jax.Array,
-    ) -> tuple[jax.Array, Any]:
+    ) -> tuple[Any, Any]:
         del key, t
+        if self.command_cls is None:
+            raise ValueError(
+                "LeadInterceptPursuer was called before the env injected "
+                "`command_cls`. Use this policy via OrbitalGameEnv / "
+                "SingleAgentView, or pass command_cls explicitly."
+            )
         own = obs[0:6]
         opp = obs[6:12]
         opp_pos = opp[0:3]
@@ -47,5 +53,6 @@ class LeadInterceptPursuer:
         direction = opp_pred - own[0:3]
         unit = direction / (jnp.linalg.norm(direction) + 1e-9)
         dv = unit * self.max_dv_mps
-        action = jnp.broadcast_to(dv, (self.n_vehicles, self.action_dim))
-        return action, policy_state
+        dv_per_vehicle = jnp.broadcast_to(dv, (self.n_vehicles, 3))
+        cmd = self.command_cls.zeros(self.n_vehicles).replace(dv=dv_per_vehicle)
+        return cmd, policy_state

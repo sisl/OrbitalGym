@@ -1,9 +1,11 @@
 # Dynamics
 
-`OrbitalGameEnv` composes an **actuator** (action → applied control)
-with a **dynamics** step (state + control → next state) once per
-timestep, per side. Both are swappable: pick a different combination
-to model different physics.
+`OrbitalGameEnv` composes per-side **action components** (commands →
+post-component side state, including any state propagation) with the
+configured **dynamics**. The bundled `ImpulsiveManeuver` action
+component applies an impulsive `Δv` and then invokes `truth_dynamics` for the
+remainder of the step. Both action components and dynamics are
+swappable.
 
 ## What ships
 
@@ -11,7 +13,7 @@ to model different physics.
 |---|---|---|
 | `DynamicsKey.HCW_RT` | 2D planar Clohessy–Wiltshire | `[r, θ, ṙ, θ̇]` (4) |
 | `DynamicsKey.HCW_RTN` | 3D Clohessy–Wiltshire | `[r, θ, n, ṙ, θ̇, ṅ]` (6) |
-| `ActuatorKey.IMPULSIVE` | Discrete `Δv` impulse | n/a |
+| `ActionComponentKey.IMPULSIVE_MANEUVER` | Discrete `Δv` impulse + propagation | n/a |
 
 Both HCW dynamics ignore J2, drag, and finite-burn duration. They are
 exact for instantaneous impulses applied to a circular reference orbit.
@@ -24,8 +26,8 @@ dynamics: (state, dv, params, dt) → next_state
 
 - `state` — raw per-side dynamics array, shape `(N_side, 4)` for
   `HCW_RT` or `(N_side, 6)` for `HCW_RTN`. One row per vehicle.
-- `dv` — applied impulse, shape `(N_side, action_dim)`. Already
-  produced by the actuator.
+- `dv` — applied impulse, shape `(N_side, action_dim)`. Sourced
+  from the per-side `ImpulsiveManeuver` action component's command.
 - `params` — `VehicleParams` (mass, max-thrust, dry-mass, mean motion).
 - `dt` — scalar timestep in seconds.
 
