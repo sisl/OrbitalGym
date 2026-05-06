@@ -11,8 +11,9 @@ Composes existing primitives to produce a scenario where:
 - Reward is `LbgZeroSumReward` (dense distance shaping + terminal events at
   catch_radius / breach_radius).
 
-The bandit and guard policies are wired separately by the caller (see
-`mpc_bandit.py` and `mcts_guard.py`).
+The bandit and guard policies are wired separately by the caller — see
+`examples/policies/lqr_bandit.py` for a JAX-native LQR bandit and
+`orbital_game.policies.mcts.MCTSPolicy` for the guard.
 """
 
 from __future__ import annotations
