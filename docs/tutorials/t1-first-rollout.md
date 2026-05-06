@@ -52,11 +52,14 @@ opposing side (bandit) is driven internally by
 ```
 
 - `traj.sides.guard.reward.sum()` is the cumulative guard reward —
-  here, the negative cumulative radial distance from the reference
-  origin. With both sides at zero thrust the guard traces a closed
-  ellipse, never reaches the origin, never breaches.
+  for `make_lady_bandit_guard()` this is `LbgZeroSumReward` (dense
+  shaping based on guard-bandit distance, plus terminal events at
+  catch / breach). With both sides at zero thrust neither side scores
+  a terminal event, so the cumulative return is dominated by the dense
+  shaping term.
 - `traj.episode_done.argmax() + 1` is the step at which the episode
-  terminated. With no breach, this equals `cfg.max_steps`.
+  terminated. With no terminal event triggering, this equals
+  `cfg.max_steps`.
 - `traj.env_state.guards.rt` has shape `(T, N_g, 4)` — see [In depth →
   Symmetric core](../in-depth/symmetric-core.md) for the full axis
   convention.

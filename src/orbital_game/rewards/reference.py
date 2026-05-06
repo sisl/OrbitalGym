@@ -36,3 +36,20 @@ class DistanceToReferenceOrbit:
         positions = guards.rtn[:, :3] if hasattr(guards, "rtn") else guards.rt[:, :2]
         distances = jnp.linalg.norm(positions, axis=-1)
         return -jnp.sum(distances)
+
+
+@register(RewardFnKey.ZERO)
+@dataclass(frozen=True)
+class ZeroReward:
+    """No-op reward — returns 0.0 for any side.
+
+    The default reward for `NoGame`. Use as a transparent placeholder when
+    the user is expected to supply a custom reward via the `reward_fn=`
+    constructor kwarg on `ScenarioConfig`.
+    """
+
+    scope: RewardScope = RewardScope.PER_SIDE
+
+    def __call__(self, prev_state, action, next_state, side, params, t):
+        del prev_state, action, next_state, side, params, t
+        return jnp.asarray(0.0)

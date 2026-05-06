@@ -18,8 +18,8 @@ def main():
     cfg = build_config()
     env = OrbitalGameEnv(cfg)
 
-    guard_policy = ZeroControl(n_vehicles=cfg.n_guards, action_dim=3)
-    bandit_policy = ZeroControl(n_vehicles=cfg.n_bandits, action_dim=3)
+    guard_policy = ZeroControl(n_vehicles=cfg.n_guards, command_cls=env.guard_command_cls)
+    bandit_policy = ZeroControl(n_vehicles=cfg.n_bandits, command_cls=env.bandit_command_cls)
 
     def init_none(c, s, k):
         return None
@@ -35,7 +35,7 @@ def main():
     out = {
         "reward": np.asarray(traj.sides.guard.reward),
         "done": np.asarray(traj.episode_done),
-        "action": np.asarray(traj.sides.guard.action),
+        "action": np.asarray(traj.sides.guard.action.dv),
         "obs": np.asarray(traj.sides.guard.obs),
         "guards_rtn": np.asarray(traj.env_state.guards.rtn),
         "bandits_rtn": np.asarray(traj.env_state.bandits.rtn),

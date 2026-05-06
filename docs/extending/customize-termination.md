@@ -4,25 +4,38 @@
 a scalar `bool` array. Once it fires, the episode ends and per-side
 `done` fields broadcast that scalar (see [In depth → Symmetric core](../in-depth/symmetric-core.md)).
 
+Two paths to swap the termination:
+
+1. **Pass it as a constructor kwarg** — `ScenarioConfig(..., termination_fn=MyTermination())`. `__post_init__` only consults `cfg.game.default_termination_fn()` when `termination_fn` is `None`.
+2. **`dataclasses.replace`** — `cfg = replace(cfg, termination_fn=MyTermination())`.
+
+## Where defaults come from
+
+Every `Game` subclass declares its default termination via `default_termination_fn`. `ScenarioConfig.__post_init__` calls it when `cfg.termination_fn` is `None`. The mapping is:
+
+| Game | Default termination |
+|---|---|
+| `NoGame` | `MaxStepsOnly` (step-cap only, no spatial event) |
+| `LadyBanditGuard` | `LbgEventTermination` (max-steps OR bandit breach OR guard catch) |
+| `PursuitEvasion` | `PursuitEvasionTermination` (max-steps OR capture) |
+| `SunBlocking` | `MaxStepsOnly` |
+| `ObservationBlocking` | `MaxStepsOnly` |
+
 ## The protocol
 
 ::: orbital_game.termination.base.TerminationFn
 
-## The bundled implementation
+## Bundled implementations
 
-::: orbital_game.termination.reference.MaxStepsOrBreach
+`MaxStepsOnly` is the universal step-cap termination — it ends the episode when `state.step >= params.max_steps`. It reads `max_steps` from the cfg at call time, so it can be constructed without a cfg in scope. `NoGame`, `SunBlocking`, and `ObservationBlocking` use it as their default:
 
-`MaxStepsOrBreach` checks the **guard's** distance to the reference
-origin. That's the right choice when the guard is the threat being
-contained (e.g. a guard-controlled inspector that must not get too
-close to a protected asset). For LBG framings where the **bandit** is
-the threat and the guard defends a "lady" at the origin, use
-`LbgEventTermination` instead — it fires on max-steps OR a bandit
-breaching the lady OR a guard catching a bandit:
+::: orbital_game.termination.reference.MaxStepsOnly
+
+`LbgEventTermination` adds the bandit-breach and guard-catch events on top of the step cap; it's `LadyBanditGuard`'s default and reads `breach_radius_m` / `catch_radius_m` from its own fields (which `LadyBanditGuard.default_termination_fn` threads from the game knobs):
 
 ::: orbital_game.termination.lbg_events.LbgEventTermination
 
-Pursuit-Evasion ships `PursuitEvasionTermination` that fires on
+`PursuitEvasion` ships `PursuitEvasionTermination` that fires on
 max_steps OR capture (relative distance below `cfg.game.capture_distance_m`).
 
 ## Worked example A: max-steps only (no breach)
@@ -55,10 +68,10 @@ Wiring is the usual `dataclasses.replace`:
 
 | Game | Default termination | What's reasonable to swap | Worth varying? |
 |---|---|---|---|
-| Lady-Bandit-Guard | Max steps OR breach | Max-steps-only for unbiased eval | Yes — eliminates breach-survivor bias |
-| Pursuit-Evasion | Max steps OR capture | Add fuel-out condition | Sometimes — depends on study design |
-| Sun-Blocking | Max steps OR breach | Time-window-only termination | Yes — for fixed-window benchmarks |
-| Observation-Blocking | Max steps OR breach | Visibility-window-only | Yes — matches the game's gating logic |
+| Lady-Bandit-Guard | `LbgEventTermination` (max-steps + breach + catch) | `MaxStepsOnly` for unbiased eval; AND-composites for stricter end conditions | Yes — eliminates terminal-event survivor bias |
+| Pursuit-Evasion | `PursuitEvasionTermination` (max-steps + capture) | Add fuel-out condition | Sometimes — depends on study design |
+| Sun-Blocking | `MaxStepsOnly` | Time-window plus geometry-gated termination | Yes — for fixed-window benchmarks |
+| Observation-Blocking | `MaxStepsOnly` | Visibility-window-only | Yes — matches the game's gating logic |
 
 ## See also
 

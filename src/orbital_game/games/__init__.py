@@ -46,7 +46,7 @@ def make_game(key: GameKey, **kwargs):
     """Dispatch to the per-game builder by `GameKey`.
 
     Example:
-        cfg = make_game(GameKey.LADY_BANDIT_GUARD, breach_distance_m=15.0)
+        cfg = make_game(GameKey.LADY_BANDIT_GUARD, breach_radius_m=5.0, catch_radius_m=50.0)
     """
     builders = {
         GameKey.LADY_BANDIT_GUARD: make_lady_bandit_guard,

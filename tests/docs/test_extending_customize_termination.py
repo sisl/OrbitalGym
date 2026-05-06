@@ -15,19 +15,15 @@ def test_customize_termination_walkthrough():
     import jax.numpy as jnp
 
     from orbital_game import OrbitalGameEnv, SingleAgentView, make_lady_bandit_guard
+    from orbital_game.termination.reference import MaxStepsOnly
     # --8<-- [end:imports]
 
     # --8<-- [start:max-steps-only]
-    @dataclass(frozen=True)
-    class MaxStepsOnly:
-        """Episode ends only when step count hits max_steps."""
-
-        max_steps: int
-
-        def __call__(self, state, params, t):
-            del params, t
-            return state.step >= self.max_steps
-
+    # The framework already ships `MaxStepsOnly` (reads `params.max_steps`
+    # at call time, no stored field). Wire it onto the cfg to drop LBG's
+    # event-driven termination and keep only the step-cap.
+    cfg = make_lady_bandit_guard(seed=0, max_horizon_s=200.0)
+    cfg = dataclasses.replace(cfg, termination_fn=MaxStepsOnly())
     # --8<-- [end:max-steps-only]
 
     # --8<-- [start:and-composite]
@@ -44,8 +40,10 @@ def test_customize_termination_walkthrough():
     # --8<-- [end:and-composite]
 
     # --8<-- [start:wire-it-up]
-    cfg = make_lady_bandit_guard(seed=0, max_horizon_s=200.0)
-    cfg = dataclasses.replace(cfg, termination_fn=MaxStepsOnly(max_steps=cfg.max_steps))
+    cfg = dataclasses.replace(
+        cfg,
+        termination_fn=AndComposite(MaxStepsOnly(), MaxStepsOnly()),
+    )
     env = OrbitalGameEnv(cfg)
     # --8<-- [end:wire-it-up]
 
@@ -57,12 +55,6 @@ def test_customize_termination_walkthrough():
         jax.random.PRNGKey(1), state, controlled_cmd, opp_ps
     )
     del next_state, next_obs, reward, next_opp_ps, info
-    # `AndComposite` is exercised here to keep ruff F841 quiet and to smoke-test
-    # the composite shape — combine MaxStepsOnly with itself.
-    composite = AndComposite(
-        MaxStepsOnly(max_steps=cfg.max_steps),
-        MaxStepsOnly(max_steps=cfg.max_steps),
-    )
-    composite_done = composite(state, cfg, state.t)
+    composite_done = cfg.termination_fn(state, cfg, state.t)
     assert composite_done.shape == ()
     assert done.shape == ()

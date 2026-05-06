@@ -18,15 +18,26 @@ traj = rollout_single_agent(view, guard, lambda c, s, k: None,
 
 For a full walkthrough see [T1 — First rollout](../tutorials/t1-first-rollout.md).
 
-The guard protects the reference orbit — the "Lady", currently virtual — from the bandit. This is a station-keeping / protection scenario: the guard's job is to stay near a protected asset while the bandit threatens to breach it.
+The guard defends the lady — a virtual point at the reference-orbit origin (the RTN frame) — from one or more bandits. The bandit wins by reaching within `breach_radius_m` of the lady; the guard wins by catching a bandit within `catch_radius_m`. Episode termination is event-driven (`LbgEventTermination`); the per-step reward is zero-sum (`LbgZeroSumReward`).
 
 ## What the reward shapes
 
-The guard's per-step reward is the negative sum of guard radial distances from the reference orbit origin (RTN frame). This pulls the guard toward the protected anchor; staying close earns less negative reward, drifting away costs more. The bandit's reward is fixed at zero in this game — Lady-Bandit-Guard is currently asymmetric, with the bandit acting as a scripted threat rather than an optimizing adversary. Future variants may promote the Lady to a third controllable agent or wire a zero-sum bandit reward.
+`LbgZeroSumReward` mirrors guard and bandit signals every step:
+
+- **Guard**: `−α·d_guard_bandit_min + R_catch·1[catch] − R_breach·1[breach]`. The dense term pulls the guard toward the closest bandit; the terminal events dominate cumulative return when triggered.
+- **Bandit** (mirror): `−α·d_bandit_lady_min + R_breach·1[breach] − R_catch·1[catch]`. The dense term pulls the bandit toward the lady; terminal events flip the sign of the guard's reward.
+
+`α=1e-3`, `R_catch=R_breach=1000.0` by default; both `breach_radius_m` and `catch_radius_m` come from `cfg.game` so the reward and the termination always agree on the radii.
 
 ## Termination
 
-The episode ends on `max_steps` exhaustion or when any guard comes within `breach_distance_m` of the reference-orbit origin (the breach condition).
+`LbgEventTermination` ends the episode as soon as any of the following holds:
+
+1. `state.step >= cfg.max_steps` (horizon exhausted).
+2. Some bandit is within `breach_radius_m` of the lady (bandit win).
+3. Some guard is within `catch_radius_m` of any bandit (guard win).
+
+`max_steps` is read from `params.max_steps` (the cfg) at call time — the termination class itself does not store it.
 
 ## Builder
 
@@ -34,13 +45,26 @@ The episode ends on `max_steps` exhaustion or when any guard comes within `breac
 from orbital_game import make_lady_bandit_guard
 
 cfg = make_lady_bandit_guard(
-    breach_distance_m=10.0,
+    breach_radius_m=5.0,
+    catch_radius_m=50.0,
     max_horizon_s=2000.0,
     seed=0,
 )
 ```
 
-Defaults match the reference scenario: a 1 km radial-ellipse co-orbit with the guard at phase 0 and the bandit at phase π, 200 steps at 10 s each.
+`LadyBanditGuard` owns both knobs and provides the matching reward + termination via `default_reward_fn` / `default_termination_fn`. `ScenarioConfig.__post_init__` calls those automatically — the builder never sets `reward_fn` or `termination_fn` explicitly. To override either, pass it as a constructor kwarg on `ScenarioConfig` directly:
+
+```python
+from orbital_game.config import ScenarioConfig
+from orbital_game.games import LadyBanditGuard
+from my_project.rewards import MyCustomReward
+
+cfg = ScenarioConfig(
+    ...,
+    game=LadyBanditGuard(breach_radius_m=5.0, catch_radius_m=50.0),
+    reward_fn=MyCustomReward(),  # game default skipped; termination_fn still flows
+)
+```
 
 ## Knobs at a glance
 
@@ -48,7 +72,8 @@ Defaults match the reference scenario: a 1 km radial-ellipse co-orbit with the g
 |---|---|---|---|
 | `n_guards` | `int` | `1` | Number of guard vehicles. |
 | `n_bandits` | `int` | `1` | Number of bandit vehicles. |
-| `breach_distance_m` | `float` | `10.0` | Episode terminates when any guard is within this radius of the reference origin. |
+| `breach_radius_m` | `float` | `5.0` | Bandit wins when any bandit-to-lady distance falls below this radius. |
+| `catch_radius_m` | `float` | `50.0` | Guard wins when any guard-to-bandit distance falls below this radius. |
 | `max_horizon_s` | `float` | `2000.0` | Total episode duration in seconds. |
 | `dt` | `float` | `10.0` | Step size in seconds. |
 | `seed` | `int` | `0` | PRNG seed for IC sampling. |
@@ -57,19 +82,20 @@ For the full field list see [API → `LadyBanditGuard`](../api/games.md).
 
 ## Suggested experiments
 
-- **Sanity baseline.** Run with zero control on both sides — no breach occurs, the episode ends at `max_steps`. This is what `examples/reference_scenario.py` does.
-- **Bandit attack.** Replace `cfg.bandit_policy` with a heuristic that maneuvers toward the reference origin; the zero-control guard should eventually lose.
-- **Guard station-keeping.** Train a guard policy to minimize the negative reward (stay close to the reference orbit) under bandit perturbations.
+- **Sanity baseline.** Run with zero control on both sides — neither side wins, the episode ends at `max_steps` and cumulative return is dominated by the dense distance terms.
+- **Bandit attack.** Wire `examples/policies/lqr_bandit.py`'s `LQRBanditPolicy` as the bandit's policy — the bandit closes on the lady; the zero-control guard should eventually lose by breach.
+- **Guard interception.** Train a guard policy (e.g. MCTS, see `examples/lbg_ring_intercept.ipynb`) to maximize zero-sum return — the guard should learn to close on the bandit before it reaches the lady.
 
 ## Variants
 
 The four customization axes (reward, termination, IC, observation) all
-swap by `dataclasses.replace`. Two LBG-flavored recipes:
+swap by passing a kwarg to `ScenarioConfig` (or via `dataclasses.replace`).
+Two LBG-flavored recipes:
 
 ### Variant 1: jittered chasing bandit
 
 Wrap a `LeadInterceptPursuer` in `JitteredPolicy` to give the guard a
-randomized chaser threat — the bandit closes on the reference origin but
+randomized chaser threat — the bandit closes on the lady but
 with stochastic per-step deviation, preventing a guard from exploiting a
 deterministic threat trajectory.
 

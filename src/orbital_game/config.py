@@ -316,6 +316,15 @@ class ScenarioConfig:
                 ),
             )
 
+        # Default game = NoGame. Must come before reward/termination defaults
+        # since those are now sourced from the game. Read into a local so
+        # the static checker can see that subsequent default_*_fn() calls
+        # are made on a non-None Game instance (the `object.__setattr__`
+        # write above is invisible to pyrefly's narrowing).
+        game = self.game if self.game is not None else NoGame()
+        if self.game is None:
+            object.__setattr__(self, "game", game)
+
         # Defaults for typed-instance components. Local imports to avoid cycles.
         if self.guard_observation_fn is None:
             from orbital_game.observations.reference import FullObservation
@@ -326,17 +335,9 @@ class ScenarioConfig:
 
             object.__setattr__(self, "bandit_observation_fn", FullObservation(layout=self.layout))
         if self.reward_fn is None:
-            from orbital_game.rewards.reference import DistanceToReferenceOrbit
-
-            object.__setattr__(self, "reward_fn", DistanceToReferenceOrbit())
+            object.__setattr__(self, "reward_fn", game.default_reward_fn())
         if self.termination_fn is None:
-            from orbital_game.termination.reference import MaxStepsOrBreach
-
-            object.__setattr__(
-                self,
-                "termination_fn",
-                MaxStepsOrBreach(max_steps=self.max_steps, breach_distance_m=10.0),
-            )
+            object.__setattr__(self, "termination_fn", game.default_termination_fn())
         # Belief initializer/updater require layout-dependent args (variance_diag,
         # stm, obs_matrix, etc.) and cannot be meaningfully defaulted here.
         # They remain None until the caller or OrbitalGameEnv sets them.
@@ -348,10 +349,6 @@ class ScenarioConfig:
             from orbital_game.policies import ZeroControl
 
             object.__setattr__(self, "bandit_policy", ZeroControl())
-
-        # Default game = NoGame
-        if self.game is None:
-            object.__setattr__(self, "game", NoGame())
 
     def to_json(self) -> str:
         return json.dumps(_config_to_primitive(self), sort_keys=True)

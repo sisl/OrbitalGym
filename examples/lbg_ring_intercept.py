@@ -26,11 +26,9 @@ from orbital_game.config import ScenarioConfig, VehicleParamsSpec
 from orbital_game.games.lady_bandit_guard import LadyBanditGuard
 from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.registry import DynamicsKey, StateComponentKey
-from orbital_game.rewards.lbg_zero_sum import LbgZeroSumReward
 from orbital_game.sampling.mass import ConstantMass
 from orbital_game.sampling.side import RelativeEllipse
 from orbital_game.sampling.spec import ICSpec
-from orbital_game.termination.lbg_events import LbgEventTermination
 
 # ---- Cold-gas thruster preset --------------------------------------------------
 
@@ -124,25 +122,9 @@ def build_scenario(params: RingInterceptParams | None = None) -> ScenarioConfig:
         seed=params.seed,
         truth_dynamics=DynamicsKey.HCW_RT,
         policy_dynamics=DynamicsKey.HCW_RT,
-        game=LadyBanditGuard(breach_distance_m=params.breach_radius_m),
-    )
-
-    # Override defaults: zero-sum reward + bandit-breach termination.
-    object.__setattr__(
-        cfg,
-        "termination_fn",
-        LbgEventTermination(
-            max_steps=cfg.max_steps,
+        game=LadyBanditGuard(
             breach_radius_m=params.breach_radius_m,
             catch_radius_m=params.catch_radius_m,
-        ),
-    )
-    object.__setattr__(
-        cfg,
-        "reward_fn",
-        LbgZeroSumReward(
-            catch_radius_m=params.catch_radius_m,
-            breach_radius_m=params.breach_radius_m,
         ),
     )
     return cfg

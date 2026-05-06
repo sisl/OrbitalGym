@@ -92,7 +92,7 @@ def plot_pursuit_evasion_diagnostic(
 
 def plot_lady_bandit_guard_diagnostic(
     traj: Trajectory,
-    breach_distance_m: float,
+    breach_radius_m: float,
     fig: Any | None = None,
 ) -> Any:
     """Two-panel diagnostic: guard distance(s) to reference vs guard reward.
@@ -117,10 +117,10 @@ def plot_lady_bandit_guard_diagnostic(
         c = cmap(0.45 + 0.5 * i / max(n_g - 1, 1))
         ax_top.plot(distances[:, i], color=c, label=f"guard {i}")
     ax_top.axhline(
-        breach_distance_m,
+        breach_radius_m,
         color="red",
         linestyle="--",
-        label=f"breach threshold ({breach_distance_m:g} m)",
+        label=f"breach threshold ({breach_radius_m:g} m)",
     )
     ax_top.set_ylabel("|guard − ref| (m)")
     ax_top.grid(True)
@@ -383,7 +383,7 @@ def plot_reward_diagnostic(
     if isinstance(game, PursuitEvasion):
         return plot_pursuit_evasion_diagnostic(traj, game.capture_distance_m, fig=fig)
     if isinstance(game, LadyBanditGuard):
-        return plot_lady_bandit_guard_diagnostic(traj, game.breach_distance_m, fig=fig)
+        return plot_lady_bandit_guard_diagnostic(traj, game.breach_radius_m, fig=fig)
     if isinstance(game, SunBlocking):
         return plot_sun_blocking_diagnostic(traj, cfg, fig=fig)
     if isinstance(game, ObservationBlocking):

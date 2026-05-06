@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from examples.reference_scenario import build_config
 from orbital_game.config import ScenarioConfig
 from orbital_game.games.base import Game, NoGame
@@ -30,3 +32,29 @@ def test_config_serializes_game_field():
     s = cfg.to_json()
     cfg2 = ScenarioConfig.from_json(s)
     assert isinstance(cfg2.game, LadyBanditGuard)
+
+
+def test_game_default_reward_fn_raises():
+    """Subclasses MUST override default_reward_fn."""
+    with pytest.raises(NotImplementedError):
+        Game().default_reward_fn()
+
+
+def test_game_default_termination_fn_raises():
+    """Subclasses MUST override default_termination_fn."""
+    with pytest.raises(NotImplementedError):
+        Game().default_termination_fn()
+
+
+def test_no_game_default_reward_fn_is_zero_reward():
+    from orbital_game.rewards.reference import ZeroReward
+
+    fn = NoGame().default_reward_fn()
+    assert isinstance(fn, ZeroReward)
+
+
+def test_no_game_default_termination_fn_is_max_steps_only():
+    from orbital_game.termination.reference import MaxStepsOnly
+
+    fn = NoGame().default_termination_fn()
+    assert isinstance(fn, MaxStepsOnly)

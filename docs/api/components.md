@@ -50,11 +50,17 @@ or pass the flat state directly when calling the policy manually.
 
 ::: orbital_game.rewards.reference.DistanceToReferenceOrbit
 
+::: orbital_game.rewards.reference.ZeroReward
+
+::: orbital_game.rewards.lbg_zero_sum.LbgZeroSumReward
+
 ## Termination
 
 ::: orbital_game.termination.base.TerminationFn
 
-::: orbital_game.termination.reference.MaxStepsOrBreach
+::: orbital_game.termination.reference.MaxStepsOnly
+
+::: orbital_game.termination.lbg_events.LbgEventTermination
 
 ## Belief
 

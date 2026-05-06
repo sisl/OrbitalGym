@@ -161,6 +161,14 @@ class ObservationBlocking(Game):
         )
         object.__setattr__(self, "target_ecef_m", ecef)
 
+    def default_reward_fn(self):
+        return ObservationBlockingReward()
+
+    def default_termination_fn(self):
+        from orbital_game.termination.reference import MaxStepsOnly
+
+        return MaxStepsOnly()
+
 
 @register(RewardFnKey.OBSERVATION_BLOCKING)
 @dataclass(frozen=True)
@@ -250,7 +258,6 @@ def make_observation_blocking(
     from orbital_game.reference_orbit import ReferenceOrbitState
     from orbital_game.sampling.side import RelativeEllipse
     from orbital_game.sampling.spec import ICSpec
-    from orbital_game.termination.reference import MaxStepsOrBreach
 
     if reference_orbit is None:
         reference_orbit = ReferenceOrbitState(
@@ -306,11 +313,5 @@ def make_observation_blocking(
             target_viewing_distance_m=target_viewing_distance_m,
             range_decay_coef=range_decay_coef,
         ),
-        reward_fn=ObservationBlockingReward(),
-    )
-    object.__setattr__(
-        cfg,
-        "termination_fn",
-        MaxStepsOrBreach(max_steps=cfg.max_steps, breach_distance_m=0.0),
     )
     return cfg

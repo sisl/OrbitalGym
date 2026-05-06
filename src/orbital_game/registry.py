@@ -82,14 +82,17 @@ class ObservationFnKey(StrEnum):
 
 class RewardFnKey(StrEnum):
     DISTANCE_TO_REFERENCE_ORBIT = "distance_to_reference_orbit"
+    ZERO = "zero_reward"
     PURSUIT_EVASION = "pursuit_evasion_reward"
     SUN_BLOCKING = "sun_blocking_reward"
     OBSERVATION_BLOCKING = "observation_blocking_reward"  # added Phase 2 Task 5
     LBG_WITH_COMMS = "lbg_with_comms_reward"
+    LBG_ZERO_SUM = "lbg_zero_sum_reward"
 
 
 class TerminationFnKey(StrEnum):
-    MAX_STEPS_OR_BREACH = "max_steps_or_breach"
+    MAX_STEPS_ONLY = "max_steps_only"
+    LBG_EVENTS = "lbg_events_termination"
     PURSUIT_EVASION = "pursuit_evasion_termination"
 
 

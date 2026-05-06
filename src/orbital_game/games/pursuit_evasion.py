@@ -44,6 +44,12 @@ class PursuitEvasion(Game):
 
     capture_distance_m: float = 10.0
 
+    def default_reward_fn(self):
+        return PursuitEvasionReward()
+
+    def default_termination_fn(self):
+        return PursuitEvasionTermination()
+
 
 def _relative_position(guards, bandits) -> jnp.ndarray:
     """Returns the (1v1) guard→bandit displacement vector in RTN.
@@ -91,11 +97,9 @@ class PursuitEvasionReward:
 class PursuitEvasionTermination:
     """Episode ends on max_steps OR capture (relative distance below threshold).
 
-    Reads max_steps from the params (cfg) and capture_distance_m from
-    cfg.game.
+    Reads `max_steps` from `params.max_steps` and `capture_distance_m` from
+    `params.game`.
     """
-
-    max_steps: int
 
     def __call__(self, state, params, t):
         del t
@@ -104,7 +108,7 @@ class PursuitEvasionTermination:
                 f"PursuitEvasionTermination requires cfg.game: PursuitEvasion; "
                 f"got {type(params.game).__name__}"
             )
-        hit_max = state.step >= self.max_steps
+        hit_max = state.step >= params.max_steps
         rel = _relative_position(state.guards, state.bandits)
         dist = jnp.linalg.norm(rel)
         captured = dist < params.game.capture_distance_m
@@ -195,7 +199,5 @@ def make_pursuit_evasion(
         guard_observation_fn=guard_observation_fn,
         bandit_observation_fn=bandit_observation_fn,
         game=PursuitEvasion(capture_distance_m=capture_distance_m),
-        reward_fn=PursuitEvasionReward(),
     )
-    object.__setattr__(cfg, "termination_fn", PursuitEvasionTermination(max_steps=cfg.max_steps))
     return cfg

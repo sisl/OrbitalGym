@@ -1,14 +1,15 @@
 """Lady-Bandit-Guard game.
 
-Guard protects the reference orbit (the 'Lady', currently virtual at the
-reference) from the bandit. Reward = -sum(guard distances to reference
-orbit origin). Termination on max_steps OR guard within breach_distance_m
-of the origin.
+Guard protects the lady (a virtual point at the RTN origin) from bandit
+attackers. Bandits try to reach the lady within `breach_radius_m`; the
+guard tries to catch any bandit within `catch_radius_m` first.
 
-This Phase-2 implementation reuses the bootstrap's DistanceToReferenceOrbit
-reward and MaxStepsOrBreach termination unchanged — LBG is a typed label
-that carries the breach_distance_m knob to the builder, which wires it
-into the existing termination class.
+`LadyBanditGuard` is a typed knob bundle stored as `cfg.game`. It owns
+the default reward (`LbgZeroSumReward`) and termination
+(`LbgEventTermination`), which `ScenarioConfig.__post_init__` wires onto
+the cfg automatically. Custom reward/termination can still be injected
+via the `reward_fn=` / `termination_fn=` constructor kwargs on
+`ScenarioConfig`.
 """
 
 from __future__ import annotations
@@ -33,20 +34,40 @@ if TYPE_CHECKING:
 @register_game(GameKey.LADY_BANDIT_GUARD)
 @dataclass(frozen=True)
 class LadyBanditGuard(Game):
-    """Guard protects the reference orbit from the bandit.
+    """Guard protects the lady (RTN origin) from bandits.
 
     Knobs:
-        breach_distance_m: Termination triggers when any guard is closer
-            than this distance to the reference-orbit origin (RTN frame).
+        breach_radius_m: bandit-vs-lady distance below which the bandit is
+            considered to have breached (bandit win).
+        catch_radius_m: guard-vs-bandit distance below which the guard
+            catches the bandit (guard win).
     """
 
-    breach_distance_m: float = 10.0
+    breach_radius_m: float = 5.0
+    catch_radius_m: float = 50.0
+
+    def default_reward_fn(self):
+        from orbital_game.rewards.lbg_zero_sum import LbgZeroSumReward
+
+        return LbgZeroSumReward(
+            catch_radius_m=self.catch_radius_m,
+            breach_radius_m=self.breach_radius_m,
+        )
+
+    def default_termination_fn(self):
+        from orbital_game.termination.lbg_events import LbgEventTermination
+
+        return LbgEventTermination(
+            breach_radius_m=self.breach_radius_m,
+            catch_radius_m=self.catch_radius_m,
+        )
 
 
 def make_lady_bandit_guard(
     *,
-    # Game-specific knob
-    breach_distance_m: float = 10.0,
+    # Game-specific knobs
+    breach_radius_m: float = 5.0,
+    catch_radius_m: float = 50.0,
     # Fleet sizing
     n_guards: int = 1,
     n_bandits: int = 1,
@@ -83,8 +104,9 @@ def make_lady_bandit_guard(
 ):
     """Builder for an LBG scenario.
 
-    Wires `LadyBanditGuard(breach_distance_m=...)` as `cfg.game` and
-    constructs a `MaxStepsOrBreach` termination using the same knob.
+    Wires `LadyBanditGuard(breach_radius_m=..., catch_radius_m=...)` as
+    `cfg.game`; reward and termination are populated from
+    `LadyBanditGuard.default_*_fn` by `ScenarioConfig.__post_init__`.
 
     Defaults assume a 1v1 RTN scenario with mass-tracked guard. To switch
     to 2D RT dynamics, pass matching `truth_dynamics`/`policy_dynamics`
@@ -98,7 +120,6 @@ def make_lady_bandit_guard(
     from orbital_game.sampling.mass import ConstantMass
     from orbital_game.sampling.side import RelativeEllipse
     from orbital_game.sampling.spec import ICSpec
-    from orbital_game.termination.reference import MaxStepsOrBreach
 
     if reference_orbit is None:
         reference_orbit = ReferenceOrbitState(
@@ -132,6 +153,17 @@ def make_lady_bandit_guard(
             max_attempts=100,
         )
 
+    extra_kwargs: dict[str, Any] = {}
+    if with_communication:
+        from orbital_game.registry import ActionComponentKey
+        from orbital_game.rewards.lbg_with_comms import LbgWithCommsReward
+
+        extra_kwargs["guard_action_components"] = (
+            ActionComponentKey.IMPULSIVE_MANEUVER,
+            ActionComponentKey.COMMUNICATE,
+        )
+        extra_kwargs["reward_fn"] = LbgWithCommsReward(comm_cost=comm_cost)
+
     cfg = ScenarioConfig(
         n_guards=n_guards,
         n_bandits=n_bandits,
@@ -149,25 +181,10 @@ def make_lady_bandit_guard(
         policy_dynamics=policy_dynamics,
         guard_observation_fn=guard_observation_fn,
         bandit_observation_fn=bandit_observation_fn,
-        game=LadyBanditGuard(breach_distance_m=breach_distance_m),
+        game=LadyBanditGuard(
+            breach_radius_m=breach_radius_m,
+            catch_radius_m=catch_radius_m,
+        ),
+        **extra_kwargs,
     )
-
-    # Override the default termination_fn to use the LBG breach_distance_m.
-    object.__setattr__(
-        cfg,
-        "termination_fn",
-        MaxStepsOrBreach(max_steps=cfg.max_steps, breach_distance_m=breach_distance_m),
-    )
-
-    if with_communication:
-        from orbital_game.registry import ActionComponentKey
-        from orbital_game.rewards.lbg_with_comms import LbgWithCommsReward
-
-        object.__setattr__(
-            cfg,
-            "guard_action_components",
-            (ActionComponentKey.IMPULSIVE_MANEUVER, ActionComponentKey.COMMUNICATE),
-        )
-        object.__setattr__(cfg, "reward_fn", LbgWithCommsReward(comm_cost=comm_cost))
-
     return cfg

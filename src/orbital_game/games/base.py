@@ -2,22 +2,32 @@
 
 A Game is a typed knob bundle attached to ScenarioConfig.game. Game-specific
 reward/termination implementations read knobs off cfg.game after an
-isinstance check. NoGame is the default — for custom/bootstrap scenarios
-where no preset semantics apply.
+isinstance check. Each Game subclass declares its default reward and
+termination via `default_reward_fn()` / `default_termination_fn()` —
+ScenarioConfig.__post_init__ calls these to populate `cfg.reward_fn` /
+`cfg.termination_fn` when the user didn't pass them as constructor kwargs.
+
+NoGame is the default for users running custom scenarios with no preset
+semantics: it pairs ZeroReward (no-op) with MaxStepsOnly (step cap).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from orbital_game.registry import GameKey, register_game
 
 
 @dataclass(frozen=True)
 class Game:
-    """Marker base — typed game-specific knob bundle."""
+    """Marker base — subclasses MUST override default_reward_fn/termination_fn."""
 
-    pass
+    def default_reward_fn(self) -> Any:
+        raise NotImplementedError(f"{type(self).__name__} must override default_reward_fn")
+
+    def default_termination_fn(self) -> Any:
+        raise NotImplementedError(f"{type(self).__name__} must override default_termination_fn")
 
 
 @register_game(GameKey.NONE)
@@ -25,4 +35,12 @@ class Game:
 class NoGame(Game):
     """Default — for users running custom scenarios with no preset semantics."""
 
-    pass
+    def default_reward_fn(self) -> Any:
+        from orbital_game.rewards.reference import ZeroReward
+
+        return ZeroReward()
+
+    def default_termination_fn(self) -> Any:
+        from orbital_game.termination.reference import MaxStepsOnly
+
+        return MaxStepsOnly()

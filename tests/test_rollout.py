@@ -95,14 +95,16 @@ def test_vmap_rollout_over_seeds_produces_batched_trajectories():
     batched = jax.vmap(lambda k: rollout(env, _zero_policies(env), _null_init_fns(), k, n_steps=10))
     t = batched(keys)
     assert t.sides.guard.reward.shape == (4, 10)
-    # Different seeds → different rewards (sanity check that the vmap axis is real).
-    assert not jnp.allclose(t.sides.guard.reward[0], t.sides.guard.reward[1])
+    # Different seeds → different IC-sampled positions (sanity check that the
+    # vmap axis is real). Rewards are ZeroReward under NoGame, so we test on
+    # state instead — the IC sampler uses random phase per seed.
+    assert not jnp.allclose(t.env_state.guards.rtn[0], t.env_state.guards.rtn[1])
 
 
 def test_rollout_freezes_state_and_zeros_reward_after_termination():
     """max_horizon_s=30 with dt=10 → max_steps=3. Termination should fire at the
     step where env_state.step reaches 3 (scan_index=2: env.step #3 advances
-    state.step 2→3, MaxStepsOrBreach sees 3>=3 → done). From scan_index=3
+    state.step 2→3, MaxStepsOnly sees 3>=3 → done). From scan_index=3
     onward, the rollout freezes: logged env_state.step stays at 3, reward 0,
     done latched True."""
     env = _make_env(max_horizon_s=30.0)  # max_steps = 3

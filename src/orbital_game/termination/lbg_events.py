@@ -1,14 +1,14 @@
 """Event-driven termination for the Lady-Bandit-Guard game.
 
 Terminates when any of:
-  - Max episode steps reached.
-  - Any bandit is within `breach_radius_m` of the lady (origin) — bandit win.
-  - Any guard is within `catch_radius_m` of any bandit — guard intercept.
+  - Max episode steps reached (read from ``params.max_steps`` at call time).
+  - Any bandit is within ``breach_radius_m`` of the lady (origin) — bandit win.
+  - Any guard is within ``catch_radius_m`` of any bandit — guard intercept.
 
-Differs from `MaxStepsOrBreach`, which checks the guard's distance to the
-origin. That termination is appropriate when the guard *is* the threat (the
-original LBG framing); for the dog-food scenario the bandit is the threat
-and the guard is defending, so the breach must trigger on bandit→lady.
+The framing assumes the bandit is the threat trying to reach the lady and
+the guard is defending. ``LadyBanditGuard.default_termination_fn`` wires
+this onto a cfg automatically; constructing this class directly is also
+supported via the ``termination_fn=`` constructor kwarg on ``ScenarioConfig``.
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 
+from orbital_game.registry import TerminationFnKey, register
+
 
 def _positions(side_state):
     if hasattr(side_state, "rtn"):
@@ -25,21 +27,22 @@ def _positions(side_state):
     return side_state.rt[:, :2]
 
 
+@register(TerminationFnKey.LBG_EVENTS)
 @dataclass(frozen=True)
 class LbgEventTermination:
     """Terminate on max_steps OR bandit breaches lady OR guard catches bandit.
 
     The catch event is optional: set `catch_radius_m=0` to disable, leaving
-    only the max-steps and breach gates.
+    only the max-steps and breach gates. `max_steps` is read from
+    `params.max_steps` at call time (single source of truth on the cfg).
     """
 
-    max_steps: int
     breach_radius_m: float
     catch_radius_m: float = 0.0
 
     def __call__(self, state, params, t) -> jax.Array:
-        del params, t
-        hit_max = state.step >= self.max_steps
+        del t
+        hit_max = state.step >= params.max_steps
 
         bandit_pos = _positions(state.bandits)
         d_bandit_lady_min = jnp.min(jnp.linalg.norm(bandit_pos, axis=-1))

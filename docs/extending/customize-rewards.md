@@ -1,8 +1,22 @@
 # Customize rewards
 
 `cfg.reward_fn` is the function the env calls every step to score the new
-state for both sides. Swap it via `dataclasses.replace` to reshape what
-the controlled side optimizes for.
+state for both sides. Two paths to swap it:
+
+1. **Pass it as a constructor kwarg** — `ScenarioConfig(..., reward_fn=MyReward())`. This is the canonical override path; `__post_init__` only consults `cfg.game.default_reward_fn()` when `reward_fn` is `None`.
+2. **`dataclasses.replace`** — `cfg = replace(cfg, reward_fn=MyReward())`. Useful when you already have a cfg in hand and want to swap one field without re-listing the rest.
+
+## Where defaults come from
+
+Every `Game` subclass declares its default reward (and termination) via `default_reward_fn` / `default_termination_fn`. `ScenarioConfig.__post_init__` calls those when `cfg.reward_fn` is `None`. The mapping is:
+
+| Game | Default reward |
+|---|---|
+| `NoGame` | `ZeroReward` (no-op; you'll want to override) |
+| `LadyBanditGuard` | `LbgZeroSumReward` (parameterized by `breach_radius_m`, `catch_radius_m`) |
+| `PursuitEvasion` | `PursuitEvasionReward` (reads `cfg.game.capture_distance_m`) |
+| `SunBlocking` | `SunBlockingReward` |
+| `ObservationBlocking` | `ObservationBlockingReward` |
 
 ## The protocol
 
@@ -19,17 +33,23 @@ It receives both sides' actions in one call (so multi-side rewards like
 zero-sum penalties are natural), the previous and next env states, the
 `Side` it's scoring, the cfg via `params`, and the step counter `t`.
 
-## The bundled implementation
+## Bundled implementations
 
-`DistanceToReferenceOrbit` is the reference reward for Lady-Bandit-Guard:
+`ZeroReward` is the no-op reward (`NoGame`'s default). It always returns 0; useful as an explicit "I will supply my own reward" placeholder:
+
+::: orbital_game.rewards.reference.ZeroReward
+
+`DistanceToReferenceOrbit` is a reference single-agent reward — negative
+sum of guard distances to the reference origin, zero for the bandit. Useful
+when you want a guard-only signal without LBG event semantics:
 
 ::: orbital_game.rewards.reference.DistanceToReferenceOrbit
 
-`DistanceToReferenceOrbit` returns 0 for the bandit side (the asymmetric
-"only the guard has a signal" framing). For zero-sum LBG games where the
-bandit *is* a learner, use `LbgZeroSumReward` instead — both sides get
-mirrored dense distance shaping plus large terminal events on
-catch/breach:
+`LbgZeroSumReward` is the LBG default — both sides get mirrored dense
+distance shaping plus large terminal events on catch / breach. Reads
+`catch_radius_m` and `breach_radius_m` from its own fields (the
+`LadyBanditGuard.default_reward_fn` builder threads those from the game
+knobs):
 
 ::: orbital_game.rewards.lbg_zero_sum.LbgZeroSumReward
 
@@ -61,7 +81,7 @@ Wire it onto the cfg:
 
 | Game | Default reward | What's reasonable to swap | Worth varying? |
 |---|---|---|---|
-| Lady-Bandit-Guard | Negative guard distance to reference orbit | Sparse breach, distance + control-effort | Yes — sparse vs dense changes learning dynamics fundamentally |
+| Lady-Bandit-Guard | `LbgZeroSumReward` (dense distance + terminal events) | Sparse breach-only reward, distance + control-effort, single-agent `DistanceToReferenceOrbit` | Yes — sparse vs dense changes learning dynamics fundamentally |
 | Pursuit-Evasion | Zero-sum on relative distance | Time-discounted distance, capture-bonus | Yes — capture-bonus speeds up learning |
 | Sun-Blocking | Sun-line geometry score | Add control effort penalty | Less so — geometry term is the load-bearing signal |
 | Observation-Blocking | Visibility-gated geometry | Multi-target reward composition | Yes — multi-target is research-relevant |

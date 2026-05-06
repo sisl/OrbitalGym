@@ -24,10 +24,10 @@ from orbital_game.sampling.spec import ICSpec
 
 
 def test_lbg_roundtrip():
-    cfg = make_lady_bandit_guard(breach_distance_m=12.0)
+    cfg = make_lady_bandit_guard(breach_radius_m=12.0)
     cfg2 = ScenarioConfig.from_json(cfg.to_json())
     assert isinstance(cfg2.game, LadyBanditGuard)
-    assert cfg2.game.breach_distance_m == 12.0
+    assert cfg2.game.breach_radius_m == 12.0
 
 
 def test_pe_roundtrip():
@@ -101,9 +101,9 @@ def test_make_game_dispatches_correctly():
 
 
 def test_make_game_lbg():
-    cfg = make_game(GameKey.LADY_BANDIT_GUARD, breach_distance_m=8.0)
+    cfg = make_game(GameKey.LADY_BANDIT_GUARD, breach_radius_m=8.0)
     assert isinstance(cfg.game, LadyBanditGuard)
-    assert cfg.game.breach_distance_m == 8.0
+    assert cfg.game.breach_radius_m == 8.0
 
 
 def test_make_game_sb():

@@ -117,16 +117,20 @@ def test_vehicle_params_spec_no_longer_has_propellant_mass_kg():
 
 
 def test_default_typed_components_are_instances():
-    """typed-instance fields are populated as object instances, not enum keys."""
+    """typed-instance fields are populated as object instances, not enum keys.
+
+    With NoGame as the default game, reward/termination flow from
+    NoGame.default_*_fn — ZeroReward + MaxStepsOnly.
+    """
     from orbital_game.observations.reference import FullObservation
-    from orbital_game.rewards.reference import DistanceToReferenceOrbit
-    from orbital_game.termination.reference import MaxStepsOrBreach
+    from orbital_game.rewards.reference import ZeroReward
+    from orbital_game.termination.reference import MaxStepsOnly
 
     cfg = make_config()
     assert isinstance(cfg.guard_observation_fn, FullObservation)
     assert isinstance(cfg.bandit_observation_fn, FullObservation)
-    assert isinstance(cfg.reward_fn, DistanceToReferenceOrbit)
-    assert isinstance(cfg.termination_fn, MaxStepsOrBreach)
+    assert isinstance(cfg.reward_fn, ZeroReward)
+    assert isinstance(cfg.termination_fn, MaxStepsOnly)
 
 
 def test_default_scripted_policies_are_zero_control():

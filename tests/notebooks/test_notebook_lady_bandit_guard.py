@@ -25,7 +25,7 @@ def _zero_init(c, s, k):
 
 def test_lbg_notebook_core_path():
     cfg = make_lady_bandit_guard(
-        breach_distance_m=10.0,
+        breach_radius_m=10.0,
         n_guards=1,
         n_bandits=1,
         dt=10.0,

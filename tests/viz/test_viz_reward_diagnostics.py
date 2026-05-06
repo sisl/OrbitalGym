@@ -39,7 +39,7 @@ def test_pe_diagnostic_two_panels(key):
 
 def test_lbg_diagnostic_two_panels_with_threshold(key):
     cfg = make_lady_bandit_guard(
-        n_guards=2, n_bandits=1, dt=10.0, max_horizon_s=200.0, breach_distance_m=50.0
+        n_guards=2, n_bandits=1, dt=10.0, max_horizon_s=200.0, breach_radius_m=50.0
     )
     env = OrbitalGameEnv(cfg)
     policies = BySide(
@@ -48,7 +48,7 @@ def test_lbg_diagnostic_two_panels_with_threshold(key):
     )
     init_ps = BySide(guard=_zero_init, bandit=_zero_init)
     traj = rollout(env, policies, init_ps, key, n_steps=15)
-    fig = plot_lady_bandit_guard_diagnostic(traj, breach_distance_m=50.0)
+    fig = plot_lady_bandit_guard_diagnostic(traj, breach_radius_m=50.0)
     assert len(fig.axes) == 2
     # Top axes should have a horizontal threshold line.
     ax_top = fig.axes[0]

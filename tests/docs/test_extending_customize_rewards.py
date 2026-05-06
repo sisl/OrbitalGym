@@ -22,18 +22,19 @@ def test_customize_rewards_walkthrough():
     # --8<-- [start:sparse-breach-reward]
     @dataclass(frozen=True)
     class SparseBreachReward:
-        """+0 every step; -1 on the step where the bandit breaches."""
+        """+0 every step; -1 to the guard on the step where the bandit
+        breaches the lady (and +1 to the bandit, mirrored)."""
 
-        breach_distance_m: float
+        breach_radius_m: float
         scope: RewardScope = RewardScope.PER_SIDE
 
         def __call__(self, prev_state, action, next_state, side, params, t):
             del prev_state, action, params, t
-            guards = next_state.guards
-            positions = guards.rtn[:, :3] if hasattr(guards, "rtn") else guards.rt[:, :2]
+            bandits = next_state.bandits
+            positions = bandits.rtn[:, :3] if hasattr(bandits, "rtn") else bandits.rt[:, :2]
             min_dist = jnp.min(jnp.linalg.norm(positions, axis=-1))
-            breached = min_dist < self.breach_distance_m
-            # Guard wants no breach (penalty); bandit gets the inverse.
+            breached = min_dist < self.breach_radius_m
+            # Guard loses 1 on breach; bandit mirrors.
             penalty = jnp.where(breached, -1.0, 0.0)
             return jnp.where(side == Side.GUARD, penalty, -penalty)
 
@@ -41,7 +42,7 @@ def test_customize_rewards_walkthrough():
 
     # --8<-- [start:wire-it-up]
     cfg = make_lady_bandit_guard(seed=0, max_horizon_s=200.0)
-    cfg = dataclasses.replace(cfg, reward_fn=SparseBreachReward(breach_distance_m=10.0))
+    cfg = dataclasses.replace(cfg, reward_fn=SparseBreachReward(breach_radius_m=5.0))
     env = OrbitalGameEnv(cfg)
     # --8<-- [end:wire-it-up]
 

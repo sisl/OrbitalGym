@@ -28,6 +28,7 @@ from dataclasses import dataclass
 import jax.numpy as jnp
 
 from orbital_game.env.types import Side
+from orbital_game.registry import RewardFnKey, register
 from orbital_game.rewards.base import RewardScope
 
 
@@ -41,6 +42,7 @@ def _positions(side_state):
     return side_state.rt[:, :2]
 
 
+@register(RewardFnKey.LBG_ZERO_SUM)
 @dataclass(frozen=True)
 class LbgZeroSumReward:
     """Dense + terminal zero-sum reward for the Lady-Bandit-Guard game.

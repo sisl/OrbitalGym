@@ -84,8 +84,9 @@ def test_pe_termination_rejects_wrong_game():
 
     class _Cfg:
         game = NoGame()
+        max_steps = 100
 
-    fn = PursuitEvasionTermination(max_steps=100)
+    fn = PursuitEvasionTermination()
     try:
         # Need a state with .step, .guards.rtn, .bandits.rtn
         class _Guards:
