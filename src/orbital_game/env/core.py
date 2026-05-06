@@ -22,7 +22,7 @@ from orbital_game.actions.components import Communicate, ImpulsiveManeuver
 from orbital_game.config import ScenarioConfig
 from orbital_game.dynamics.hcw import hcw_rt_step, hcw_rtn_step
 from orbital_game.dynamics.j2 import j2_eci_step
-from orbital_game.dynamics.keplerian import keplerian_eci_step
+from orbital_game.dynamics.keplerian import KeplerianEciDynamics
 from orbital_game.env.types import Actions, BySide, Side, SideOutput, StepOutput
 from orbital_game.frames.conversions import convert_state
 from orbital_game.reference_orbit import ReferenceOrbitState
@@ -68,7 +68,11 @@ _ACTION_COMP_LOOKUP: dict[ActionComponentKey, type] = {
 _DYN_LOOKUP = {
     DynamicsKey.HCW_RT: hcw_rt_step,
     DynamicsKey.HCW_RTN: hcw_rtn_step,
-    DynamicsKey.KEPLERIAN_ECI: keplerian_eci_step,
+    # Typed-instance dynamics: the registry holds the class; we instantiate
+    # with defaults at env-build time. Per-scenario epoch is handled by
+    # ScenarioConfig.__post_init__, which constructs an explicit instance
+    # for `reference_orbit_dynamics`.
+    DynamicsKey.KEPLERIAN_ECI: KeplerianEciDynamics,
     DynamicsKey.J2_ECI: j2_eci_step,
 }
 
@@ -76,12 +80,18 @@ _DYN_LOOKUP = {
 def _resolve_dynamics_callable(spec):
     """Return the callable for a dynamics-role spec.
 
-    ``spec`` is either a ``DynamicsKey`` (looked up in ``_DYN_LOOKUP``) or a
-    typed-instance dynamics (e.g. ``AstrojaxOrbitDynamics``) which is itself
-    callable and carries its own ``frame`` / ``kind`` class attributes.
+    ``spec`` is one of:
+    - a ``DynamicsKey`` looked up in ``_DYN_LOOKUP``. The looked-up entry may
+      be a step *function* (HCW_RT, HCW_RTN, J2_ECI) or a typed-instance
+      *class* (KEPLERIAN_ECI). Classes are instantiated with defaults here.
+    - an already-constructed typed-instance (KeplerianEciDynamics,
+      AstrojaxOrbitDynamics, ...) which is itself callable.
     """
     if isinstance(spec, DynamicsKey):
-        return _DYN_LOOKUP[spec]
+        thing = _DYN_LOOKUP[spec]
+        if isinstance(thing, type):
+            return thing()
+        return thing
     return spec
 
 
@@ -236,17 +246,21 @@ class OrbitalGameEnv:
                 classes.append(cls)
             return tuple(instances), tuple(classes)
 
-        guard_instances, guard_classes = _build_component_instances(
+        guard_instances, _ = _build_component_instances(
             config.guard_action_components, guard_track_mass
         )
-        bandit_instances, bandit_classes = _build_component_instances(
+        bandit_instances, _ = _build_component_instances(
             config.bandit_action_components, bandit_track_mass
         )
         self.guard_action_component_instances = guard_instances
         self.bandit_action_component_instances = bandit_instances
-        self.guard_command_cls = build_command_class(guard_classes, config.n_guards, "GuardCommand")
+        # Pass instances (not classes) so frame-aware ImpulsiveManeuver can
+        # report the correct dv shape (2 for RT, 3 for RTN/ECI).
+        self.guard_command_cls = build_command_class(
+            guard_instances, config.n_guards, "GuardCommand"
+        )
         self.bandit_command_cls = build_command_class(
-            bandit_classes, config.n_bandits, "BanditCommand"
+            bandit_instances, config.n_bandits, "BanditCommand"
         )
 
         # Typed-instance components come directly from the config (populated by

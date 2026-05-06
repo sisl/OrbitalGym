@@ -58,6 +58,7 @@ class OrthogonalEvader:
         ortho = jnp.where(proj_norm > 1e-6, proj, backup_proj)
         ortho_unit = ortho / (jnp.linalg.norm(ortho) + 1e-12)
         dv = ortho_unit * self.max_dv_mps
-        dv_per_vehicle = jnp.broadcast_to(dv, (self.n_vehicles, 3))
-        cmd = self.command_cls.zeros(self.n_vehicles).replace(dv=dv_per_vehicle)
-        return cmd, policy_state
+        cmd_template = self.command_cls.zeros(self.n_vehicles)
+        dv_dim = cmd_template.dv.shape[-1]
+        dv_per_vehicle = jnp.broadcast_to(dv[:dv_dim], (self.n_vehicles, dv_dim))
+        return cmd_template.replace(dv=dv_per_vehicle), policy_state

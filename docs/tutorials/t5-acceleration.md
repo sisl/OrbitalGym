@@ -71,12 +71,32 @@ return variance, useful for plotting confidence bands.
 
 ## Caveats
 
-- **Float64 is the default** in this package (set at import time via
-  `astrojax.config.set_dtype(jnp.float64)`). On consumer GPUs that's
-  emulated and slow. For throughput-focused experiments, call
-  `astrojax.config.set_dtype(jnp.float32)` after importing
-  `orbital_game` — but verify your physics still produces sensible
-  trajectories at single precision.
+- **Float64 is the default** in this package (set at import time). For
+  throughput-focused experiments — and as a hard requirement on Apple
+  Metal / MPS, which is float32-only — flip with the package helper:
+
+  ```python
+  import jax.numpy as jnp
+  import orbital_game
+
+  orbital_game.set_precision(jnp.float32)
+  ```
+
+  This sets *both* astrojax's internal dtype and JAX's `jax_enable_x64`
+  flag in lockstep (`astrojax.config.set_dtype` alone does not toggle
+  `jax_enable_x64` back to `False`, so calling it directly leaves the
+  package in an inconsistent state). Verify your physics still produces
+  sensible trajectories at single precision — at 7000 km Earth-orbit
+  scale, float32 has ~0.5 m worst-case position precision. Build any envs
+  *after* the precision flip — typed-instance dynamics (e.g.
+  `KeplerianEciDynamics`) capture their dtype in `__post_init__`.
+
+- **MPS is not always faster.** For workloads with many small
+  per-step JAX dispatches (e.g. a Python-loop tree-search planner), MPS
+  dispatch overhead dominates over actual compute and can run *slower*
+  than CPU. The MPS speedup story is best when each compiled call does
+  enough work to amortize dispatch — vmap over hundreds of trajectories
+  and large state vectors. Always benchmark before declaring victory.
 - **JIT cache warmup** — the first call to a `jax.jit`-compiled
   function compiles it. Time a second call for the steady-state
   number.

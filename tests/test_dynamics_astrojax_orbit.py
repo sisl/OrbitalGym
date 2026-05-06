@@ -21,7 +21,8 @@ def test_astrojax_orbit_two_body_matches_keplerian():
     from orbital_game.dynamics.astrojax_orbit import AstrojaxOrbitDynamics
     from orbital_game.registry import DynamicsKey, resolve
 
-    kep = resolve(DynamicsKey.KEPLERIAN_ECI)
+    # `DynamicsKey.KEPLERIAN_ECI` resolves to the typed-instance class; instantiate.
+    kep = resolve(DynamicsKey.KEPLERIAN_ECI)()
     ajx = AstrojaxOrbitDynamics(force_model=ForceModelConfig())  # point-mass
 
     state0 = jnp.array([[7e6, 0.0, 0.0, 0.0, 7.5e3, 0.0]])

@@ -32,7 +32,13 @@ Top-level environment, configuration, and rollout primitives.
 
 ::: orbital_game.rollout.rollout_single_agent
 
+::: orbital_game.rollout.rollout_with_planner
+
 ::: orbital_game.rollout.episode_mask
+
+## Precision
+
+::: orbital_game.set_precision
 
 ## Logging
 

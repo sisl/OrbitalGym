@@ -14,9 +14,12 @@ def test_keplerian_eci_circular_orbit_returns_to_origin():
     from orbital_game.dynamics import keplerian  # noqa: F401 — register side effect
     from orbital_game.registry import DynamicsKey, DynamicsKind, Frame, resolve
 
-    fn = resolve(DynamicsKey.KEPLERIAN_ECI)
-    assert fn.frame is Frame.ECI
-    assert fn.kind is DynamicsKind.ABSOLUTE
+    # `DynamicsKey.KEPLERIAN_ECI` now resolves to the typed-instance class
+    # `KeplerianEciDynamics`; we instantiate with defaults to get a callable.
+    cls = resolve(DynamicsKey.KEPLERIAN_ECI)
+    fn = cls()
+    assert cls.frame is Frame.ECI
+    assert cls.kind is DynamicsKind.ABSOLUTE
 
     mu = 3.986004418e14
     r = 6378137.0 + 500e3
@@ -39,7 +42,10 @@ def test_keplerian_eci_applies_dv_at_step_start():
     from orbital_game.dynamics import keplerian  # noqa: F401
     from orbital_game.registry import DynamicsKey, resolve
 
-    fn = resolve(DynamicsKey.KEPLERIAN_ECI)
+    # `DynamicsKey.KEPLERIAN_ECI` now resolves to the typed-instance class
+    # `KeplerianEciDynamics`; we instantiate with defaults to get a callable.
+    cls = resolve(DynamicsKey.KEPLERIAN_ECI)
+    fn = cls()
     state0 = jnp.array([[7e6, 0.0, 0.0, 0.0, 7.5e3, 0.0]])
     dv = jnp.array([[1.0, 0.0, 0.0]])  # 1 m/s radial impulse
     out = fn(state0, dv, params=None, dt=0.0)  # dt=0 -> no propagation, just the dv

@@ -212,7 +212,12 @@ class RolloutScene:
         for side_name in ("guard", "bandit"):
             action = getattr(self.traj.sides, side_name).action
             comps = getattr(type(action), "_orbital_game_action_components", ())
-            if ImpulsiveManeuver not in comps:
+            # `comps` may hold either component classes (legacy) or instances
+            # (post-frame-aware refactor). Accept both forms.
+            has_impulsive = any(
+                c is ImpulsiveManeuver or isinstance(c, ImpulsiveManeuver) for c in comps
+            )
+            if not has_impulsive:
                 raise ValueError(
                     f"RolloutScene requires IMPULSIVE_MANEUVER in "
                     f"{side_name}_action_components (it reads "

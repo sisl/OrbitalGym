@@ -234,10 +234,16 @@ A few subtleties to keep in mind:
   the resolved value as `cfg.belief_dynamics_resolved` /
   `env.belief_dynamics`, never the input field.
 - **`reference_orbit_dynamics` defaults to `truth_dynamics` if it's
-  `ABSOLUTE`-kind, else `KEPLERIAN_ECI`.** Read
+  `ABSOLUTE`-kind, else a `KeplerianEciDynamics` instance carrying the
+  scenario's epoch (`cfg.epoch_mjd_utc`).** Read
   `cfg.reference_orbit_dynamics_resolved`. If you supply your own,
   the validator enforces `kind=ABSOLUTE` (the reference orbit lives in
   ECI by definition).
+- **`KeplerianEciDynamics` is a typed-instance class** (just like
+  `AstrojaxOrbitDynamics`) — pass `DynamicsKey.KEPLERIAN_ECI` and the
+  env instantiates with J2000 defaults; pass an instance directly to
+  bind the scenario's epoch:
+  `truth_dynamics=KeplerianEciDynamics(epoch_mjd_utc=58849.0)`.
 - **You only need `StateComponentKey.ECI` in your component tuples.**
   `__post_init__` auto-extends each side's components with derived-frame
   views for every frame consumed by the resolved dynamics roles, plus

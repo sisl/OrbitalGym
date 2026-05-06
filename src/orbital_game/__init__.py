@@ -32,8 +32,31 @@ Public API surface:
 
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 from astrojax.config import set_dtype as _set_astrojax_dtype
+
+
+def set_precision(dtype) -> None:
+    """Set both astrojax's internal dtype and JAX's `jax_enable_x64` flag.
+
+    `astrojax.config.set_dtype(jnp.float64)` enables `jax_enable_x64` as a side
+    effect, but `set_dtype(jnp.float32)` does NOT toggle it back. This helper
+    keeps the two settings consistent so callers can flip precision with a
+    single call. Use `set_precision(jnp.float32)` when targeting MPS (which is
+    float32-only) or for GPU throughput; use `set_precision(jnp.float64)` for
+    sub-mm orbit precision (the package default at import time).
+
+    No package-level cache invalidation is needed: typed-instance dynamics
+    (`KeplerianEciDynamics`, `AstrojaxOrbitDynamics`) build their Epoch / RHS
+    state in ``__post_init__``, so a fresh dtype is picked up the next time
+    a new env is constructed. Existing instances retain their original dtype
+    — flip the dtype *before* building the env you want to run on the new
+    precision.
+    """
+    _set_astrojax_dtype(dtype)
+    jax.config.update("jax_enable_x64", dtype is jnp.float64 or dtype == jnp.float64)
+
 
 _set_astrojax_dtype(jnp.float64)
 
@@ -89,6 +112,7 @@ __all__ = [
     "BySide",
     "EnvState",
     "Game",
+    "set_precision",
     "GameKey",
     "GymnasiumAdapter",
     "LadyBanditGuard",

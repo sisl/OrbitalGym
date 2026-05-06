@@ -50,11 +50,14 @@ def _minimal_cfg(**overrides):
 
 
 def test_reference_orbit_dynamics_default_for_relative_truth():
-    """Truth=HCW_RTN (relative) -> reference defaults to KEPLERIAN_ECI."""
-    from orbital_game.registry import DynamicsKey
+    """Truth=HCW_RTN (relative) -> reference defaults to a KeplerianEciDynamics
+    instance that carries the scenario's epoch (so different scenarios get
+    different reference-epoch instances rather than sharing module state)."""
+    from orbital_game.dynamics.keplerian import KeplerianEciDynamics
 
     cfg = _minimal_cfg()
-    assert cfg.reference_orbit_dynamics_resolved is DynamicsKey.KEPLERIAN_ECI
+    assert isinstance(cfg.reference_orbit_dynamics_resolved, KeplerianEciDynamics)
+    assert cfg.reference_orbit_dynamics_resolved.epoch_mjd_utc == cfg.epoch_mjd_utc
 
 
 def test_reference_orbit_dynamics_default_for_absolute_truth():

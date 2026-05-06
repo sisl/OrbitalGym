@@ -1,9 +1,13 @@
-"""Assemble a per-scenario per-side Command class from ActionComponent types.
+"""Assemble a per-scenario per-side Command class from ActionComponent instances.
 
 The resulting class is a flax.struct.dataclass (a JAX pytree) with exactly the
 union of the components' fields, in registration order. Mirrors
 `state.assemble.build_state_class` byte-for-byte; same caching contract for
 `jax.lax.while_loop` carry-pytree-structure equality.
+
+Components are passed as *instances* (not classes) so frame-aware components
+like ImpulsiveManeuver can report the correct field shape based on their
+configured ``action_frame``.
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ from orbital_game.actions.components import ActionComponent
 
 
 def build_command_class(
-    components: Sequence[type[ActionComponent]],
+    components: Sequence[ActionComponent],
     n_agents: int,
     class_name: str,
 ) -> type[Any]:
@@ -34,7 +38,7 @@ def build_command_class(
 
 @functools.cache
 def _build_command_class_cached(
-    components: tuple[type[ActionComponent], ...],
+    components: tuple[ActionComponent, ...],
     n_agents: int,
     class_name: str,
 ) -> type[Any]:

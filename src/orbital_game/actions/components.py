@@ -24,15 +24,18 @@ class ActionComponent(Protocol):
     which is invoked by `OrbitalGameEnv.step` once per side, in component
     registration order. Components are responsible for any state mutation
     (including invoking dynamics — see `ImpulsiveManeuver`); the env loop only folds.
+
+    ``fields`` and ``zeros`` are instance methods so frame-aware components
+    (e.g. ImpulsiveManeuver, where ``self.action_frame.dim`` decides the dv
+    shape) can vary their schema. Components without per-instance state can
+    simply ignore ``self``.
     """
 
-    @staticmethod
-    def fields() -> Mapping[str, tuple[int, ...]]:
+    def fields(self) -> Mapping[str, tuple[int, ...]]:
         """Per-agent shape of each contributed command field."""
         ...
 
-    @staticmethod
-    def zeros(n: int) -> Mapping[str, jax.Array]:
+    def zeros(self, n: int) -> Mapping[str, jax.Array]:
         """Identity command — what 'do nothing for this component' looks like.
         Returns dict field -> (n, *field_shape)."""
         ...
@@ -59,6 +62,12 @@ class ImpulsiveManeuver:
     through `dt`. After this component runs, the side's truth-frame state
     field has been updated and propellant has been deducted.
 
+    The Δv field shape follows ``action_frame.dim`` — 2 for RT (radial,
+    along-track) and 3 for RTN/ECI. ``fields()`` and ``zeros()`` are instance
+    methods (not staticmethods) so the assembled Command pytree carries the
+    correct shape per scenario; ``build_command_class`` is given component
+    *instances* so it can read this.
+
     Init knobs (env wires these from ScenarioConfig):
         truth_dynamics: the step function (signature: state6, dv, params, dt -> state6')
         action_frame:   frame the policy emits Δv in
@@ -71,13 +80,11 @@ class ImpulsiveManeuver:
     truth_frame: Frame
     track_mass: bool = True
 
-    @staticmethod
-    def fields() -> Mapping[str, tuple[int, ...]]:
-        return {"dv": (3,)}
+    def fields(self) -> Mapping[str, tuple[int, ...]]:
+        return {"dv": (self.action_frame.dim,)}
 
-    @staticmethod
-    def zeros(n: int) -> Mapping[str, jax.Array]:
-        return {"dv": jnp.zeros((n, 3))}
+    def zeros(self, n: int) -> Mapping[str, jax.Array]:
+        return {"dv": jnp.zeros((n, self.action_frame.dim))}
 
     def apply(
         self,
@@ -126,12 +133,10 @@ class Communicate:
     dim must register a subclass with overridden fields()/zeros().
     """
 
-    @staticmethod
-    def fields() -> Mapping[str, tuple[int, ...]]:
+    def fields(self) -> Mapping[str, tuple[int, ...]]:
         return {"active": (), "payload": (6,)}
 
-    @staticmethod
-    def zeros(n: int) -> Mapping[str, jax.Array]:
+    def zeros(self, n: int) -> Mapping[str, jax.Array]:
         return {
             "active": jnp.zeros((n,), dtype=jnp.bool_),
             "payload": jnp.zeros((n, 6)),

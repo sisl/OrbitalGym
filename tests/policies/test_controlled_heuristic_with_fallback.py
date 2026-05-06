@@ -11,9 +11,20 @@ import jax.numpy as jnp
 
 from orbital_game.actions.assemble import build_command_class
 from orbital_game.actions.components import Communicate, ImpulsiveManeuver
+from orbital_game.dynamics.hcw import hcw_rtn_step
 from orbital_game.policies import ZeroControl
 from orbital_game.policies.controlled import HeuristicWithFallbackPolicy
+from orbital_game.registry import Frame
 from tests.policies._helpers import make_impulsive_maneuver_command_cls
+
+
+def _impulsive_rtn() -> ImpulsiveManeuver:
+    return ImpulsiveManeuver(
+        truth_dynamics=hcw_rtn_step,
+        action_frame=Frame.RTN,
+        truth_frame=Frame.RTN,
+        track_mass=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -83,7 +94,7 @@ def test_preserves_primary_non_dv_fields_regardless_of_route():
     are dropped by design.
     """
     cmd_cls = build_command_class(
-        (ImpulsiveManeuver, Communicate), n_agents=1, class_name="TestRouting"
+        (_impulsive_rtn(), Communicate()), n_agents=1, class_name="TestRouting"
     )
     primary = _CommsActivePrimary(n_vehicles=1, command_cls=cmd_cls)
     fallback = ZeroControl(n_vehicles=1, command_cls=cmd_cls)

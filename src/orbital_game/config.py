@@ -219,7 +219,12 @@ class ScenarioConfig:
             if getattr(truth_fn, "kind", None) is DynamicsKind.ABSOLUTE:
                 resolved_ref = self.truth_dynamics
             else:
-                resolved_ref = DynamicsKey.KEPLERIAN_ECI
+                # Default to a typed-instance KeplerianEciDynamics that carries
+                # the scenario's epoch — so different scenarios can have
+                # different reference epochs without sharing module-level state.
+                from orbital_game.dynamics.keplerian import KeplerianEciDynamics
+
+                resolved_ref = KeplerianEciDynamics(epoch_mjd_utc=self.epoch_mjd_utc)
         else:
             ref_fn = _resolve_dynamics_callable(self.reference_orbit_dynamics)
             if getattr(ref_fn, "kind", None) is not DynamicsKind.ABSOLUTE:

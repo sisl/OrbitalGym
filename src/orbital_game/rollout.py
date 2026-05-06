@@ -20,6 +20,7 @@ only k_reset affects numerical output via IC sampling.
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -164,6 +165,103 @@ def rollout_single_agent(
         policies = BySide(guard=view.opponent_policy, bandit=controlled_policy)
         init_fns = BySide(guard=lambda c, s, k: None, bandit=init_controlled_ps_fn)
     return rollout(view.env, policies, init_fns, key, n_steps)
+
+
+def rollout_with_planner(
+    env,
+    planner_side: Side,
+    planner,
+    opponent_policy: Callable,
+    key: jax.Array,
+    n_steps: int,
+    init_planner_state: Any = None,
+):
+    """Manual Python rollout for one tree-search planner + one scripted opponent.
+
+    Tree-search planners (MCTS, POMCPOW) have Python-level state and variable
+    control flow that don't fit inside ``jax.lax.scan`` (so they can't be wired
+    through the standard ``rollout``). This helper runs a Python loop over a
+    jit-compiled ``env.step``, calling the planner's ``plan(state, key)`` each
+    tick to get the planner-side action and threading the opponent's
+    obs-based ``Policy`` for the other side.
+
+    Returns a list-of-states + reward/action/done arrays — *not* a Trajectory
+    pytree, because shapes vary with episode length under early termination.
+    Callers that need a fixed-shape Trajectory can pad after the fact.
+
+    Args:
+        env: OrbitalGameEnv.
+        planner_side: which side (Side.GUARD or Side.BANDIT) is driven by the planner.
+        planner: any Planner-protocol object with ``plan(state, key) -> (cmd, planner_state)``.
+        opponent_policy: a Policy-protocol callable for the other side, with
+            ``command_cls`` and ``n_vehicles`` already injected.
+        key: master PRNGKey.
+        n_steps: max steps before forced termination.
+        init_planner_state: initial planner-state passed to the first plan call.
+
+    Returns:
+        dict with keys ``states`` (list[EnvState]), ``rewards_planner``,
+        ``rewards_opponent``, ``planner_actions``, ``opponent_actions``,
+        ``episode_done`` (bool list), and ``terminated_step`` (int).
+    """
+    from orbital_game.observations.types import flatten_observations
+
+    state, outputs = env.reset(jax.random.fold_in(key, 0))
+    states = [state]
+    rewards_planner: list[float] = []
+    rewards_opp: list[float] = []
+    planner_actions: list[Any] = []
+    opp_actions: list[Any] = []
+    dones: list[bool] = []
+    planner_state = init_planner_state
+
+    for step in range(n_steps):
+        sub_key = jax.random.fold_in(key, step + 1)
+        k_plan, k_opp, k_env = jax.random.split(sub_key, 3)
+
+        planner_cmd, planner_state = planner.plan(state, k_plan)
+
+        # Opponent sees its own observation derived from current state.
+        opp_side = planner_side.opposite()
+        opp_obs_fn = (
+            env.guard_observation_fn if opp_side is Side.GUARD else env.bandit_observation_fn
+        )
+        identity = Actions(
+            sides=BySide(
+                guard=env.guard_command_cls.zeros(env.config.n_guards),
+                bandit=env.bandit_command_cls.zeros(env.config.n_bandits),
+            )
+        )
+        opp_obs_raw = opp_obs_fn(state, identity, opp_side, env.config, k_opp, state.t)
+        opp_obs = flatten_observations(opp_obs_raw)
+        opp_cmd, _ = opponent_policy(None, opp_obs, k_opp, state.t)
+
+        if planner_side is Side.GUARD:
+            actions = Actions(sides=BySide(guard=planner_cmd, bandit=opp_cmd))
+        else:
+            actions = Actions(sides=BySide(guard=opp_cmd, bandit=planner_cmd))
+
+        step_out = env.step(k_env, state, actions)
+        state = step_out.state
+        states.append(state)
+        rewards_planner.append(float(step_out.outputs.get(planner_side).reward))
+        rewards_opp.append(float(step_out.outputs.get(opp_side).reward))
+        planner_actions.append(planner_cmd)
+        opp_actions.append(opp_cmd)
+        dones.append(bool(step_out.episode_done))
+        if step_out.episode_done:
+            break
+
+    return {
+        "states": states,
+        "rewards_planner": jnp.asarray(rewards_planner),
+        "rewards_opponent": jnp.asarray(rewards_opp),
+        "planner_actions": planner_actions,
+        "opponent_actions": opp_actions,
+        "episode_done": dones,
+        "terminated_step": len(rewards_planner),
+        "final_planner_state": planner_state,
+    }
 
 
 def episode_mask(traj: Trajectory) -> jax.Array:

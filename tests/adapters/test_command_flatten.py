@@ -24,13 +24,13 @@ def _make_impulsive_maneuver_command_cls(n: int):
         truth_frame=Frame.RT,
         track_mass=False,
     )
-    return build_command_class((type(maneuver),), n, "TestCommand")
+    return build_command_class((maneuver,), n, "TestCommand")
 
 
 def test_command_flat_dim_matches_field_layout():
     cmd_cls = _make_impulsive_maneuver_command_cls(n=4)
-    # ImpulsiveManeuver has one field `dv` with shape (3,), 4 agents → 4*3 = 12
-    assert command_flat_dim(cmd_cls) == 12
+    # RT action_frame → dv is 2-D per agent, 4 agents → 4*2 = 8
+    assert command_flat_dim(cmd_cls) == 8
 
 
 def test_unflatten_flatten_round_trip_is_identity():
@@ -58,7 +58,8 @@ def test_unflatten_yields_correct_per_agent_shape():
     cmd_cls = _make_impulsive_maneuver_command_cls(n=5)
     flat = jnp.zeros(command_flat_dim(cmd_cls))
     cmd = unflatten_command(cmd_cls, flat)
-    assert cmd.dv.shape == (5, 3)
+    # RT action_frame → 2-D dv per agent.
+    assert cmd.dv.shape == (5, 2)
 
 
 def test_round_trip_under_jit():
@@ -85,9 +86,10 @@ def test_communicate_active_dtype_round_trips():
         truth_frame=Frame.RT,
         track_mass=False,
     )
-    cmd_cls = build_command_class((type(maneuver), Communicate), 2, "TestCommandWithComms")
+    cmd_cls = build_command_class((maneuver, Communicate()), 2, "TestCommandWithComms")
     cmd = cmd_cls.zeros(2).replace(
-        dv=jnp.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]),
+        # RT action_frame → 2-D dv.
+        dv=jnp.array([[0.1, 0.2], [0.4, 0.5]]),
         active=jnp.array([True, False]),
         payload=jnp.zeros((2, 6)),
     )

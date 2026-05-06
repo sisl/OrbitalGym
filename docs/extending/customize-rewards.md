@@ -25,6 +25,14 @@ zero-sum penalties are natural), the previous and next env states, the
 
 ::: orbital_game.rewards.reference.DistanceToReferenceOrbit
 
+`DistanceToReferenceOrbit` returns 0 for the bandit side (the asymmetric
+"only the guard has a signal" framing). For zero-sum LBG games where the
+bandit *is* a learner, use `LbgZeroSumReward` instead — both sides get
+mirrored dense distance shaping plus large terminal events on
+catch/breach:
+
+::: orbital_game.rewards.lbg_zero_sum.LbgZeroSumReward
+
 Pursuit-Evasion ships its own zero-sum reward (`PursuitEvasionReward`)
 that reads `cfg.game.capture_distance_m`. Sun-Blocking ships
 `SunBlockingReward`, and Observation-Blocking ships

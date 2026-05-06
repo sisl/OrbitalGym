@@ -8,6 +8,17 @@ Protocols and reference implementations for the env's swappable building blocks.
 
 ::: orbital_game.policies.zero.ZeroControl
 
+### Planners (state-aware, outside `lax.scan`)
+
+`Planner` is the sibling protocol of `Policy` for tree-search /
+MCTS-style controllers that need full env state and Python-level
+control flow. Driven by `rollout_with_planner` (see [API → Core][1])
+rather than the `lax.scan`-based `rollout`.
+
+[1]: core.md
+
+::: orbital_game.policies.planner.Planner
+
 ### Heuristic-policy gallery
 
 ::: orbital_game.policies.heuristic.lead_intercept.LeadInterceptPursuer

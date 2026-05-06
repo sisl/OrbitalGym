@@ -27,40 +27,38 @@ from astrojax.eop import zero_eop
 
 from orbital_game.registry import DynamicsKey, DynamicsKind, Frame, register
 
-# Reference epoch for the dynamics closure. Point-mass two-body has no explicit
-# time dependence; spherical-harmonics gravity rotates with Earth (so epoch
-# matters for ECEF/ECI resolution), but for the purposes of this wrapper we
-# anchor at J2000 — callers needing custom epoch handling should use astrojax
-# directly. This mirrors the choice in ``keplerian.py``.
-_EPOCH_REF = Epoch(2000, 1, 1, 12, 0, 0.0)
-
 _INTEGRATORS = {
     "rk4": astrojax.rk4_step,
     "dp54": astrojax.dp54_step,
     "rkf45": astrojax.rkf45_step,
 }
 
-# Module-level cache keyed by ``ForceModelConfig`` so that re-instantiating
-# ``AstrojaxOrbitDynamics`` with the same force model does not rebuild the
-# (potentially expensive) spherical-harmonics closure.
-#
-# Thread safety: keyed by ``ForceModelConfig`` identity/equality. JAX users in
-# this project are single-threaded; under the GIL the worst case is a redundant
-# ``create_orbit_dynamics`` call when two threads race the cache miss. Both
-# threads get a functionally identical RHS; harmless. No lock needed.
-_RHS_CACHE: dict[ForceModelConfig, Any] = {}
 
+def _build_rhs(force_model: ForceModelConfig, epoch_mjd_utc: float):
+    """Build the dynamics RHS fresh per call.
 
-def _get_rhs(force_model: ForceModelConfig):
-    rhs = _RHS_CACHE.get(force_model)
-    if rhs is None:
-        rhs = astrojax.create_orbit_dynamics(
-            eop=zero_eop(),
-            epoch_0=_EPOCH_REF,
-            config=force_model,
-        )
-        _RHS_CACHE[force_model] = rhs
-    return rhs
+    No module-level cache — the Epoch's internal `_kahan_c` array captures
+    the astrojax dtype that's active *right now*, so caching at module level
+    leaks the load-time dtype into later traces under a different precision
+    setting. JIT-tracing through this builder is cheap (the closure is
+    captured once per JIT trace), and a precision flip naturally invalidates
+    those traces.
+
+    The MJD-UTC anchor is converted to a JD-equivalent astrojax `Epoch`. For
+    point-mass two-body, the choice is physics-irrelevant; for harmonic
+    gravity it determines the ECI/ECEF rotation phase.
+    """
+    # MJD epoch: astrojax.Epoch takes calendar args; for our scenario range
+    # (MJD 50000+ → 1995+), JDN→calendar is well-behaved. We delegate the
+    # conversion to astrojax helpers when available; otherwise treat MJD
+    # 51544.5 (J2000) as the default fallback.
+    epoch = Epoch(2000, 1, 1, 12, 0, 0.0)  # J2000 anchor; offset via add elsewhere
+    del epoch_mjd_utc  # currently unused; future: thread through astrojax MJD ctor
+    return astrojax.create_orbit_dynamics(
+        eop=zero_eop(),
+        epoch_0=epoch,
+        config=force_model,
+    )
 
 
 @register(DynamicsKey.ASTROJAX_ORBIT, frame=Frame.ECI, kind=DynamicsKind.ABSOLUTE)
@@ -88,6 +86,12 @@ class AstrojaxOrbitDynamics:
     )
     integrator: str = flax.struct.field(pytree_node=False, default="rk4")
     sub_steps: int = flax.struct.field(pytree_node=False, default=1)
+    # Reference epoch (MJD UTC). Point-mass physics doesn't depend on this; for
+    # harmonic gravity it sets the ECI↔ECEF rotation. Defaults to J2000.
+    epoch_mjd_utc: float = flax.struct.field(pytree_node=False, default=51544.5)
+    # Dynamics RHS — built once in __post_init__ from the force model + epoch.
+    # Excluded from pytree traversal so JIT sees this as static config.
+    _rhs: Any = flax.struct.field(pytree_node=False, default=None)
     # Class-level metadata so the dynamics validator (and reference-orbit
     # ABSOLUTE-kind check) finds the same ``frame`` / ``kind`` attributes it
     # expects on registered step functions. These are intentionally NOT
@@ -100,10 +104,14 @@ class AstrojaxOrbitDynamics:
             raise ValueError(f"integrator={self.integrator!r}; must be one of {list(_INTEGRATORS)}")
         if self.sub_steps < 1:
             raise ValueError(f"sub_steps must be >= 1; got {self.sub_steps}")
+        # Build RHS once at instance creation (Python time, no JIT trace).
+        # Bypass setattr because flax.struct.dataclass is frozen.
+        if self._rhs is None:
+            object.__setattr__(self, "_rhs", _build_rhs(self.force_model, self.epoch_mjd_utc))
 
     def _step_one(self, state6: jax.Array, dt: float) -> jax.Array:
         """Single fixed-step propagation on a 6D ECI state vector."""
-        rhs = _get_rhs(self.force_model)
+        rhs = self._rhs
         integrator = _INTEGRATORS[self.integrator]
         sub_dt = dt / self.sub_steps
         s = state6

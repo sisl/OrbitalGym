@@ -14,8 +14,17 @@ adding a second component to a side.
 
 | Key | What it carries | Per-agent fields |
 |---|---|---|
-| `ActionComponentKey.IMPULSIVE_MANEUVER` | Impulsive Δv + truth-dynamics propagation | `dv` (3,) |
+| `ActionComponentKey.IMPULSIVE_MANEUVER` | Impulsive Δv + truth-dynamics propagation | `dv` (`action_frame.dim`,) — 2 for RT, 3 for RTN/ECI |
 | `ActionComponentKey.COMMUNICATE` | Per-step broadcast flag + payload | `active` (), `payload` (6,) |
+
+`ImpulsiveManeuver` is **frame-aware**: its `dv` field shape is read
+from its `action_frame` setting (which the env wires from
+`cfg.action_frame`, defaulting to the truth-dynamics frame). RT
+scenarios get a 2-D Δv; RTN and ECI scenarios get 3-D. This means
+`fields()` and `zeros()` are *instance* methods (not static) on
+`ImpulsiveManeuver` and `Communicate` — they read `self`. The
+`build_command_class` helper takes component **instances**, not
+classes, so the assembled Command pytree carries the correct shape.
 
 `ImpulsiveManeuver` invokes the configured truth dynamics inside its `apply` —
 the env loop does not call dynamics on its own. `Communicate` is
@@ -53,8 +62,9 @@ IMPULSIVE_MANEUVER component:
 `ScenarioConfig.guard_action_components` and
 `ScenarioConfig.bandit_action_components` both default to
 `(ActionComponentKey.IMPULSIVE_MANEUVER,)`. Under that default the
-per-side Command pytree carries exactly one field: `dv` of shape
-`(N_side, 3)`.
+per-side Command pytree carries exactly one field, `dv`, with shape
+`(N_side, action_frame.dim)` — which is `(N_side, 3)` for RTN/ECI and
+`(N_side, 2)` for the 2-D RT case.
 
 ## Composing components
 
@@ -112,10 +122,19 @@ constructs a policy in isolation):
 --8<-- "tests/docs/test_indepth_action_components.py:build-command-class"
 ```
 
-`build_command_class` takes a tuple of component **types** (not
-instances), the per-side agent count, and a class name. The returned
-class is a `flax.struct.dataclass` with a `zeros(n)` classmethod that
-produces the identity command — exactly what `ZeroControl` returns.
+`build_command_class` takes a tuple of component **instances**, the
+per-side agent count, and a class name. The returned class is a
+`flax.struct.dataclass` with a `zeros(n)` classmethod that produces the
+identity command — exactly what `ZeroControl` returns.
+
+!!! note "Instances, not classes"
+    Earlier versions accepted component *classes* with `@staticmethod`
+    `fields()` / `zeros()`. The frame-aware `ImpulsiveManeuver` reads
+    `self.action_frame` to size its `dv` field, so callers now pass
+    instances (e.g. `(ImpulsiveManeuver(truth_dynamics=...,
+    action_frame=Frame.RT, truth_frame=Frame.RT, track_mass=True),)`)
+    and the env's `_build_component_instances` helper does this for
+    you when you configure via the registry key.
 
 ## Where it lives
 

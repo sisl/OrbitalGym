@@ -63,6 +63,7 @@ class SunTrackerBlocker:
         sign = jnp.where(jnp.abs(scalar) > 1e-9, jnp.sign(scalar), 1.0)
         direction = sun_unit * sign
         dv = direction * self.max_dv_mps
-        dv_per_vehicle = jnp.broadcast_to(dv, (self.n_vehicles, 3))
-        cmd = self.command_cls.zeros(self.n_vehicles).replace(dv=dv_per_vehicle)
-        return cmd, policy_state
+        cmd_template = self.command_cls.zeros(self.n_vehicles)
+        dv_dim = cmd_template.dv.shape[-1]
+        dv_per_vehicle = jnp.broadcast_to(dv[:dv_dim], (self.n_vehicles, dv_dim))
+        return cmd_template.replace(dv=dv_per_vehicle), policy_state

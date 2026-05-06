@@ -105,6 +105,14 @@ class POMDPAdapter:
 
     # ---- pack / unpack ----
 
+    def pack(self, state: EnvState) -> jax.Array:
+        """Public alias for `_pack`. Use this from planners and tests."""
+        return self._pack(state)
+
+    def unpack(self, s_flat: jax.Array) -> EnvState:
+        """Public alias for `_unpack`."""
+        return self._unpack(s_flat)
+
     def _pack(self, state: EnvState) -> jax.Array:
         """EnvState → flat vector. t and step are appended as float scalars."""
         flat_xy = self.layout.flatten(state.guards, state.bandits)

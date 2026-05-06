@@ -12,6 +12,16 @@ a scalar `bool` array. Once it fires, the episode ends and per-side
 
 ::: orbital_game.termination.reference.MaxStepsOrBreach
 
+`MaxStepsOrBreach` checks the **guard's** distance to the reference
+origin. That's the right choice when the guard is the threat being
+contained (e.g. a guard-controlled inspector that must not get too
+close to a protected asset). For LBG framings where the **bandit** is
+the threat and the guard defends a "lady" at the origin, use
+`LbgEventTermination` instead — it fires on max-steps OR a bandit
+breaching the lady OR a guard catching a bandit:
+
+::: orbital_game.termination.lbg_events.LbgEventTermination
+
 Pursuit-Evasion ships `PursuitEvasionTermination` that fires on
 max_steps OR capture (relative distance below `cfg.game.capture_distance_m`).
 

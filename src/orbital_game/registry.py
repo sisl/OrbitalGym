@@ -23,6 +23,11 @@ class Frame(StrEnum):
     RTN = "rtn"  # 3D radial-tangential-normal (rotating, ref-orbit local)
     ECI = "eci"  # Earth-Centered Inertial (absolute)
 
+    @property
+    def dim(self) -> int:
+        """Dimensionality of a position/velocity vector in this frame."""
+        return 2 if self is Frame.RT else 3
+
 
 class DynamicsKind(StrEnum):
     """Whether a dynamics propagates absolute or relative state."""

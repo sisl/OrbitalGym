@@ -9,14 +9,37 @@ swappable.
 
 ## What ships
 
-| Key | What | Per-vehicle state shape |
-|---|---|---|
-| `DynamicsKey.HCW_RT` | 2D planar Clohessy–Wiltshire | `[r, θ, ṙ, θ̇]` (4) |
-| `DynamicsKey.HCW_RTN` | 3D Clohessy–Wiltshire | `[r, θ, n, ṙ, θ̇, ṅ]` (6) |
-| `ActionComponentKey.IMPULSIVE_MANEUVER` | Discrete `Δv` impulse + propagation | n/a |
+| Key | What | Per-vehicle state shape | Form |
+|---|---|---|---|
+| `DynamicsKey.HCW_RT` | 2D planar Clohessy–Wiltshire | `[r, θ, ṙ, θ̇]` (4) | step function |
+| `DynamicsKey.HCW_RTN` | 3D Clohessy–Wiltshire | `[r, θ, n, ṙ, θ̇, ṅ]` (6) | step function |
+| `DynamicsKey.KEPLERIAN_ECI` | Point-mass two-body in ECI | `[rx, ry, rz, vx, vy, vz]` (6) | typed-instance class |
+| `DynamicsKey.J2_ECI` | Two-body + J2 oblateness in ECI | `[rx, ry, rz, vx, vy, vz]` (6) | step function |
+| `DynamicsKey.ASTROJAX_ORBIT` | Configurable astrojax force model | `[rx, ry, rz, vx, vy, vz]` (6) | typed-instance class |
+| `ActionComponentKey.IMPULSIVE_MANEUVER` | Frame-aware Δv impulse + propagation | n/a (Δv is `(N_side, 2)` for RT, `(N_side, 3)` for RTN/ECI) | action component |
 
 Both HCW dynamics ignore J2, drag, and finite-burn duration. They are
 exact for instantaneous impulses applied to a circular reference orbit.
+
+### Step functions vs typed-instance dynamics
+
+Two dynamics shapes ship side by side:
+
+- **Step functions** (`HCW_RT`, `HCW_RTN`, `J2_ECI`) are stateless
+  callables registered against their key. The env resolves the key to
+  the function and calls it directly each step. No per-instance state.
+- **Typed-instance classes** (`KeplerianEciDynamics`,
+  `AstrojaxOrbitDynamics`) have per-instance fields (e.g.
+  `epoch_mjd_utc`, `force_model`) that drive how the dynamics is
+  configured. Their Epoch and integrator RHS are built once in
+  `__post_init__` (Python time, before any JIT trace) and stored on the
+  instance — this avoids module-level state and lets each scenario
+  carry its own reference epoch. When the env is given a bare
+  `DynamicsKey.KEPLERIAN_ECI`, it instantiates the class with defaults
+  (J2000 epoch); to bind your scenario's epoch, pass the typed instance
+  directly: `truth_dynamics=KeplerianEciDynamics(epoch_mjd_utc=58849.0)`.
+  `ScenarioConfig.__post_init__` already does this for you for
+  `reference_orbit_dynamics`, threading `cfg.epoch_mjd_utc` through.
 
 ## The dynamics protocol
 
@@ -87,6 +110,29 @@ The actuator surface assumes impulsive dynamics (one `Δv` per
 timestep). Finite-burn or thrust-vs-time actuators would need a
 richer protocol — out of scope for the bundled framework, addressable
 by extending the `Actuator` protocol.
+
+## Precision and dtype
+
+The package configures astrojax for `float64` at import time, which
+also sets JAX's `jax_enable_x64=True`. This is required for sub-mm
+KOE↔ECI round-trip residuals on Earth-orbit scenarios. Some hardware
+(notably Apple Metal / MPS) is float32-only; flip with the package's
+helper before constructing any env:
+
+```python
+import jax.numpy as jnp
+import orbital_game
+
+orbital_game.set_precision(jnp.float32)   # for MPS / GPU throughput
+# ... build ScenarioConfig and OrbitalGameEnv after this ...
+```
+
+`set_precision` flips both astrojax's internal dtype *and*
+`jax_enable_x64` together — calling `astrojax.config.set_dtype(jnp.float32)`
+alone does not toggle `jax_enable_x64` back to `False` and leaves the
+package in an inconsistent state. Existing typed-instance dynamics
+captured the old dtype in their `__post_init__`; build new envs after
+the precision flip to pick up the new dtype.
 
 ## Where to next
 
