@@ -27,10 +27,6 @@ Design notes:
 - **Variants.** ``gumbel_muzero_policy`` (default) uses sequential halving
   with Gumbel noise — better small-budget behaviour than vanilla PUCT
   with a uniform prior. ``muzero_policy`` is also exposed.
-
-The policy is an optional feature: ``mctx`` is gated behind the
-``[mcts]`` extra. Constructing :class:`MCTSPolicy` without ``mctx``
-installed raises ``ImportError`` immediately.
 """
 
 from __future__ import annotations
@@ -41,6 +37,7 @@ from typing import Any, Literal
 
 import jax
 import jax.numpy as jnp
+import mctx
 
 from orbital_game.adapters._command_flatten import flatten_command
 from orbital_game.adapters.pomdp.adapter import POMDPAdapter
@@ -73,13 +70,6 @@ class MCTSPolicy:
     command_cls: Any = None
 
     def __post_init__(self) -> None:
-        try:
-            import mctx  # noqa: F401
-        except ImportError as e:
-            raise ImportError(
-                "MCTSPolicy requires the optional `mctx` dependency. "
-                "Install via `pip install orbital-game[mcts]` or `pip install mctx`."
-            ) from e
         if self.command_cls is None:
             raise ValueError(
                 "MCTSPolicy was constructed without `command_cls`. Build via "
@@ -115,8 +105,6 @@ class MCTSPolicy:
     # --- internals ---
 
     def _search(self, s_flat: jax.Array, key: jax.Array) -> jax.Array:
-        import mctx
-
         adapter = self.env_model
         env = adapter.env
         side = self.side

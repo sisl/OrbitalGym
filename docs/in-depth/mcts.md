@@ -12,16 +12,6 @@ region (mctx is fully traced). MPS / GPU backends pay for themselves on
 the simulation budget — there are no host↔device round-trips per
 simulation, unlike Python-loop UCB1 patterns that came before.
 
-## Install
-
-`MCTSPolicy` is gated behind the `[mcts]` extra:
-
-```bash
-pip install orbital-game[mcts]
-```
-
-Constructing `MCTSPolicy` without `mctx` raises `ImportError` immediately.
-
 ## What it is, in two minutes
 
 - **Classic UCT.** Uniform priors, leaf value defaults to zero. Pass a

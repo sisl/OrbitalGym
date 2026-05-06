@@ -1,9 +1,9 @@
 default:
     @just --list
 
-# Install dev deps + adapter extras
+# Install dev deps
 install:
-    uv sync --dev --extra gymnasium --extra pettingzoo
+    uv sync --dev
 
 # Run the test suite
 test:

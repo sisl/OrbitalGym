@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from examples.reference_scenario import build_config
 from orbital_game.env.core import OrbitalGameEnv
-
-gymnasium = pytest.importorskip("gymnasium")
 
 
 def _make_adapter():

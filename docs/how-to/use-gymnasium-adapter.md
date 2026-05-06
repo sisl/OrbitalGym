@@ -2,12 +2,6 @@
 
 Wrap `OrbitalGameEnv` as a `gymnasium.Env` for single-agent RL training.
 
-## Install
-
-```bash
-pip install orbital-game[gymnasium]
-```
-
 ## Recipe
 
 ```python

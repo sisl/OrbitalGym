@@ -3,12 +3,6 @@
 Wrap `OrbitalGameEnv` as a `pettingzoo.ParallelEnv` for multi-agent
 RL training where every vehicle is a separate agent.
 
-## Install
-
-```bash
-pip install orbital-game[pettingzoo]
-```
-
 ## Recipe
 
 ```python

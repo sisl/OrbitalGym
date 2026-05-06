@@ -9,7 +9,7 @@ class directly, or read its source as a starting point for your own.
 |---|---|---|---|
 | [`ZeroControl`](#zerocontrol) | Both | All | Always emits zero — the baseline default. |
 | [`UniformRandomDiscretePolicy`](#uniformrandomdiscretepolicy) | Both | All | Uniform sample from a discrete Δv grid. Default `MCTSPolicy.opponent_model`. |
-| [`MCTSPolicy`](#mctspolicy) | Both | All | JAX-native classic UCT search via `mctx`. Optional `[mcts]` extra. |
+| [`MCTSPolicy`](#mctspolicy) | Both | All | JAX-native classic UCT search via `mctx`. |
 | [`LeadInterceptPursuer`](#leadinterceptpursuer) | Heuristic | PE, LBG | Closes on opponent's predicted next-step position. |
 | [`OrthogonalEvader`](#orthogonalevader) | Heuristic | PE | Thrusts perpendicular to relative velocity. |
 | [`SunTrackerBlocker`](#suntrackerblocker) | Heuristic | SB | Maintains Sun-line geometry vs. opponent. |
@@ -21,7 +21,7 @@ class directly, or read its source as a starting point for your own.
 
 ```python
 from orbital_game.policies import UniformRandomDiscretePolicy, ZeroControl
-from orbital_game.policies.mcts import MCTSPolicy           # requires [mcts] extra
+from orbital_game.policies.mcts import MCTSPolicy
 from orbital_game.policies.heuristic import (
     LeadInterceptPursuer,
     OrthogonalEvader,

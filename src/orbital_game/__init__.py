@@ -24,10 +24,8 @@ Public API surface:
         make_lady_bandit_guard, make_pursuit_evasion, make_sun_blocking,
         make_observation_blocking, make_game
 
-    Adapters (optional extras — see orbital_game.adapters):
-        POMDPAdapter         (always available)
-        GymnasiumAdapter     (pip install orbital-game[gymnasium])
-        PettingZooAdapter    (pip install orbital-game[pettingzoo])
+    Adapters (see orbital_game.adapters):
+        POMDPAdapter, GymnasiumAdapter, PettingZooAdapter
 """
 
 from __future__ import annotations
@@ -98,11 +96,6 @@ from orbital_game.rollout import (  # noqa: E402
     rollout_single_agent,
 )
 
-# Adapters: optional extras, exposed via the adapters submodule.
-# - POMDPAdapter is always importable (no external dep).
-# - GymnasiumAdapter / PettingZooAdapter are None when the matching extra
-#   isn't installed; users can `from orbital_game.adapters.<name> import ...`
-#   to surface the underlying ImportError instead.
 POMDPAdapter = adapters.POMDPAdapter
 GymnasiumAdapter = adapters.GymnasiumAdapter
 PettingZooAdapter = adapters.PettingZooAdapter

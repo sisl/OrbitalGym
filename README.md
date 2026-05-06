@@ -63,7 +63,7 @@ Every recipe has an equivalent raw command you can run directly.
 
 | Task | `just` recipe | Raw command |
 |------|---------------|-------------|
-| Install dev deps + adapter extras | `just install` | `uv sync --dev --extra gymnasium --extra pettingzoo` |
+| Install dev deps | `just install` | `uv sync --dev` |
 | Run tests | `just test` | `uv run pytest tests/ -v` |
 | Test with coverage | `just test-cov` | `uv run pytest --cov=orbital_game --cov-report=term-missing` |
 | Format code | `just fmt` | `uv run ruff format` |

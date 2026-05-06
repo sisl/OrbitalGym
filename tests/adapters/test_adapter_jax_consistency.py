@@ -12,14 +12,10 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pytest
 
 from examples.reference_scenario import build_config
 from orbital_game.env.core import OrbitalGameEnv
 from orbital_game.env.types import Actions, BySide
-
-pytest.importorskip("gymnasium")
-pytest.importorskip("pettingzoo")
 
 
 def test_gymnasium_adapter_consistency_with_direct_env():

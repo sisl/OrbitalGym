@@ -16,6 +16,9 @@ dependencies = [
     "flax>=0.12.6",
     "chex>=0.1.91",
     "gymnax>=0.0.9",
+    "gymnasium>=1.2",
+    "pettingzoo>=1.26",
+    "mctx>=0.0.6",
     "astrojax>=0.7.2",
     "h5py>=3.16",
     "matplotlib>=3.10",
@@ -29,19 +32,10 @@ dev = [
     "ruff>=0.15",
     "pyrefly>=0.61",
     "pre-commit>=4.6",
-    "pettingzoo>=1.26",
     "nbconvert>=7.17",
     "ipykernel>=7.2",
     "ipywidgets>=8.1",
     "ipympl>=0.9",
-]
-gymnasium = [
-    "gymnasium>=1.2",
-]
-pettingzoo = [
-    "pettingzoo>=1.26",
-]
-docs = [
     "zensical>=0.0.39",
     "mkdocstrings-python>=2.0.3",
 ]
@@ -54,12 +48,9 @@ cuda13 = [
 mps = [
     "jax-mps>=0.9.13",
 ]
-planners = [
+extras = [
     "cvxpy>=1.8.2",
     "highspy>=1.14.0",
-]
-mcts = [
-    "mctx>=0.0.6",
 ]
 
 [tool.hatch.build.targets.wheel]
