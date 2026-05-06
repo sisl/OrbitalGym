@@ -40,7 +40,7 @@ class LeadInterceptPursuer:
     def __call__(
         self,
         policy_state: Any,
-        obs: jax.Array,
+        agent_view: jax.Array,
         key: jax.Array,
         t: jax.Array,
     ) -> tuple[Any, Any]:
@@ -48,8 +48,8 @@ class LeadInterceptPursuer:
         # FullObservation flattens the per-(observer, tracked) tensor as
         # [own_truth, opp_truth] — own side first, then opposing side.
         # For a 1v1 bandit observer the layout is [bandit_rtn(6), guard_rtn(6)].
-        bandit_rtn = obs[0:6]
-        guard_rtn = obs[6:12]
+        bandit_rtn = agent_view[0:6]
+        guard_rtn = agent_view[6:12]
 
         # One-step HCW propagation under zero control: r' = r + v*dt.
         # Crude but adequate for one-step lead.

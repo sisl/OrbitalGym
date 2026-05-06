@@ -25,22 +25,23 @@ routing always pays both costs.
 
 Gallery: [`HeuristicWithFallbackPolicy`](gallery.md#heuristicwithfallbackpolicy).
 
-## Pattern: belief-conditioned
+## Pattern: belief-aware
 
-A policy that augments its observation with the belief mean (or any
-belief statistic). Usually paired with a `BeliefRollout` that supplies
-the belief; the wrapper takes care of concatenation so the underlying
-policy sees a single flat input.
+A policy that consumes the per-side `Belief` directly. With the unified
+protocol, belief threading is the rollout's job — drive via
+`belief_rollout` (see [Core API → Rollout](../api/core.md#rollout)) and
+the policy receives the post-update belief as `agent_view`. Read
+`agent_view.mean` (or richer belief statistics on future Belief types)
+to drive the action. No wrapper class is needed.
 
 ```python
---8<-- "tests/docs/test_extending_controlled_policy_cookbook.py:belief-conditioned-pattern"
+--8<-- "tests/docs/test_extending_controlled_policy_cookbook.py:belief-aware-pattern"
 ```
 
-`policy_state` shape: `(belief_mean, base_state)`. The wrapper
-prepends `belief_mean` to `obs`, calls the base policy, and threads
-`(belief_mean, next_base_state)` back out.
-
-Gallery: [`BeliefConditionedPolicy`](gallery.md#beliefconditionedpolicy).
+The same `Policy` works for obs-only `rollout` (where `agent_view` is
+the flat obs) and belief-aware `belief_rollout` (where it's the
+Belief). Memoryless reactive policies treat `agent_view` as the obs
+vector; belief-consumers read `.mean`. The dispatch is duck-typed.
 
 ## Pattern: composite action
 

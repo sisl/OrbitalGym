@@ -33,7 +33,7 @@ class LeadInterceptPursuer:
     def __call__(
         self,
         policy_state: Any,
-        obs: jax.Array,
+        agent_view: jax.Array,
         key: jax.Array,
         t: jax.Array,
     ) -> tuple[Any, Any]:
@@ -44,8 +44,8 @@ class LeadInterceptPursuer:
                 "`command_cls`. Use this policy via OrbitalGameEnv / "
                 "SingleAgentView, or pass command_cls explicitly."
             )
-        own = obs[0:6]
-        opp = obs[6:12]
+        own = agent_view[0:6]
+        opp = agent_view[6:12]
         opp_pos = opp[0:3]
         opp_vel = opp[3:6]
         # Free-drift one-step prediction (zero-control HCW limit).

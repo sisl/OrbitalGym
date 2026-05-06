@@ -116,8 +116,8 @@ Sensible gallery picks for Sun-Blocking:
   [`JitteredPolicy`](../extending/gallery.md#jitteredpolicy) (wrap any of the above).
 - **Controlled side:** any class from [Controlled-side cookbook](../extending/controlled-policy-cookbook.md)
   ([`HeuristicWithFallbackPolicy`](../extending/gallery.md#heuristicwithfallbackpolicy),
-  [`BeliefConditionedPolicy`](../extending/gallery.md#beliefconditionedpolicy),
-  [`CompositeActionPolicy`](../extending/gallery.md#compositeactionpolicy)).
+  [`CompositeActionPolicy`](../extending/gallery.md#compositeactionpolicy),
+  [`MCTSPolicy`](../extending/gallery.md#mctspolicy)).
 
 ## Sanity-check notebook
 

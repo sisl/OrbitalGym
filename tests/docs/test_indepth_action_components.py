@@ -87,16 +87,14 @@ def test_indepth_action_components_build_command_class():
     from orbital_game.registry import Frame
 
     # Per-side Command classes are built from a tuple of ActionComponent
-    # *types*. Order in this tuple determines apply order in env.step.
-    maneuver_type = type(
-        ImpulsiveManeuver(
-            truth_dynamics=hcw_rtn_step,
-            action_frame=Frame.RTN,
-            truth_frame=Frame.RTN,
-        )
+    # *instances*. Order in this tuple determines apply order in env.step.
+    maneuver = ImpulsiveManeuver(
+        truth_dynamics=hcw_rtn_step,
+        action_frame=Frame.RTN,
+        truth_frame=Frame.RTN,
     )
     cmd_cls = build_command_class(
-        (maneuver_type, Communicate),
+        (maneuver, Communicate()),
         n_agents=2,
         class_name="DocCmd",
     )

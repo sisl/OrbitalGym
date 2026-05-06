@@ -5,7 +5,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from examples.planners.receding_horizon import RecedingHorizonRollout
+from examples.policies.receding_horizon import RecedingHorizonRollout
 from orbital_game import OrbitalGameEnv, Side, make_pursuit_evasion
 from orbital_game.adapters.pomdp import POMDPAdapter
 

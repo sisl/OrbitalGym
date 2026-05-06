@@ -21,10 +21,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pytest  # noqa: E402
 
 from orbital_game.belief import (  # noqa: E402
-    BeliefRollout,
     EKFBeliefUpdater,
     EKFUniformDefaultInitializer,
-    run_belief_rollout,
 )
 from orbital_game.dynamics.hcw import hcw_rtn_step  # noqa: E402
 from orbital_game.env.core import OrbitalGameEnv  # noqa: E402
@@ -33,7 +31,7 @@ from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard  # noqa:
 from orbital_game.observations.range_limited import RangeLimitedObservation  # noqa: E402
 from orbital_game.policies import ZeroControl  # noqa: E402
 from orbital_game.reference_orbit import mean_motion as ref_mean_motion  # noqa: E402
-from orbital_game.rollout import rollout  # noqa: E402
+from orbital_game.rollout import belief_rollout, rollout  # noqa: E402
 from orbital_game.viz.animation import (  # noqa: E402
     RolloutScene,
     render_frame,
@@ -91,13 +89,16 @@ def range_limited_cfg_traj_belief(key):
         variance_diag=jnp.array([100.0, 100.0, 100.0, 1.0, 1.0, 1.0]),
     )
 
-    br = BeliefRollout(env, init, updater, init, updater)
     policies = BySide(
         guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
         bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
     )
     init_ps = BySide(guard=_zero_init, bandit=_zero_init)
-    traj, belief_history = run_belief_rollout(br, policies, init_ps, key, n_steps=12)
+    bel_inits = BySide(guard=init, bandit=init)
+    bel_updates = BySide(guard=updater, bandit=updater)
+    traj, belief_history = belief_rollout(
+        env, policies, init_ps, bel_inits, bel_updates, key, n_steps=12
+    )
     return cfg, traj, belief_history
 
 
@@ -203,7 +204,7 @@ def test_save_animation_writes_file(basic_cfg_and_traj, tmp_path):
     assert path == str(out)
 
 
-def test_run_belief_rollout_shapes(range_limited_cfg_traj_belief):
+def test_belief_rollout_shapes(range_limited_cfg_traj_belief):
     _, traj, belief_history = range_limited_cfg_traj_belief
     n_frames = traj.env_state.guards.rtn.shape[0]
     assert belief_history.guard.mean.shape == (n_frames, 1, 2, 6)

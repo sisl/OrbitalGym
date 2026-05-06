@@ -15,4 +15,6 @@ and "how to extend" sections.
 - [Observations](observations.md) — channel struct, scope rules, the
   four bundled channels, writing a custom one.
 - [Belief](belief.md) — `(N_obs, N_total, d)` shape, KF / EKF math,
-  `BeliefRollout`, custom updaters.
+  `belief_rollout`, custom updaters.
+- [MCTS policy](mcts.md) — JAX-native classic UCT search via `mctx`;
+  opponent-model pattern; CPU vs MPS speedup notes.

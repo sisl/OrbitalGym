@@ -4,20 +4,21 @@ Protocols and reference implementations for the env's swappable building blocks.
 
 ## Policies
 
+A single `Policy` protocol covers reactive obs-only policies and
+state-aware planners alike. State-aware policies (e.g. `MCTSPolicy`)
+require an `agent_view` carrying enough state to step a model — wire
+through `belief_rollout` with a Belief whose `mean` is the flat state,
+or pass the flat state directly when calling the policy manually.
+
 ::: orbital_game.policies.base.Policy
 
 ::: orbital_game.policies.zero.ZeroControl
 
-### Planners (state-aware, outside `lax.scan`)
+::: orbital_game.policies.uniform_random.UniformRandomDiscretePolicy
 
-`Planner` is the sibling protocol of `Policy` for tree-search /
-MCTS-style controllers that need full env state and Python-level
-control flow. Driven by `rollout_with_planner` (see [API → Core][1])
-rather than the `lax.scan`-based `rollout`.
+### Search policies
 
-[1]: core.md
-
-::: orbital_game.policies.planner.Planner
+::: orbital_game.policies.mcts.MCTSPolicy
 
 ### Heuristic-policy gallery
 
@@ -32,8 +33,6 @@ rather than the `lax.scan`-based `rollout`.
 ### Controlled-side wrappers
 
 ::: orbital_game.policies.controlled.heuristic_with_fallback.HeuristicWithFallbackPolicy
-
-::: orbital_game.policies.controlled.belief_conditioned.BeliefConditionedPolicy
 
 ::: orbital_game.policies.controlled.composite_action.CompositeActionPolicy
 
@@ -58,6 +57,8 @@ rather than the `lax.scan`-based `rollout`.
 ::: orbital_game.termination.reference.MaxStepsOrBreach
 
 ## Belief
+
+::: orbital_game.belief.base.Belief
 
 ::: orbital_game.belief.base.BeliefInitializer
 

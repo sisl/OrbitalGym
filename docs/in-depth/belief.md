@@ -54,13 +54,34 @@ the measurement function `obs_fn(state)` at the current mean and
 linearise locally. Reach for EKF when your sensor model is nonlinear
 in the tracked state — e.g. range-only or angle-only measurements.
 
-## `BeliefRollout`
+## `belief_rollout`
 
-The `BeliefRollout` helper time-steps a belief through a recorded
-trajectory: at each step it pulls the channel measurements, calls
-`updater(belief, observations, action, side, key)`, and stacks the
-result. Use it when you've already rolled out the env and want to
-post-hoc reconstruct what each side believed at every step.
+`orbital_game.rollout.belief_rollout` is the belief-aware sibling of
+`rollout`. Instead of passing the flattened observation to each side's
+policy, it threads a per-side `Belief` (initialised by your
+`BeliefInitializer` and updated each tick by your `BeliefUpdater`) and
+hands it to the policy as `agent_view`. Policies that consume belief
+read `agent_view.mean` directly — there is no special belief-aware
+protocol; the same `Policy` works for obs-only and belief-aware
+pipelines, and the rollout decides what `agent_view` is.
+
+```python
+from orbital_game.rollout import belief_rollout
+traj, belief_history = belief_rollout(
+    env,
+    policies,                 # BySide[Policy]
+    init_policy_state_fns,    # BySide[Callable]
+    belief_initializers,      # BySide[BeliefInitializer]
+    belief_updaters,          # BySide[BeliefUpdater]
+    key=jax.random.PRNGKey(0),
+    n_steps=200,
+)
+```
+
+`belief_history` is a `BySide` whose leaves are belief leaves with a
+leading time axis — feeds straight into
+`orbital_game.viz.animation.RolloutScene`'s `belief_history` parameter
+for animated 2σ ellipsoids.
 
 ## Writing a custom updater
 

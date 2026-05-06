@@ -110,7 +110,7 @@ def _solve_batch(
 
 
 @dataclass(frozen=True)
-class MpcBanditPolicy:
+class MPCBanditPolicy:
     """Receding-horizon QP intercept policy, one QP per bandit per step.
 
     Conforms to the Policy protocol (callable as
@@ -137,14 +137,14 @@ class MpcBanditPolicy:
     def __call__(
         self,
         policy_state: Any,
-        obs: jax.Array,
+        agent_view: jax.Array,
         key: jax.Array,
         t: jax.Array,
     ) -> tuple[Any, Any]:
         del key, t
         if self.command_cls is None:
             raise ValueError(
-                "MpcBanditPolicy was called before the env injected `command_cls`. "
+                "MPCBanditPolicy was called before the env injected `command_cls`. "
                 "Use it via OrbitalGameEnv.rollout / SingleAgentView, or pass "
                 "command_cls and n_vehicles explicitly."
             )
@@ -156,7 +156,7 @@ class MpcBanditPolicy:
         # FullObservation flatten: per-observer broadcast of (n_total, d), so
         # the flat layout is (n_b, n_total, d) reshaped to (n_b * n_total * d,).
         # Bandit i's own state is at observer-i, slot-i (own block comes first).
-        obs_3d = obs.reshape((n_b, n_total, d))
+        obs_3d = agent_view.reshape((n_b, n_total, d))
         own_states = obs_3d[jnp.arange(n_b), jnp.arange(n_b), :]  # (n_b, d)
 
         # STM (A) and control (B) matrices; uppercase by convention.

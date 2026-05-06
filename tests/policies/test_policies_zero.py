@@ -27,7 +27,7 @@ def test_zero_control_without_env_injection_raises_clear_error():
     otherwise see. The same fail-fast contract applies to all policies in the
     gallery (SunTrackerBlocker, OrthogonalEvader, JitteredPolicy,
     LeadInterceptPursuer, CompositeActionPolicy, HeuristicWithFallbackPolicy,
-    BeliefConditionedPolicy); ZeroControl exemplifies it.
+    UniformRandomDiscretePolicy, MCTSPolicy); ZeroControl exemplifies it.
     """
     policy = ZeroControl()
     with pytest.raises(ValueError, match="ZeroControl"):

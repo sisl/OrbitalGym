@@ -34,7 +34,7 @@ class CompositeActionPolicy:
     def __call__(
         self,
         policy_state: Any,
-        obs: jax.Array,
+        agent_view: jax.Array,
         key: jax.Array,
         t: jax.Array,
     ) -> tuple[Any, Any]:
@@ -45,7 +45,7 @@ class CompositeActionPolicy:
                 "SingleAgentView, or pass command_cls explicitly."
             )
         k1, k2 = jax.random.split(key)
-        base_cmd, _ = self.base(None, obs, k1, t)
-        offset_cmd, _ = self.offset(None, obs, k2, t)
+        base_cmd, _ = self.base(None, agent_view, k1, t)
+        offset_cmd, _ = self.offset(None, agent_view, k2, t)
         # Start from base_cmd to preserve non-dv fields; only update dv.
         return base_cmd.replace(dv=base_cmd.dv + offset_cmd.dv), policy_state

@@ -42,7 +42,7 @@ class SunTrackerBlocker:
     def __call__(
         self,
         policy_state: Any,
-        obs: jax.Array,
+        agent_view: jax.Array,
         key: jax.Array,
         t: jax.Array,
     ) -> tuple[Any, Any]:
@@ -53,8 +53,8 @@ class SunTrackerBlocker:
                 "Use this policy via OrbitalGameEnv / SingleAgentView, or pass "
                 "command_cls explicitly."
             )
-        own = obs[0:6]
-        opp = obs[6:12]
+        own = agent_view[0:6]
+        opp = agent_view[6:12]
         rel = opp[0:3] - own[0:3]
         sun_unit = self.sun_dir_rtn / (jnp.linalg.norm(self.sun_dir_rtn) + 1e-12)
         # Project rel onto the Sun line; thrust along that projection's sign.

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 
 def test_every_gallery_class_imports_from_documented_path():
-    from orbital_game.policies import ZeroControl
+    import jax.numpy as jnp
+
+    from orbital_game.policies import UniformRandomDiscretePolicy, ZeroControl
     from orbital_game.policies.controlled import (
-        BeliefConditionedPolicy,
         CompositeActionPolicy,
         HeuristicWithFallbackPolicy,
     )
@@ -24,4 +25,4 @@ def test_every_gallery_class_imports_from_documented_path():
     assert JitteredPolicy(base=ZeroControl(), sigma=0.0)
     assert HeuristicWithFallbackPolicy(primary=ZeroControl(), fallback=ZeroControl())
     assert CompositeActionPolicy(base=ZeroControl(), offset=ZeroControl())
-    assert BeliefConditionedPolicy(base=ZeroControl())
+    assert UniformRandomDiscretePolicy(action_grid=jnp.zeros((1, 2)))

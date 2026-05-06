@@ -16,6 +16,7 @@ Submodules:
 from __future__ import annotations
 
 from orbital_game.policies.base import Policy
+from orbital_game.policies.uniform_random import UniformRandomDiscretePolicy
 from orbital_game.policies.zero import ZeroControl
 
-__all__ = ["Policy", "ZeroControl"]
+__all__ = ["Policy", "UniformRandomDiscretePolicy", "ZeroControl"]

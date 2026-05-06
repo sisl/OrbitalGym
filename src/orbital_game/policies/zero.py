@@ -31,11 +31,11 @@ class ZeroControl:
     def __call__(
         self,
         policy_state: Any,
-        obs: jax.Array,
+        agent_view: Any,
         key: jax.Array,
         t: jax.Array,
     ) -> tuple[Any, Any]:
-        del obs, key, t
+        del agent_view, key, t
         if self.command_cls is None:
             raise ValueError(
                 "ZeroControl was called before the env injected `command_cls`. "

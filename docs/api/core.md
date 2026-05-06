@@ -28,11 +28,15 @@ Top-level environment, configuration, and rollout primitives.
 
 ## Rollout
 
+Two drivers: `rollout` is obs-only (`agent_view = obs`); `belief_rollout`
+threads per-side beliefs (`agent_view = belief`). Both compile to a
+single `lax.scan`-based JIT region.
+
 ::: orbital_game.rollout.rollout
 
 ::: orbital_game.rollout.rollout_single_agent
 
-::: orbital_game.rollout.rollout_with_planner
+::: orbital_game.rollout.belief_rollout
 
 ::: orbital_game.rollout.episode_mask
 

@@ -32,7 +32,7 @@ class OrthogonalEvader:
     def __call__(
         self,
         policy_state: Any,
-        obs: jax.Array,
+        agent_view: jax.Array,
         key: jax.Array,
         t: jax.Array,
     ) -> tuple[Any, Any]:
@@ -43,8 +43,8 @@ class OrthogonalEvader:
                 "Use this policy via OrbitalGameEnv / SingleAgentView, or pass "
                 "command_cls explicitly."
             )
-        own = obs[0:6]
-        opp = obs[6:12]
+        own = agent_view[0:6]
+        opp = agent_view[6:12]
         rel_v = opp[3:6] - own[3:6]
         norm = jnp.linalg.norm(rel_v)
         # Pick a reference axis that's not parallel to rel_v.

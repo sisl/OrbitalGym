@@ -58,6 +58,9 @@ planners = [
     "cvxpy>=1.8.2",
     "highspy>=1.14.0",
 ]
+mcts = [
+    "mctx>=0.0.6",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/orbital_game"]

@@ -1,6 +1,6 @@
 """Belief package — belief representations and updaters."""
 
-from orbital_game.belief.base import BeliefInitializer, BeliefUpdater
+from orbital_game.belief.base import Belief, BeliefInitializer, BeliefUpdater
 from orbital_game.belief.ekf import (
     EKFBelief,
     EKFBeliefUpdater,
@@ -13,11 +13,10 @@ from orbital_game.belief.kf import (
     KFFromTruthInitializer,
     KFUniformDefaultInitializer,
 )
-from orbital_game.belief.rollout import BeliefRollout, run_belief_rollout
 
 __all__ = [
+    "Belief",
     "BeliefInitializer",
-    "BeliefRollout",
     "BeliefUpdater",
     "EKFBelief",
     "EKFBeliefUpdater",
@@ -27,5 +26,4 @@ __all__ = [
     "KFBeliefUpdater",
     "KFFromTruthInitializer",
     "KFUniformDefaultInitializer",
-    "run_belief_rollout",
 ]

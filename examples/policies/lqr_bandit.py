@@ -1,6 +1,6 @@
 """JAX-native LQR bandit policy — closed-form receding-horizon intercept.
 
-Vmappable counterpart to MpcBanditPolicy. Solves an unconstrained finite-horizon
+Vmappable counterpart to MPCBanditPolicy. Solves an unconstrained finite-horizon
 LQR problem in pure JAX:
 
     min   || C x_H ||^2  +  lambda * sum_k || u_k ||^2
@@ -17,11 +17,11 @@ constants that we pre-compute at planner construction. Each per-step call is
 just a few matmuls and a 2-vector clip — fully JAX-friendly, vmap'd over
 bandits, and MPS-compatible.
 
-Trade-off vs MpcBanditPolicy:
-  - LqrBanditPolicy: ~100x faster, vmappable, MPS-friendly. Box constraint
+Trade-off vs MPCBanditPolicy:
+  - LQRBanditPolicy: ~100x faster, vmappable, MPS-friendly. Box constraint
     enforced by clip-after-solve, so the controller is *suboptimal* when the
     optimum saturates (it solves a different unconstrained problem).
-  - MpcBanditPolicy: exact box-constrained QP via CVXPY+HiGHS. Not vmappable
+  - MPCBanditPolicy: exact box-constrained QP via CVXPY+HiGHS. Not vmappable
     (CPU-only host callback). Use when the constraint binds frequently.
 
 For our cold-gas scenario where the bandit nearly always saturates Δv, the
@@ -76,11 +76,11 @@ def _build_horizon_matrices(
 
 
 @dataclass(frozen=True)
-class LqrBanditPolicy:
+class LQRBanditPolicy:
     """JAX-native receding-horizon LQR intercept; vmap-friendly.
 
     Conforms to the Policy protocol. The same FullObservation layout as
-    `MpcBanditPolicy` is assumed: each bandit reads its own RT-frame state
+    `MPCBanditPolicy` is assumed: each bandit reads its own RT-frame state
     from the broadcast obs.
 
     Build with `from_env(env, horizon=..., control_cost=..., dv_max=...)` —
@@ -103,8 +103,8 @@ class LqrBanditPolicy:
         horizon: int = 8,
         control_cost: float = 1e-3,
         dv_max: float = 1.0,
-    ) -> LqrBanditPolicy:
-        """Construct an LqrBanditPolicy with the given env's mean motion + dt.
+    ) -> LQRBanditPolicy:
+        """Construct an LQRBanditPolicy with the given env's mean motion + dt.
 
         Pre-computes the constant LQR gain so per-step calls are just two matmuls
         plus a clip.
@@ -130,21 +130,21 @@ class LqrBanditPolicy:
     def __call__(
         self,
         policy_state: Any,
-        obs: jax.Array,
+        agent_view: jax.Array,
         key: jax.Array,
         t: jax.Array,
     ) -> tuple[Any, Any]:
         del key, t
         if self.command_cls is None:
             raise ValueError(
-                "LqrBanditPolicy was called before the env injected `command_cls`. "
+                "LQRBanditPolicy was called before the env injected `command_cls`. "
                 "Use `from_env(...)` or set n_vehicles/command_cls explicitly."
             )
 
         n_b = self.n_vehicles
         d = 4  # HCW_RT state dim
         n_total = n_b + self.n_opp
-        obs_3d = obs.reshape((n_b, n_total, d))
+        obs_3d = agent_view.reshape((n_b, n_total, d))
         own_states = obs_3d[jnp.arange(n_b), jnp.arange(n_b), :]  # (n_b, 4)
 
         # u_0 = -gain @ x_0, vmap'd across bandits.

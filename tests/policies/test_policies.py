@@ -10,7 +10,7 @@ from tests.policies._helpers import make_impulsive_maneuver_command_cls
 def test_zero_control_returns_zero_command():
     cmd_cls = make_impulsive_maneuver_command_cls(3)
     pol = ZeroControl(n_vehicles=3, command_cls=cmd_cls)
-    cmd, next_ps = pol(None, obs=None, key=jax.random.PRNGKey(0), t=jnp.array(0.0))
+    cmd, next_ps = pol(None, agent_view=None, key=jax.random.PRNGKey(0), t=jnp.array(0.0))
     assert cmd.dv.shape == (3, 3)
     assert jnp.allclose(cmd.dv, 0.0)
     assert next_ps is None

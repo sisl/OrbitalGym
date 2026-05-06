@@ -35,7 +35,7 @@ class JitteredPolicy:
     def __call__(
         self,
         policy_state: Any,
-        obs: jax.Array,
+        agent_view: jax.Array,
         key: jax.Array,
         t: jax.Array,
     ) -> tuple[Any, Any]:
@@ -46,6 +46,6 @@ class JitteredPolicy:
                 "command_cls explicitly."
             )
         k1, k2 = jax.random.split(key)
-        base_cmd, next_state = self.base(policy_state, obs, k1, t)
+        base_cmd, next_state = self.base(policy_state, agent_view, k1, t)
         noise = self.sigma * jax.random.normal(k2, shape=base_cmd.dv.shape)
         return base_cmd.replace(dv=base_cmd.dv + noise), next_state

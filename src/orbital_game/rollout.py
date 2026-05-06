@@ -1,20 +1,32 @@
-"""jax.lax.scan-based rollout for the symmetric core.
+"""``jax.lax.scan``-based rollouts for the symmetric core.
 
-Both sides have policies; the scan threads (env_state, BySide[policy_state],
-BySide[obs], terminated_flag). Each step:
+Two drivers:
 
-  1. For each side, policy maps (ps_s, obs_s, key, t) → (action_s, ps_s').
-  2. Bundle actions as Actions; call env.step → StepOutput.
-  3. Apply freeze-on-done logic per side (state/obs/ps held; reward zeroed).
+- :func:`rollout` — both sides have policies; ``agent_view = obs`` (the
+  flattened per-side observation). Used for memoryless / fully reactive
+  policies.
+- :func:`belief_rollout` — both sides additionally have belief initializers
+  and updaters; ``agent_view = belief`` (the per-side
+  :class:`orbital_game.belief.base.Belief`, post-update). Used for
+  state-aware policies (e.g. :class:`orbital_game.policies.mcts.MCTSPolicy`)
+  and for belief-conditioned controllers.
 
-For single-agent runs, callers typically use rollout_single_agent which
-wraps SingleAgentView.
+Both drivers thread (env_state, BySide[policy_state], BySide[agent_view],
+terminated_flag) through ``lax.scan``. Each step:
 
-Key-split note: the top-level split uses split(key, 3) → (k_reset, k_init,
-k_scan) to preserve byte-identical numerical output with the Phase-0 baseline
-fixture. k_init is further split into (k_init_g, k_init_b). Since all current
-observation functions and the dynamics step are deterministic (keys discarded),
-only k_reset affects numerical output via IC sampling.
+  1. For each side, policy maps ``(ps_s, agent_view_s, key, t)`` →
+     ``(action_s, ps_s')``.
+  2. Bundle actions as ``Actions``; call ``env.step`` → ``StepOutput``.
+  3. (belief_rollout only) Update each side's belief from the step's obs.
+  4. Apply freeze-on-done logic per side (state/agent_view/ps held;
+     reward zeroed).
+
+Key-split note: the top-level split uses ``split(key, 3) → (k_reset,
+k_init, k_scan)`` to preserve byte-identical numerical output with the
+Phase-0 baseline fixture. ``k_init`` is further split into per-side init
+keys (and additional belief-init keys for ``belief_rollout``). All current
+observation functions and the dynamics step are deterministic (keys
+discarded), so only ``k_reset`` affects numerical output via IC sampling.
 """
 
 from __future__ import annotations
@@ -33,6 +45,7 @@ from orbital_game.env.types import (
     Trajectory,
 )
 from orbital_game.observations.types import flatten_observations
+from orbital_game.registry import ActionComponentKey
 
 
 def rollout(
@@ -42,14 +55,12 @@ def rollout(
     key: jax.Array,
     n_steps: int,
 ) -> Trajectory:
-    """Symmetric rollout. Both sides driven by their own policies.
+    """Symmetric obs-only rollout. Both sides driven by their own policies.
+
+    ``agent_view`` passed to each policy is the flattened per-side observation.
 
     Returns a Trajectory with sides.guard / sides.bandit each carrying
-    (T, N_side, ...) leading-axis arrays, plus episode_done (T,) latched.
-
-    Key split: k_reset, k_init, k_scan = split(key, 3) to preserve byte
-    identity with the Phase-0 baseline (only k_reset → k_ic → IC sampling
-    matters; all other keys are discarded by deterministic callables).
+    ``(T, N_side, ...)`` leading-axis arrays, plus ``episode_done (T,)`` latched.
     """
     k_reset, k_init, k_scan = jax.random.split(key, 3)
     k_init_g, k_init_b = jax.random.split(k_init, 2)
@@ -59,29 +70,29 @@ def rollout(
     initial_terminated = jnp.asarray(False)
 
     def _step(carry, step_key):
-        es, ps_g, ps_b, obs_g, obs_b, terminated = carry
+        es, ps_g, ps_b, view_g, view_b, terminated = carry
         k_act_g, k_act_b, k_env = jax.random.split(step_key, 3)
-        action_g, next_ps_g = policies.guard(ps_g, obs_g, k_act_g, es.t)
-        action_b, next_ps_b = policies.bandit(ps_b, obs_b, k_act_b, es.t)
+        action_g, next_ps_g = policies.guard(ps_g, view_g, k_act_g, es.t)
+        action_b, next_ps_b = policies.bandit(ps_b, view_b, k_act_b, es.t)
         actions = Actions(sides=BySide(guard=action_g, bandit=action_b))
         step_out = env.step(k_env, es, actions)
         next_es = step_out.state
-        next_obs_g = flatten_observations(step_out.outputs.guard.obs)
-        next_obs_b = flatten_observations(step_out.outputs.bandit.obs)
+        next_view_g = flatten_observations(step_out.outputs.guard.obs)
+        next_view_b = flatten_observations(step_out.outputs.bandit.obs)
         reward_g = step_out.outputs.guard.reward
         reward_b = step_out.outputs.bandit.reward
         done = step_out.episode_done
         next_terminated = terminated | done
 
-        # Freeze-on-done: hold previous state/obs/ps if already terminated entering this step.
+        # Freeze-on-done: hold previous state/view/ps if already terminated entering this step.
         advance_es = jax.tree_util.tree_map(
             lambda cur, nxt: jnp.where(terminated, cur, nxt), es, next_es
         )
-        advance_obs_g = jax.tree_util.tree_map(
-            lambda cur, nxt: jnp.where(terminated, cur, nxt), obs_g, next_obs_g
+        advance_view_g = jax.tree_util.tree_map(
+            lambda cur, nxt: jnp.where(terminated, cur, nxt), view_g, next_view_g
         )
-        advance_obs_b = jax.tree_util.tree_map(
-            lambda cur, nxt: jnp.where(terminated, cur, nxt), obs_b, next_obs_b
+        advance_view_b = jax.tree_util.tree_map(
+            lambda cur, nxt: jnp.where(terminated, cur, nxt), view_b, next_view_b
         )
         advance_ps_g = jax.tree_util.tree_map(
             lambda cur, nxt: jnp.where(terminated, cur, nxt), ps_g, next_ps_g
@@ -100,8 +111,8 @@ def rollout(
             "guard_reward": out_reward_g,
             "bandit_reward": out_reward_b,
             "episode_done": next_terminated,
-            "guard_obs": obs_g,
-            "bandit_obs": obs_b,
+            "guard_obs": view_g,
+            "bandit_obs": view_b,
             "guard_ps": ps_g,
             "bandit_ps": ps_b,
         }
@@ -109,17 +120,17 @@ def rollout(
             advance_es,
             advance_ps_g,
             advance_ps_b,
-            advance_obs_g,
-            advance_obs_b,
+            advance_view_g,
+            advance_view_b,
             next_terminated,
         ), logged
 
     step_keys = jax.random.split(k_scan, n_steps)
-    initial_obs_g = flatten_observations(initial_outputs.guard.obs)
-    initial_obs_b = flatten_observations(initial_outputs.bandit.obs)
+    initial_view_g = flatten_observations(initial_outputs.guard.obs)
+    initial_view_b = flatten_observations(initial_outputs.bandit.obs)
     _, stacked = jax.lax.scan(
         _step,
-        (env_state, ps_g, ps_b, initial_obs_g, initial_obs_b, initial_terminated),
+        (env_state, ps_g, ps_b, initial_view_g, initial_view_b, initial_terminated),
         step_keys,
     )
 
@@ -155,7 +166,7 @@ def rollout_single_agent(
 ) -> Trajectory:
     """Convenience wrapper for SingleAgentView-style runs.
 
-    Pulls the opponent's scripted policy from `view.opponent_policy` and
+    Pulls the opponent's scripted policy from ``view.opponent_policy`` and
     threads only the controlled side's policy state externally.
     """
     if view.controlled_side is Side.GUARD:
@@ -167,108 +178,172 @@ def rollout_single_agent(
     return rollout(view.env, policies, init_fns, key, n_steps)
 
 
-def rollout_with_planner(
+def _require_impulsive_maneuver(config: Any, *, where: str) -> None:
+    """Fail fast if ``dv`` is not on the assembled Command pytree.
+
+    ``belief_rollout`` reads ``actions.sides.X.dv`` to predict belief means
+    under control, so both sides' action components must include
+    ``IMPULSIVE_MANEUVER``. Without this check, a comms-only side would
+    raise an opaque ``AttributeError`` deep inside the rollout's lax.scan.
+    """
+    g = tuple(config.guard_action_components)
+    b = tuple(config.bandit_action_components)
+    has_g = ActionComponentKey.IMPULSIVE_MANEUVER in g
+    has_b = ActionComponentKey.IMPULSIVE_MANEUVER in b
+    if has_g and has_b:
+        return
+    raise ValueError(
+        f"{where} requires IMPULSIVE_MANEUVER in guard_action_components and "
+        f"bandit_action_components (it reads action.sides.X.dv to predict "
+        f"belief). Got: guard={g!r}, bandit={b!r}"
+    )
+
+
+def belief_rollout(
     env,
-    planner_side: Side,
-    planner,
-    opponent_policy: Callable,
+    policies: BySide,  # BySide[Policy]
+    init_policy_state_fns: BySide,  # BySide[Callable(config, env_state, key) -> ps]
+    belief_initializers: BySide,  # BySide[BeliefInitializer]
+    belief_updaters: BySide,  # BySide[BeliefUpdater]
     key: jax.Array,
     n_steps: int,
-    init_planner_state: Any = None,
-):
-    """Manual Python rollout for one tree-search planner + one scripted opponent.
+) -> tuple[Trajectory, BySide]:
+    """Belief-aware rollout: agent_view = post-update Belief.
 
-    Tree-search planners (MCTS, POMCPOW) have Python-level state and variable
-    control flow that don't fit inside ``jax.lax.scan`` (so they can't be wired
-    through the standard ``rollout``). This helper runs a Python loop over a
-    jit-compiled ``env.step``, calling the planner's ``plan(state, key)`` each
-    tick to get the planner-side action and threading the opponent's
-    obs-based ``Policy`` for the other side.
+    Each tick:
 
-    Returns a list-of-states + reward/action/done arrays — *not* a Trajectory
-    pytree, because shapes vary with episode length under early termination.
-    Callers that need a fixed-shape Trajectory can pad after the fact.
+      1. For each side, ``policies.X(ps_X, belief_X, key, t)`` produces the
+         action. Note that the policy receives the *belief* — not the
+         flattened obs.
+      2. ``env.step`` advances the world.
+      3. Each side's ``belief_updater`` folds the new per-side observation
+         channels into the prior belief.
+      4. Freeze-on-done as in :func:`rollout`.
 
-    Args:
-        env: OrbitalGameEnv.
-        planner_side: which side (Side.GUARD or Side.BANDIT) is driven by the planner.
-        planner: any Planner-protocol object with ``plan(state, key) -> (cmd, planner_state)``.
-        opponent_policy: a Policy-protocol callable for the other side, with
-            ``command_cls`` and ``n_vehicles`` already injected.
-        key: master PRNGKey.
-        n_steps: max steps before forced termination.
-        init_planner_state: initial planner-state passed to the first plan call.
-
-    Returns:
-        dict with keys ``states`` (list[EnvState]), ``rewards_planner``,
-        ``rewards_opponent``, ``planner_actions``, ``opponent_actions``,
-        ``episode_done`` (bool list), and ``terminated_step`` (int).
+    Returns ``(Trajectory, BySide[belief_history])``. ``belief_history`` is a
+    BySide whose leaves are belief leaves with a leading time axis — what
+    feeds :class:`orbital_game.viz.animation.RolloutScene`'s
+    ``belief_history`` parameter for animated 2σ ellipsoids.
     """
-    from orbital_game.observations.types import flatten_observations
+    _require_impulsive_maneuver(env.config, where="belief_rollout")
 
-    state, outputs = env.reset(jax.random.fold_in(key, 0))
-    states = [state]
-    rewards_planner: list[float] = []
-    rewards_opp: list[float] = []
-    planner_actions: list[Any] = []
-    opp_actions: list[Any] = []
-    dones: list[bool] = []
-    planner_state = init_planner_state
+    k_reset, k_init, k_scan = jax.random.split(key, 3)
+    k_init_g, k_init_b = jax.random.split(k_init, 2)
+    k_b_init_g, k_b_init_b = jax.random.split(k_init_g, 2)
 
-    for step in range(n_steps):
-        sub_key = jax.random.fold_in(key, step + 1)
-        k_plan, k_opp, k_env = jax.random.split(sub_key, 3)
+    env_state, _initial_outputs = env.reset(k_reset)
+    ps_g = init_policy_state_fns.guard(env.config, env_state, k_init_g)
+    ps_b = init_policy_state_fns.bandit(env.config, env_state, k_init_b)
+    belief_g = belief_initializers.guard(env_state, Side.GUARD, k_b_init_g)
+    belief_b = belief_initializers.bandit(env_state, Side.BANDIT, k_b_init_b)
+    initial_terminated = jnp.asarray(False)
 
-        planner_cmd, planner_state = planner.plan(state, k_plan)
+    def _step(carry, step_key):
+        es, ps_g, ps_b, belief_g, belief_b, terminated = carry
+        k_act_g, k_act_b, k_env, k_g_obs, k_b_obs, k_g_upd, k_b_upd = jax.random.split(step_key, 7)
 
-        # Opponent sees its own observation derived from current state.
-        opp_side = planner_side.opposite()
-        opp_obs_fn = (
-            env.guard_observation_fn if opp_side is Side.GUARD else env.bandit_observation_fn
+        # Policies receive the BELIEF as agent_view. This is the core
+        # contract: belief is the agent's perception output, not the raw obs.
+        action_g, next_ps_g = policies.guard(ps_g, belief_g, k_act_g, es.t)
+        action_b, next_ps_b = policies.bandit(ps_b, belief_b, k_act_b, es.t)
+        actions = Actions(sides=BySide(guard=action_g, bandit=action_b))
+        step_out = env.step(k_env, es, actions)
+        next_es = step_out.state
+
+        guard_obs_channels = env.guard_observation_fn(
+            next_es, actions, Side.GUARD, env.config, k_g_obs, next_es.t
         )
-        identity = Actions(
-            sides=BySide(
-                guard=env.guard_command_cls.zeros(env.config.n_guards),
-                bandit=env.bandit_command_cls.zeros(env.config.n_bandits),
-            )
+        bandit_obs_channels = env.bandit_observation_fn(
+            next_es, actions, Side.BANDIT, env.config, k_b_obs, next_es.t
         )
-        opp_obs_raw = opp_obs_fn(state, identity, opp_side, env.config, k_opp, state.t)
-        opp_obs = flatten_observations(opp_obs_raw)
-        opp_cmd, _ = opponent_policy(None, opp_obs, k_opp, state.t)
+        next_belief_g = belief_updaters.guard(
+            belief_g, guard_obs_channels, action_g.dv, Side.GUARD, k_g_upd
+        )
+        next_belief_b = belief_updaters.bandit(
+            belief_b, bandit_obs_channels, action_b.dv, Side.BANDIT, k_b_upd
+        )
 
-        if planner_side is Side.GUARD:
-            actions = Actions(sides=BySide(guard=planner_cmd, bandit=opp_cmd))
-        else:
-            actions = Actions(sides=BySide(guard=opp_cmd, bandit=planner_cmd))
+        # The trajectory still records the flat obs for downstream tooling
+        # (e.g. viz). It is computed from the step output, not passed to
+        # the policy.
+        view_g = flatten_observations(step_out.outputs.guard.obs)
+        view_b = flatten_observations(step_out.outputs.bandit.obs)
+        reward_g = step_out.outputs.guard.reward
+        reward_b = step_out.outputs.bandit.reward
+        next_terminated = terminated | step_out.episode_done
 
-        step_out = env.step(k_env, state, actions)
-        state = step_out.state
-        states.append(state)
-        rewards_planner.append(float(step_out.outputs.get(planner_side).reward))
-        rewards_opp.append(float(step_out.outputs.get(opp_side).reward))
-        planner_actions.append(planner_cmd)
-        opp_actions.append(opp_cmd)
-        dones.append(bool(step_out.episode_done))
-        if step_out.episode_done:
-            break
+        def freeze(cur, nxt):
+            return jax.tree_util.tree_map(lambda c, n: jnp.where(terminated, c, n), cur, nxt)
 
-    return {
-        "states": states,
-        "rewards_planner": jnp.asarray(rewards_planner),
-        "rewards_opponent": jnp.asarray(rewards_opp),
-        "planner_actions": planner_actions,
-        "opponent_actions": opp_actions,
-        "episode_done": dones,
-        "terminated_step": len(rewards_planner),
-        "final_planner_state": planner_state,
-    }
+        advance_es = freeze(es, next_es)
+        advance_ps_g = freeze(ps_g, next_ps_g)
+        advance_ps_b = freeze(ps_b, next_ps_b)
+        advance_belief_g = freeze(belief_g, next_belief_g)
+        advance_belief_b = freeze(belief_b, next_belief_b)
+
+        out_reward_g = jnp.where(terminated, jnp.zeros_like(reward_g), reward_g)
+        out_reward_b = jnp.where(terminated, jnp.zeros_like(reward_b), reward_b)
+
+        logged = {
+            "env_state": es,
+            "guard_action": action_g,
+            "bandit_action": action_b,
+            "guard_reward": out_reward_g,
+            "bandit_reward": out_reward_b,
+            "episode_done": next_terminated,
+            "guard_obs": view_g,
+            "bandit_obs": view_b,
+            "guard_ps": ps_g,
+            "bandit_ps": ps_b,
+            "guard_belief": belief_g,
+            "bandit_belief": belief_b,
+        }
+        return (
+            advance_es,
+            advance_ps_g,
+            advance_ps_b,
+            advance_belief_g,
+            advance_belief_b,
+            next_terminated,
+        ), logged
+
+    step_keys = jax.random.split(k_scan, n_steps)
+    _, stacked = jax.lax.scan(
+        _step,
+        (env_state, ps_g, ps_b, belief_g, belief_b, initial_terminated),
+        step_keys,
+    )
+
+    traj = Trajectory(
+        env_state=stacked["env_state"],
+        sides=BySide(
+            guard=SideTrajectory(
+                obs=stacked["guard_obs"],
+                action=stacked["guard_action"],
+                reward=stacked["guard_reward"],
+                done=stacked["episode_done"],
+                policy_state=stacked["guard_ps"],
+            ),
+            bandit=SideTrajectory(
+                obs=stacked["bandit_obs"],
+                action=stacked["bandit_action"],
+                reward=stacked["bandit_reward"],
+                done=stacked["episode_done"],
+                policy_state=stacked["bandit_ps"],
+            ),
+        ),
+        episode_done=stacked["episode_done"],
+        controlled_side=getattr(env.config, "controlled_side", Side.GUARD),
+    )
+    belief_history = BySide(guard=stacked["guard_belief"], bandit=stacked["bandit_belief"])
+    return traj, belief_history
 
 
 def episode_mask(traj: Trajectory) -> jax.Array:
     """Boolean mask True up to and including the terminating step.
 
-    Same semantics as Phase 0's episode_mask but reads from the new
-    Trajectory shape's `episode_done` field.
+    Same semantics as Phase 0's ``episode_mask`` but reads from the new
+    Trajectory shape's ``episode_done`` field.
     """
     done = traj.episode_done
     shifted = jnp.concatenate(

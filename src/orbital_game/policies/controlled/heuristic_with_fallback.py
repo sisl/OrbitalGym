@@ -46,7 +46,7 @@ class HeuristicWithFallbackPolicy:
     def __call__(
         self,
         policy_state: Any,
-        obs: jax.Array,
+        agent_view: jax.Array,
         key: jax.Array,
         t: jax.Array,
     ) -> tuple[Any, Any]:
@@ -58,8 +58,8 @@ class HeuristicWithFallbackPolicy:
             )
         confidence = jnp.asarray(policy_state)
         k1, k2 = jax.random.split(key)
-        primary_cmd, _ = self.primary(None, obs, k1, t)
-        fallback_cmd, _ = self.fallback(None, obs, k2, t)
+        primary_cmd, _ = self.primary(None, agent_view, k1, t)
+        fallback_cmd, _ = self.fallback(None, agent_view, k2, t)
         chosen_dv = jnp.where(confidence >= self.threshold, primary_cmd.dv, fallback_cmd.dv)
         # Take non-dv fields from the primary so e.g. Communicate.active is preserved.
         return primary_cmd.replace(dv=chosen_dv), policy_state
