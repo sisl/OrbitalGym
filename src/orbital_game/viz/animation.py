@@ -690,8 +690,18 @@ def save_animation(
     Returns the output path on success.
     """
     import os
+    import shutil
 
     import matplotlib.animation as mpl_animation
+
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError(
+            "save_animation requires the 'ffmpeg' binary on PATH, but it was "
+            "not found. Install it (e.g. `brew install ffmpeg` on macOS, "
+            "`apt-get install ffmpeg` on Debian/Ubuntu) and retry. "
+            "Without this check, matplotlib silently substitutes PillowWriter "
+            "and fails later with a confusing 'unknown file extension: .mp4'."
+        )
 
     out_dir = os.path.dirname(os.path.abspath(output_path))
     if out_dir:

@@ -34,6 +34,9 @@ jobs:
       - name: Test
         run: uv run pytest -n auto -v
 
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Execute example notebooks
         run: |
           for nb in examples/*.ipynb; do
