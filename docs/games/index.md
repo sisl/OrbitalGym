@@ -1,6 +1,6 @@
 # Game guides
 
-Four games ship with `orbital-game`. Each has a typed `Game` subtype attached to `cfg.game`, a matching reward and termination, and a `make_<game>(...)` builder that wires everything up.
+Five games ship with `orbital-game`. Each has a typed `Game` subtype attached to `cfg.game`, a matching reward and termination, and a `make_<game>(...)` builder that wires everything up.
 
 | Game | Page | Summary |
 |---|---|---|
@@ -8,6 +8,7 @@ Four games ship with `orbital-game`. Each has a typed `Game` subtype attached to
 | Pursuit-Evasion | [→](pursuit-evasion.md) | 1v1 — bandit pursues, guard evades |
 | Sun-Blocking | [→](sun-blocking.md) | Bandit occludes the guard's view of the Sun |
 | Observation-Blocking | [→](observation-blocking.md) | Bandit blocks the guard's view of an Earth target, gated on visibility |
+| Get-Off-My-Lawn | [→](get-off-my-lawn.md) | Bandit loiters in an HCW elliptical keep band near the lady; guard intercepts or repels beyond a keep-out shell |
 
 Every builder defaults to a 1-guard / 1-bandit RTN scenario in a circular LEO orbit (~7000 km radius), with a 10-second timestep and a game-appropriate IC sampler. Override any field by keyword:
 

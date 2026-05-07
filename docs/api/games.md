@@ -42,6 +42,16 @@ Typed `Game` subtypes (knob bundles) and per-game `make_<game>(...)` builders.
 
 ::: orbital_game.games.observation_blocking.make_observation_blocking
 
+## Get-Off-My-Lawn
+
+::: orbital_game.games.get_off_my_lawn.GetOffMyLawn
+
+::: orbital_game.games.get_off_my_lawn.GetOffMyLawnReward
+
+::: orbital_game.games.get_off_my_lawn.GetOffMyLawnTermination
+
+::: orbital_game.games.get_off_my_lawn.make_get_off_my_lawn
+
 ## Dispatch
 
 ::: orbital_game.games.make_game

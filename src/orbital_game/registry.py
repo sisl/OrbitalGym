@@ -103,12 +103,14 @@ class RewardFnKey(StrEnum):
     OBSERVATION_BLOCKING = "observation_blocking_reward"  # added Phase 2 Task 5
     LBG_WITH_COMMS = "lbg_with_comms_reward"
     LBG_ZERO_SUM = "lbg_zero_sum_reward"
+    GET_OFF_MY_LAWN = "get_off_my_lawn_reward"
 
 
 class TerminationFnKey(StrEnum):
     MAX_STEPS_ONLY = "max_steps_only"
     LBG_EVENTS = "lbg_events_termination"
     PURSUIT_EVASION = "pursuit_evasion_termination"
+    GET_OFF_MY_LAWN = "get_off_my_lawn_termination"
 
 
 class SideSamplerKey(StrEnum):
@@ -139,11 +141,14 @@ class BeliefInitializerKey(StrEnum):
     KF_UNIFORM_DEFAULT = "kf_uniform_default"
     EKF_FROM_TRUTH = "ekf_from_truth"
     EKF_UNIFORM_DEFAULT = "ekf_uniform_default"
+    PF_FROM_TRUTH = "pf_from_truth"
+    PF_RING = "pf_ring"
 
 
 class BeliefUpdaterKey(StrEnum):
     KF = "kf"
     EKF = "ekf"
+    PF = "pf"
 
 
 class GameKey(StrEnum):
@@ -154,6 +159,7 @@ class GameKey(StrEnum):
     PURSUIT_EVASION = "pursuit_evasion"
     SUN_BLOCKING = "sun_blocking"
     OBSERVATION_BLOCKING = "observation_blocking"
+    GET_OFF_MY_LAWN = "get_off_my_lawn"
 
 
 _REGISTRY: dict[Enum, Callable] = {}

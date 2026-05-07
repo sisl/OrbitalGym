@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from orbital_game.env.types import Trajectory
+from orbital_game.games.get_off_my_lawn import GetOffMyLawn
 from orbital_game.games.lady_bandit_guard import LadyBanditGuard
 from orbital_game.games.pursuit_evasion import PursuitEvasion
 from orbital_game.viz.per_rollout import plot_rollout_rewards
@@ -148,6 +149,89 @@ def plot_lady_bandit_guard_diagnostic(
         linewidth=1.0,
         label="expected: -Σ|guard − ref|",
     )
+    ax_bot.legend(loc="best", fontsize=8)
+
+    fig.tight_layout()
+    return fig
+
+
+def plot_get_off_my_lawn_diagnostic(
+    traj: Trajectory,
+    cfg: Any,
+    fig: Any | None = None,
+) -> Any:
+    """Three-panel diagnostic: HCW-natural standoff, guard-bandit distance, rewards.
+
+    Top: per-bandit HCW-natural standoff
+    ``R = sqrt(x_r² + (x_t/2)² + x_n²)`` with the
+    ``[r_min_keep_m, r_max_keep_m]`` band shaded green and the
+    ``keep_out_radius_m`` shell drawn as a dashed line. Inside the shaded
+    band the bandit earns the loiter bonus; beyond the dashed line the
+    bandit is "pushed out". For a pure radial-ellipse orbit (no along-track
+    offset, no cross-track) ``R`` is constant on the orbit; non-zero offsets
+    introduce periodic oscillation in ``R`` over one orbit.
+    Middle: minimum guard-bandit distance (Euclidean) with the
+    ``catch_radius_m`` line.
+    Bottom: bandit and guard reward over time.
+    """
+    from orbital_game.games.get_off_my_lawn import _hcw_lady_distance
+
+    g_xyz = _positions(traj.env_state.guards)  # (T, n_g, 3)
+    b_xyz = _positions(traj.env_state.bandits)  # (T, n_b, 3)
+    # Per-bandit HCW-natural standoff.
+    r_lady = np.asarray(_hcw_lady_distance(jnp.asarray(b_xyz)))  # (T, n_b)
+    # Pairwise guard-bandit distance, min over (g, b) per step.
+    diffs = g_xyz[:, :, None, :] - b_xyz[:, None, :, :]
+    d_gb_min = np.linalg.norm(diffs, axis=-1).reshape(diffs.shape[0], -1).min(axis=-1)  # (T,)
+
+    if fig is None:
+        fig = plt.figure(figsize=(10, 9))
+    ax_top = fig.add_subplot(3, 1, 1)
+    ax_mid = fig.add_subplot(3, 1, 2, sharex=ax_top)
+    ax_bot = fig.add_subplot(3, 1, 3, sharex=ax_top)
+
+    n_b = r_lady.shape[1]
+    cmap = mpl.colormaps["Reds"]
+    for i in range(n_b):
+        c = cmap(0.45 + 0.5 * i / max(n_b - 1, 1))
+        ax_top.plot(r_lady[:, i], color=c, label=f"bandit {i}")
+    # Shade the loiter band.
+    ax_top.axhspan(
+        cfg.game.r_min_keep_m,
+        cfg.game.r_max_keep_m,
+        alpha=0.15,
+        color="tab:green",
+        label=f"loiter band [{cfg.game.r_min_keep_m:g}, {cfg.game.r_max_keep_m:g}] m",
+    )
+    ax_top.axhline(
+        cfg.game.keep_out_radius_m,
+        color="red",
+        linestyle="--",
+        label=f"keep_out_radius_m ({cfg.game.keep_out_radius_m:g} m)",
+    )
+    ax_top.set_ylabel("R_lady (HCW metric, m)")
+    ax_top.grid(True)
+    ax_top.legend(loc="best", fontsize=8)
+    ax_top.set_title("Get-Off-My-Lawn reward diagnostic")
+
+    ax_mid.plot(d_gb_min, color="tab:purple", linewidth=1.5, label="min |guard − bandit|")
+    ax_mid.axhline(
+        cfg.game.catch_radius_m,
+        color="red",
+        linestyle="--",
+        label=f"catch_radius_m ({cfg.game.catch_radius_m:g} m)",
+    )
+    ax_mid.set_ylabel("min guard-bandit (m)")
+    ax_mid.grid(True)
+    ax_mid.legend(loc="best", fontsize=8)
+
+    g_r = np.asarray(traj.sides.guard.reward)
+    b_r = np.asarray(traj.sides.bandit.reward)
+    ax_bot.plot(b_r, color="tab:red", linewidth=2.0, label="bandit reward")
+    ax_bot.plot(g_r, color="tab:blue", linewidth=2.0, label="guard reward")
+    ax_bot.set_xlabel("step")
+    ax_bot.set_ylabel("reward")
+    ax_bot.grid(True)
     ax_bot.legend(loc="best", fontsize=8)
 
     fig.tight_layout()
@@ -388,6 +472,8 @@ def plot_reward_diagnostic(
         return plot_sun_blocking_diagnostic(traj, cfg, fig=fig)
     if isinstance(game, ObservationBlocking):
         return plot_observation_blocking_diagnostic(traj, cfg, fig=fig)
+    if isinstance(game, GetOffMyLawn):
+        return plot_get_off_my_lawn_diagnostic(traj, cfg, fig=fig)
 
     if fig is None:
         fig = plt.figure(figsize=(8, 4))
@@ -611,6 +697,53 @@ def plot_pursuit_evasion_position_sweep(
     )
 
 
+def plot_get_off_my_lawn_position_sweep(
+    cfg: Any,
+    *,
+    grid_extent_m: float = 2000.0,
+    grid_steps: int = 64,
+    axis_pair: str = "rt",
+    fig: Any | None = None,
+) -> Any:
+    """Sweep bandit position over a 2D RTN-pair plane (Get-Off-My-Lawn).
+
+    Bandit *shaping* reward — the loiter bonus plus the dense band-distance
+    term — evaluated as a function of bandit position. The catch terminal
+    is intentionally excluded: it's a binary terminal event whose −r_catch
+    spike at the guard's position would dominate the colormap and crush
+    the loiter band into invisibility. The HCW-natural standoff
+    ``R = sqrt(x_r² + (x_t/2)² + x_n²)`` makes the band an in-plane
+    elliptical annulus aligned with the natural bounded-relative-orbit
+    geometry (along-track : radial = 2:1).
+    """
+    from orbital_game.games.get_off_my_lawn import _hcw_lady_distance
+
+    game = cfg.game
+    xs, ys, rtn = _sweep_grid(grid_extent_m, grid_steps, axis_pair)
+    r_lady = _hcw_lady_distance(rtn)
+    in_band = jnp.logical_and(r_lady >= game.r_min_keep_m, r_lady <= game.r_max_keep_m).astype(
+        jnp.float32
+    )
+    below = jnp.maximum(game.r_min_keep_m - r_lady, 0.0)
+    above = jnp.maximum(r_lady - game.r_max_keep_m, 0.0)
+    d_band = below + above
+    reward_fn = cfg.reward_fn
+    rewards = reward_fn.r_loiter * in_band - reward_fn.alpha * d_band
+    vmin = float(rewards.min())
+    vmax = float(rewards.max())
+    return _render_sweep_surface(
+        xs,
+        ys,
+        rewards,
+        axis_pair,
+        title=(f"Get-Off-My-Lawn bandit shaping reward ({axis_pair.upper()} plane, HCW metric)"),
+        vmin=vmin,
+        vmax=vmax,
+        cmap="RdBu_r",
+        fig=fig,
+    )
+
+
 def plot_lady_bandit_guard_position_sweep(
     cfg: Any,
     *,
@@ -664,6 +797,8 @@ def plot_reward_position_sweep(
         return plot_sun_blocking_position_sweep(cfg, t_seconds=t_seconds, **common)
     if isinstance(game, ObservationBlocking):
         return plot_observation_blocking_position_sweep(cfg, t_seconds=t_seconds, **common)
+    if isinstance(game, GetOffMyLawn):
+        return plot_get_off_my_lawn_position_sweep(cfg, **common)
     raise TypeError(f"No position-sweep registered for game type {type(game).__name__}")
 
 

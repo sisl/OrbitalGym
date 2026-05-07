@@ -35,6 +35,8 @@ from orbital_game.viz.per_rollout import (
     plot_rollout_rewards,
 )
 from orbital_game.viz.reward_diagnostics import (
+    plot_get_off_my_lawn_diagnostic,
+    plot_get_off_my_lawn_position_sweep,
     plot_lady_bandit_guard_diagnostic,
     plot_lady_bandit_guard_position_sweep,
     plot_observation_blocking_animated_diagnostic,
@@ -61,6 +63,8 @@ __all__ = [
     "draw_sphere",
     "draw_thrust_arrow",
     "interactive_viewer",
+    "plot_get_off_my_lawn_diagnostic",
+    "plot_get_off_my_lawn_position_sweep",
     "plot_lady_bandit_guard_diagnostic",
     "plot_lady_bandit_guard_position_sweep",
     "plot_mass_curve",

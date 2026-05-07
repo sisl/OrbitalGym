@@ -280,3 +280,132 @@ def test_belief_sigma_is_one_by_default(basic_cfg_and_traj):
     _, traj = basic_cfg_and_traj
     scene = RolloutScene(traj=traj)
     assert scene.belief_sigma == 1.0
+
+
+# ---- particle-filter belief rendering ---------------------------------------
+
+
+@pytest.fixture
+def range_limited_pf_cfg_traj_belief(key):
+    """RT-plane LBG rollout with a particle-filter belief on the guard side.
+
+    Mirrors the EKF fixture above but uses ``ParticleFilterRingInitializer``
+    + ``ParticleFilterBeliefUpdater`` so the belief carries ``particles``
+    and ``log_weights`` rather than ``mean`` / ``cov``.
+    """
+    from orbital_game.belief.pf import (
+        ParticleFilterBeliefUpdater,
+        ParticleFilterRingInitializer,
+    )
+    from orbital_game.dynamics.hcw import hcw_rt_step
+    from orbital_game.registry import DynamicsKey, StateComponentKey
+
+    rt_kwargs = {
+        "guard_components": (StateComponentKey.RT,),
+        "bandit_components": (StateComponentKey.RT,),
+        "truth_dynamics": DynamicsKey.HCW_RT,
+        "policy_dynamics": DynamicsKey.HCW_RT,
+    }
+    proto = make_lady_bandit_guard(
+        n_guards=1, n_bandits=1, dt=10.0, max_horizon_s=200.0, **rt_kwargs
+    )
+    layout = OrbitalGameEnv(proto).layout
+    obs_g = RangeLimitedObservation(layout=layout, sensor_range_m=2000.0, sigma_range=1.0)
+    obs_b = RangeLimitedObservation(layout=layout, sensor_range_m=2000.0, sigma_range=1.0)
+    cfg = make_lady_bandit_guard(
+        n_guards=1,
+        n_bandits=1,
+        dt=10.0,
+        max_horizon_s=200.0,
+        guard_observation_fn=obs_g,
+        bandit_observation_fn=obs_b,
+        **rt_kwargs,
+    )
+    env = OrbitalGameEnv(cfg)
+
+    n_motion = float(ref_mean_motion(cfg.reference_orbit))
+    hcw_params = SimpleNamespace(mean_motion=n_motion)
+
+    def per_vehicle_dyn(x, u, dt):
+        return hcw_rt_step(x[None, :], u[None, :], hcw_params, dt)[0]
+
+    pf_updater = ParticleFilterBeliefUpdater(
+        dynamics_fn=per_vehicle_dyn,
+        process_noise=jnp.eye(4) * 0.01,
+        dt=10.0,
+        n_eff_threshold=0.5,
+    )
+    pf_init = ParticleFilterRingInitializer(
+        layout=layout,
+        ring_radius_m=1000.0,
+        mean_motion_rad_s=n_motion,
+        n_particles=32,
+    )
+
+    policies = BySide(
+        guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
+        bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
+    )
+    init_ps = BySide(guard=_zero_init, bandit=_zero_init)
+    bel_inits = BySide(guard=pf_init, bandit=pf_init)
+    bel_updates = BySide(guard=pf_updater, bandit=pf_updater)
+    traj, belief_history = belief_rollout(
+        env, policies, init_ps, bel_inits, bel_updates, key, n_steps=12
+    )
+    return cfg, traj, belief_history
+
+
+def test_render_frame_2d_with_pf_belief(range_limited_pf_cfg_traj_belief):
+    """Particle-filter belief should render as a scatter cloud in 2D mode."""
+    cfg, traj, belief_history = range_limited_pf_cfg_traj_belief
+    scene = RolloutScene(
+        traj=traj,
+        cfg=cfg,
+        mode="2d",
+        dt=10.0,
+        show_belief=True,
+        belief_history=belief_history,
+        belief_particle_size=6.0,
+    )
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    from orbital_game.viz.animation import render_frame
+
+    for f in (0, scene.n_frames // 2, scene.n_frames - 1):
+        render_frame(scene, ax, f)
+    # Particle scatter is added each frame at zorder=3; weighted-mean overlay
+    # at zorder=4. Confirm at least one PathCollection landed on the axes.
+    assert any(coll.__class__.__name__ == "PathCollection" for coll in ax.collections), (
+        "PF rendering should add scatter collections to the axes"
+    )
+    plt.close(fig)
+
+
+def test_pf_subsampling_caps_drawn_count(range_limited_pf_cfg_traj_belief):
+    """Setting ``belief_particle_max_drawn`` below K should still render."""
+    cfg, traj, belief_history = range_limited_pf_cfg_traj_belief
+    scene = RolloutScene(
+        traj=traj,
+        cfg=cfg,
+        mode="2d",
+        show_belief=True,
+        belief_history=belief_history,
+        belief_particle_max_drawn=8,  # K=32 in the fixture, cap to 8
+    )
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    from orbital_game.viz.animation import render_frame
+
+    render_frame(scene, ax, 0)
+    plt.close(fig)
+
+
+def test_pf_belief_dispatcher_picks_pf_path():
+    """Duck-typing: a belief with `particles`/`log_weights` is detected as PF."""
+    from orbital_game.viz.animation import _is_particle_filter_belief
+
+    pf_like = SimpleNamespace(particles=jnp.zeros((1, 2, 4, 4)), log_weights=jnp.zeros((1, 2, 4)))
+    gauss_like = SimpleNamespace(mean=jnp.zeros((1, 2, 4)), cov=jnp.zeros((1, 2, 4, 4)))
+    assert _is_particle_filter_belief(pf_like)
+    assert not _is_particle_filter_belief(gauss_like)
+    assert not _is_particle_filter_belief(None)

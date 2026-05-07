@@ -40,6 +40,7 @@ nav = [
     { "Pursuit-Evasion" = "games/pursuit-evasion.md" },
     { "Sun-Blocking" = "games/sun-blocking.md" },
     { "Observation-Blocking" = "games/observation-blocking.md" },
+    { "Get-Off-My-Lawn" = "games/get-off-my-lawn.md" },
   ] },
   { "How-to" = [
     { "Overview" = "how-to/index.md" },

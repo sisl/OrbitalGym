@@ -193,6 +193,21 @@ class RolloutScene:
     belief_history: BySide | None = None
     belief_sigma: float = 1.0
     belief_alpha: float = 0.15
+    # Particle-filter-belief layer params. The renderer detects a particle-filter
+    # belief by duck-typing (presence of ``particles`` + ``log_weights``) and
+    # dispatches to a scatter-cloud overlay instead of the Gaussian ellipse.
+    # ``belief_particle_size``: scatter marker size (matplotlib points).
+    # ``belief_particle_alpha_{min,max}``: alpha mapped from normalized weight;
+    #   the highest-weight particle gets ``alpha_max``, the lowest ``alpha_min``,
+    #   intermediate weights interpolate linearly. Keeping a non-zero floor
+    #   makes the cloud visible even after heavy collapse.
+    # ``belief_particle_max_drawn``: per-pair cap. If ``K`` exceeds this, a
+    #   weight-proportional resample picks ``belief_particle_max_drawn`` of them
+    #   for display only — useful for large-K runs that would saturate the canvas.
+    belief_particle_size: float = 8.0
+    belief_particle_alpha_min: float = 0.05
+    belief_particle_alpha_max: float = 0.7
+    belief_particle_max_drawn: int | None = None
     trail_alpha: float = 0.6
 
     # ---- view params ----
@@ -374,6 +389,100 @@ def _belief_position_block(belief: Any, frame: int) -> tuple[np.ndarray, np.ndar
     p = _RTN_TO_PLOT
     opp_cov = np.einsum("ij,...jk,lk->...il", p, opp_cov_rtn, p)
     return opp_mean, opp_cov
+
+
+def _is_particle_filter_belief(belief: Any) -> bool:
+    """Duck-type check: a belief carrying ``particles`` and ``log_weights`` is a PF."""
+    return belief is not None and hasattr(belief, "particles") and hasattr(belief, "log_weights")
+
+
+def _pf_opposing_block_2d(belief: Any, frame: int) -> tuple[np.ndarray, np.ndarray] | None:
+    """Pull (particles, log_weights) for *opposing* targets at ``frame``, in 2D plot order.
+
+    Returns ``(particles_xy, log_weights)`` with shapes
+    ``(N_obs, N_opp, K, 2)`` and ``(N_obs, N_opp, K)`` — already permuted from
+    state order ``[R, T]`` to plot order ``[T, R]``. ``None`` for own-side-only beliefs.
+    """
+    if belief is None:
+        return None
+    particles = np.asarray(belief.particles[frame])  # (N_obs, N_total, K, d)
+    log_w = np.asarray(belief.log_weights[frame])  # (N_obs, N_total, K)
+    n_obs, n_total, _k, _d = particles.shape
+    n_opp = n_total - n_obs
+    if n_opp <= 0:
+        return None
+    # Position dims for both RT (d=4) and RTN (d=6) live in [0:2] = [R, T].
+    opp_rt = particles[:, n_obs:, :, :2]
+    opp_xy = opp_rt[..., [1, 0]]  # [R, T] → [T, R]
+    return opp_xy, log_w[:, n_obs:, :]
+
+
+def _pf_opposing_block_3d(belief: Any, frame: int) -> tuple[np.ndarray, np.ndarray] | None:
+    """3D analogue of :func:`_pf_opposing_block_2d`.
+
+    Returns ``(particles_xyz, log_weights)`` with positions permuted from state
+    order ``[R, T, N]`` to plot order ``[T, N, R]`` for d>=6 RTN beliefs. For
+    d=4 RT beliefs the N coordinate is filled with zero so PF beliefs from
+    a planar scenario still render in 3D mode (defensive — RT beliefs only
+    surface in 3D mode if mixed-frame scenes are constructed manually).
+    """
+    if belief is None:
+        return None
+    particles = np.asarray(belief.particles[frame])
+    log_w = np.asarray(belief.log_weights[frame])
+    n_obs, n_total, _k, d = particles.shape
+    n_opp = n_total - n_obs
+    if n_opp <= 0:
+        return None
+    if d >= 6:
+        opp_rtn = particles[:, n_obs:, :, :3]
+        opp_xyz = opp_rtn[..., [1, 2, 0]]  # [R, T, N] → [T, N, R]
+    else:
+        opp_rt = particles[:, n_obs:, :, :2]
+        t_col = opp_rt[..., 1:2]
+        r_col = opp_rt[..., 0:1]
+        zeros = np.zeros_like(t_col)
+        opp_xyz = np.concatenate([t_col, zeros, r_col], axis=-1)
+    return opp_xyz, log_w[:, n_obs:, :]
+
+
+def _alpha_per_particle(
+    log_weights_pair: np.ndarray, alpha_min: float, alpha_max: float
+) -> np.ndarray:
+    """Map a per-pair ``(K,)`` log-weight vector to ``(K,)`` alpha values.
+
+    Highest-weight particle gets ``alpha_max``; the rest scale linearly down
+    toward ``alpha_min``. The mapping uses the normalized weight, so a sharply
+    peaked posterior renders as one bright particle in a faint sea of others
+    (which is exactly the read we want post-collapse).
+    """
+    log_w = log_weights_pair - log_weights_pair.max()
+    w = np.exp(log_w)
+    s = w.sum()
+    if s > 0:
+        w = w / s
+    rel = w / (w.max() + 1e-12)
+    return alpha_min + (alpha_max - alpha_min) * rel
+
+
+def _maybe_subsample_particles(
+    particles: np.ndarray, log_weights: np.ndarray, max_drawn: int | None, key_seed: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Weight-proportional resample to at most ``max_drawn`` particles for display.
+
+    Pure visual subsampling — does not touch the actual belief. Uses
+    ``numpy.random.default_rng`` with a frame-derived seed so the same frame
+    redraws the same subsample (stable interactive scrubbing).
+    """
+    if max_drawn is None or particles.shape[0] <= max_drawn:
+        return particles, log_weights
+    rng = np.random.default_rng(key_seed)
+    log_w = log_weights - log_weights.max()
+    w = np.exp(log_w)
+    w_sum = w.sum()
+    probs = (w / w_sum) if w_sum > 0 else np.full(particles.shape[0], 1.0 / particles.shape[0])
+    idx = rng.choice(particles.shape[0], size=max_drawn, replace=True, p=probs)
+    return particles[idx], log_weights[idx]
 
 
 def _belief_position_block_2d(belief: Any, frame: int) -> tuple[np.ndarray, np.ndarray] | None:
@@ -656,7 +765,13 @@ def _render_belief_3d(scene: RolloutScene, ax: Any, frame: int) -> None:
     bh = scene.belief_history
     assert bh is not None
     for side, color in ((Side.GUARD, _GUARD_COLORS), (Side.BANDIT, _BANDIT_COLORS)):
-        block = _belief_position_block(bh.get(side), frame)
+        belief = bh.get(side)
+        if belief is None:
+            continue
+        if _is_particle_filter_belief(belief):
+            _render_pf_belief_3d(scene, ax, frame, belief, color)
+            continue
+        block = _belief_position_block(belief, frame)
         if block is None:
             continue
         means, covs = block
@@ -676,7 +791,13 @@ def _render_belief_2d(scene: RolloutScene, ax: Any, frame: int) -> None:
     bh = scene.belief_history
     assert bh is not None
     for side, color in ((Side.GUARD, _GUARD_COLORS), (Side.BANDIT, _BANDIT_COLORS)):
-        block = _belief_position_block_2d(bh.get(side), frame)
+        belief = bh.get(side)
+        if belief is None:
+            continue
+        if _is_particle_filter_belief(belief):
+            _render_pf_belief_2d(scene, ax, frame, belief, color)
+            continue
+        block = _belief_position_block_2d(belief, frame)
         if block is None:
             continue
         means, covs = block
@@ -690,6 +811,108 @@ def _render_belief_2d(scene: RolloutScene, ax: Any, frame: int) -> None:
                     alpha=scene.belief_alpha,
                     sigma=scene.belief_sigma,
                 )
+
+
+def _render_pf_belief_2d(
+    scene: RolloutScene, ax: Any, frame: int, belief: Any, color: tuple[float, float, float]
+) -> None:
+    block = _pf_opposing_block_2d(belief, frame)
+    if block is None:
+        return
+    particles, log_w = block  # (N_obs, N_opp, K, 2), (N_obs, N_opp, K)
+    n_obs, n_opp, _k, _ = particles.shape
+    for i in range(n_obs):
+        for k in range(n_opp):
+            pts = particles[i, k]
+            lw = log_w[i, k]
+            pts, lw = _maybe_subsample_particles(
+                pts, lw, scene.belief_particle_max_drawn, key_seed=frame * 7919 + i * 31 + k
+            )
+            alphas = _alpha_per_particle(
+                lw, scene.belief_particle_alpha_min, scene.belief_particle_alpha_max
+            )
+            rgba = np.zeros((pts.shape[0], 4))
+            rgba[:, :3] = color
+            rgba[:, 3] = alphas
+            ax.scatter(
+                pts[:, 0],
+                pts[:, 1],
+                s=scene.belief_particle_size,
+                c=rgba,
+                edgecolors="none",
+                zorder=3,
+            )
+    # Also draw the weighted-mean point per opposing pair so a fully collapsed
+    # cloud (one alpha-bright particle in a faint sea) still has a clear focus.
+    mean_block = np.asarray(belief.mean[frame])  # (N_obs, N_total, d)
+    n_total = mean_block.shape[1]
+    n_obs_total = n_total - n_opp
+    opp_means = mean_block[:, n_obs_total:, :2][..., [1, 0]]  # (N_obs, N_opp, 2)
+    for i in range(n_obs):
+        for k in range(n_opp):
+            ax.scatter(
+                opp_means[i, k, 0],
+                opp_means[i, k, 1],
+                s=scene.belief_particle_size * 4,
+                facecolors="none",
+                edgecolors=color,
+                linewidths=1.2,
+                zorder=4,
+            )
+
+
+def _render_pf_belief_3d(
+    scene: RolloutScene, ax: Any, frame: int, belief: Any, color: tuple[float, float, float]
+) -> None:
+    block = _pf_opposing_block_3d(belief, frame)
+    if block is None:
+        return
+    particles, log_w = block  # (N_obs, N_opp, K, 3), (N_obs, N_opp, K)
+    n_obs, n_opp, _k, _ = particles.shape
+    for i in range(n_obs):
+        for k in range(n_opp):
+            pts = particles[i, k]
+            lw = log_w[i, k]
+            pts, lw = _maybe_subsample_particles(
+                pts, lw, scene.belief_particle_max_drawn, key_seed=frame * 7919 + i * 31 + k
+            )
+            alphas = _alpha_per_particle(
+                lw, scene.belief_particle_alpha_min, scene.belief_particle_alpha_max
+            )
+            rgba = np.zeros((pts.shape[0], 4))
+            rgba[:, :3] = color
+            rgba[:, 3] = alphas
+            ax.scatter(
+                pts[:, 0],
+                pts[:, 1],
+                pts[:, 2],
+                s=scene.belief_particle_size,
+                c=rgba,
+                edgecolors="none",
+            )
+    # Weighted-mean overlay (3D version).
+    mean_block = np.asarray(belief.mean[frame])
+    n_total = mean_block.shape[1]
+    n_obs_total = n_total - n_opp
+    if mean_block.shape[-1] >= 6:
+        opp_means = mean_block[:, n_obs_total:, :3][..., [1, 2, 0]]
+    else:
+        opp_means_rt = mean_block[:, n_obs_total:, :2]
+        t = opp_means_rt[..., 1:2]
+        r = opp_means_rt[..., 0:1]
+        zeros = np.zeros_like(t)
+        opp_means = np.concatenate([t, zeros, r], axis=-1)
+    for i in range(n_obs):
+        for k in range(n_opp):
+            ax.scatter(
+                opp_means[i, k, 0],
+                opp_means[i, k, 1],
+                opp_means[i, k, 2],
+                s=scene.belief_particle_size * 4,
+                facecolors="none",
+                edgecolors=color,
+                linewidths=1.2,
+            )
 
 
 # ---- interactive Jupyter viewer (ipywidgets) ----

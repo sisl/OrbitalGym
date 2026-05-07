@@ -20,9 +20,10 @@ Public API surface:
 
     Game catalog (typed knob bundles + builders):
         Game, NoGame, GameKey
-        LadyBanditGuard, PursuitEvasion, SunBlocking, ObservationBlocking
+        LadyBanditGuard, PursuitEvasion, SunBlocking, ObservationBlocking,
+        GetOffMyLawn
         make_lady_bandit_guard, make_pursuit_evasion, make_sun_blocking,
-        make_observation_blocking, make_game
+        make_observation_blocking, make_get_off_my_lawn, make_game
 
     Adapters (see orbital_game.adapters):
         POMDPAdapter, GymnasiumAdapter, PettingZooAdapter
@@ -75,12 +76,14 @@ from orbital_game.env.types import (  # noqa: E402
 )
 from orbital_game.games import (  # noqa: E402
     Game,
+    GetOffMyLawn,
     LadyBanditGuard,
     NoGame,
     ObservationBlocking,
     PursuitEvasion,
     SunBlocking,
     make_game,
+    make_get_off_my_lawn,
     make_lady_bandit_guard,
     make_observation_blocking,
     make_pursuit_evasion,
@@ -107,6 +110,7 @@ __all__ = [
     "Game",
     "set_precision",
     "GameKey",
+    "GetOffMyLawn",
     "GymnasiumAdapter",
     "LadyBanditGuard",
     "NoGame",
@@ -129,6 +133,7 @@ __all__ = [
     "episode_mask",
     "load_run",
     "make_game",
+    "make_get_off_my_lawn",
     "make_lady_bandit_guard",
     "make_observation_blocking",
     "make_pursuit_evasion",

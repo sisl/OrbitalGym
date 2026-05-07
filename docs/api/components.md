@@ -68,11 +68,43 @@ or pass the flat state directly when calling the policy manually.
 
 ## Belief
 
+### Protocols
+
 ::: orbital_game.belief.base.Belief
 
 ::: orbital_game.belief.base.BeliefInitializer
 
 ::: orbital_game.belief.base.BeliefUpdater
+
+### Kalman filter
+
+::: orbital_game.belief.kf.KFBelief
+
+::: orbital_game.belief.kf.KFBeliefUpdater
+
+::: orbital_game.belief.kf.KFFromTruthInitializer
+
+::: orbital_game.belief.kf.KFUniformDefaultInitializer
+
+### Extended Kalman filter
+
+::: orbital_game.belief.ekf.EKFBelief
+
+::: orbital_game.belief.ekf.EKFBeliefUpdater
+
+::: orbital_game.belief.ekf.EKFFromTruthInitializer
+
+::: orbital_game.belief.ekf.EKFUniformDefaultInitializer
+
+### Particle filter
+
+::: orbital_game.belief.pf.ParticleFilterBelief
+
+::: orbital_game.belief.pf.ParticleFilterBeliefUpdater
+
+::: orbital_game.belief.pf.ParticleFilterFromTruthInitializer
+
+::: orbital_game.belief.pf.ParticleFilterRingInitializer
 
 ## State
 
