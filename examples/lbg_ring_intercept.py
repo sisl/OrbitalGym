@@ -55,8 +55,9 @@ PROPELLANT_KG = 3.0
 @dataclass(frozen=True)
 class RingInterceptParams:
     n_bandits: int = 4
+    n_guards: int = 1
     ring_radius_m: float = 2000.0  # radial-ellipse semi-major axis -> 2km × 4km ring
-    guard_phase_offset_rad: float = 0.0  # guard sits at phase 0 on its own (smaller) ring
+    guard_phase_offset_rad: float = 0.0  # rotates the whole guard ring placement
     guard_ring_radius_m: float = 200.0  # guard starts close to lady, defending
     breach_radius_m: float = 5.0
     catch_radius_m: float = 50.0
@@ -70,11 +71,13 @@ def build_scenario(params: RingInterceptParams | None = None) -> ScenarioConfig:
 
     The guard starts on a smaller ring (radius `guard_ring_radius_m`) so it
     naturally orbits the lady — close enough to defend but with freedom to
-    maneuver. Bandits start on the outer ring at uniform phases.
+    maneuver. Bandits start on the outer ring at uniform phases. Both sides
+    scale to any N: vehicles are placed at uniform phases around their ring.
     """
     if params is None:
         params = RingInterceptParams()
     n_b = params.n_bandits
+    n_g = params.n_guards
 
     # Reference orbit: 7000 km circular-ish. Slightly inclined / eccentric to
     # avoid sampler singularities, though RelativeEllipse uses NSROE so it's
@@ -84,15 +87,19 @@ def build_scenario(params: RingInterceptParams | None = None) -> ScenarioConfig:
         velocity_eci=jnp.array([0.0, 7.5e3, 0.0]),
     )
 
-    # Bandit phases: uniform around 2π, deterministic.
+    # Per-side phases: uniform around 2π, deterministic. Single-vehicle case
+    # collapses linspace to [0.0], recovering the original 1-vehicle placement.
     bandit_phases = jnp.linspace(0.0, 2.0 * jnp.pi, n_b, endpoint=False)
+    guard_phases = (
+        jnp.linspace(0.0, 2.0 * jnp.pi, n_g, endpoint=False) + params.guard_phase_offset_rad
+    )
 
     ic_sampler = ICSpec(
         guard_sampler=RelativeEllipse(
             radial_ellipse_m=params.guard_ring_radius_m,
             cross_track_m=0.0,
             along_track_offset_m=0.0,
-            phase_rad=jnp.asarray([params.guard_phase_offset_rad]),
+            phase_rad=guard_phases,
             mass_sampler=ConstantMass(propellant_mass_kg=PROPELLANT_KG),
         ),
         bandit_sampler=RelativeEllipse(
@@ -107,7 +114,7 @@ def build_scenario(params: RingInterceptParams | None = None) -> ScenarioConfig:
     )
 
     cfg = ScenarioConfig(
-        n_guards=1,
+        n_guards=n_g,
         n_bandits=n_b,
         epoch_mjd_utc=60067.0,
         reference_orbit=reference_orbit,
