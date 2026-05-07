@@ -44,6 +44,8 @@ class StateComponentKey(StrEnum):
     POWER = "power"
     ATTITUDE = "attitude"
     BODY_RATES = "body_rates"
+    APPLIED_DV = "applied_dv"  # transient — Δv applied this step
+    APPLIED_TORQUE = "applied_torque"  # transient — torque applied this step
 
 
 class DynamicsKey(StrEnum):
@@ -59,11 +61,23 @@ class DynamicsKey(StrEnum):
     ASTROJAX_ORBIT = "astrojax_orbit"
 
 
+class AttitudeDynamicsKey(StrEnum):
+    """Attitude-layer dynamics.
+
+    Separate from DynamicsKey so the spatial-dynamics validator is unaware
+    of attitude propagators.
+    """
+
+    RIGID_BODY = "rigid_body_attitude"
+
+
 class ActionComponentKey(StrEnum):
     """Composable per-side action-pytree component."""
 
     IMPULSIVE_MANEUVER = "impulsive_maneuver"  # batteries-included impulsive Δv + propellant
     COMMUNICATE = "communicate"  # broadcast to other agents (Dec-POMDP comms)
+    # body-frame torque (N·m) producer; reaction-wheel saturation modeled in dynamics
+    ATTITUDE_CONTROL = "attitude_control"
 
 
 class PolicyKey(StrEnum):
@@ -78,6 +92,7 @@ class ObservationFnKey(StrEnum):
     RANGE_LIMITED = "range_limited_observation"
     COMPOSITE = "composite_observation"
     COMMS_LEAK = "comms_leak_observation"
+    CONICAL = "conical_observation"  # conical field-of-view sensor
 
 
 class RewardFnKey(StrEnum):
@@ -104,6 +119,14 @@ class SideSamplerKey(StrEnum):
 class MassSamplerKey(StrEnum):
     CONSTANT = "constant_mass"
     UNIFORM = "uniform_mass"
+
+
+class AttitudeSamplerKey(StrEnum):
+    IDENTITY = "identity_attitude"
+    FIXED = "fixed_attitude"
+    UNIFORM_QUAT = "uniform_attitude"
+    UNIFORM_RATES = "uniform_body_rates"
+    UNIFORM_QUAT_AND_RATES = "uniform_attitude_and_rates"
 
 
 class ValidatorKey(StrEnum):

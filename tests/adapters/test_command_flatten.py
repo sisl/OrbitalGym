@@ -13,13 +13,11 @@ from orbital_game.adapters._command_flatten import (
     flatten_command,
     unflatten_command,
 )
-from orbital_game.dynamics.hcw import hcw_rt_step
 from orbital_game.registry import Frame
 
 
 def _make_impulsive_maneuver_command_cls(n: int):
     maneuver = ImpulsiveManeuver(
-        truth_dynamics=hcw_rt_step,
         action_frame=Frame.RT,
         truth_frame=Frame.RT,
         track_mass=False,
@@ -81,7 +79,6 @@ def test_communicate_active_dtype_round_trips():
     correctly through Gym/PettingZoo/POMDP adapters.
     """
     maneuver = ImpulsiveManeuver(
-        truth_dynamics=hcw_rt_step,
         action_frame=Frame.RT,
         truth_frame=Frame.RT,
         track_mass=False,

@@ -15,8 +15,16 @@ def test_no_extension_when_all_roles_share_frame():
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     cfg = _minimal_cfg()
-    assert cfg.guard_components_extended == (StateComponentKey.RTN,)
-    assert cfg.bandit_components_extended == (StateComponentKey.RTN,)
+    # APPLIED_DV is auto-extended onto every spatial-frame side as the
+    # transient carrier from action components to translational dynamics.
+    assert cfg.guard_components_extended == (
+        StateComponentKey.RTN,
+        StateComponentKey.APPLIED_DV,
+    )
+    assert cfg.bandit_components_extended == (
+        StateComponentKey.RTN,
+        StateComponentKey.APPLIED_DV,
+    )
 
 
 def test_extension_when_truth_eci_policy_rtn():

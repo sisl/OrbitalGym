@@ -2,7 +2,6 @@
 to (IMPULSIVE_MANEUVER,) for backward parity."""
 
 import jax.numpy as jnp
-import pytest
 
 from orbital_game.config import ScenarioConfig, VehicleParamsSpec
 from orbital_game.reference_orbit import ReferenceOrbitState
@@ -72,14 +71,16 @@ def test_explicit_action_components_accepted():
     assert cfg.bandit_action_components == (ActionComponentKey.IMPULSIVE_MANEUVER,)
 
 
-def test_empty_guard_action_components_rejected():
-    with pytest.raises(ValueError, match="guard_action_components"):
-        ScenarioConfig(**_base_kwargs(), guard_action_components=())
+def test_empty_guard_action_components_accepted():
+    """Empty action-component tuples are valid: dynamics always runs in env.step."""
+    cfg = ScenarioConfig(**_base_kwargs(), guard_action_components=())
+    assert cfg.guard_action_components == ()
 
 
-def test_empty_bandit_action_components_rejected():
-    with pytest.raises(ValueError, match="bandit_action_components"):
-        ScenarioConfig(**_base_kwargs(), bandit_action_components=())
+def test_empty_bandit_action_components_accepted():
+    """Empty action-component tuples are valid: dynamics always runs in env.step."""
+    cfg = ScenarioConfig(**_base_kwargs(), bandit_action_components=())
+    assert cfg.bandit_action_components == ()
 
 
 def test_action_components_round_trip_through_json():

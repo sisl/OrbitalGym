@@ -157,3 +157,120 @@ def test_roundtrip_typed_components():
     assert type(cfg.reward_fn) is type(cfg2.reward_fn)
     assert type(cfg.guard_observation_fn) is type(cfg2.guard_observation_fn)
     assert cfg.controlled_side == cfg2.controlled_side
+
+
+# ---------------------------------------------------------------------------
+# Keplerian JSON loader: ScenarioConfig.from_json accepts a "keplerian" block
+# in place of {"position_eci", "velocity_eci"}. Serialization always emits the
+# canonical Cartesian form, so a mixed round-trip (in-as-Keplerian, out-as-
+# Cartesian, back-in) preserves the underlying state.
+# ---------------------------------------------------------------------------
+
+
+def test_from_json_accepts_keplerian_reference_orbit():
+    """A JSON config can specify reference_orbit via Keplerian elements."""
+    import json
+
+    cfg = make_config()
+    raw = json.loads(cfg.to_json())
+    raw["reference_orbit"] = {
+        "keplerian": {
+            "semi_major_axis_m": 7000e3,
+            "eccentricity": 0.0,
+            "inclination": 0.0,
+            "raan": 0.0,
+            "argument_of_perigee": 0.0,
+            "mean_anomaly": 0.0,
+        }
+    }
+    cfg2 = ScenarioConfig.from_json(json.dumps(raw))
+    expected_speed = float(jnp.sqrt(3.986004418e14 / 7000e3))
+    assert jnp.allclose(cfg2.reference_orbit.position_eci, jnp.array([7000e3, 0.0, 0.0]), atol=1e-3)
+    assert jnp.allclose(
+        cfg2.reference_orbit.velocity_eci, jnp.array([0.0, expected_speed, 0.0]), atol=1e-6
+    )
+
+
+def test_from_json_keplerian_block_supports_radians_via_as_degrees_false():
+    """Caller can flip as_degrees=False inside the keplerian block to use radians."""
+    import json
+
+    cfg = make_config()
+    raw = json.loads(cfg.to_json())
+    raw["reference_orbit"] = {
+        "keplerian": {
+            "semi_major_axis_m": 7000e3,
+            "eccentricity": 0.0,
+            "inclination": float(jnp.pi / 2),
+            "raan": 0.0,
+            "argument_of_perigee": 0.0,
+            "mean_anomaly": 0.0,
+            "as_degrees": False,
+        }
+    }
+    cfg2 = ScenarioConfig.from_json(json.dumps(raw))
+    # i = pi/2 rad → polar orbit. periapsis on +x, velocity along +z (since RAAN=arg=M=0).
+    assert jnp.allclose(cfg2.reference_orbit.position_eci, jnp.array([7000e3, 0.0, 0.0]), atol=1e-3)
+    expected_speed = float(jnp.sqrt(3.986004418e14 / 7000e3))
+    assert jnp.allclose(
+        cfg2.reference_orbit.velocity_eci, jnp.array([0.0, 0.0, expected_speed]), atol=1e-6
+    )
+
+
+def test_to_json_always_emits_cartesian_reference_orbit():
+    """Serialization remains canonical Cartesian even when the input was Keplerian."""
+    import json
+
+    cfg = make_config()
+    cfg = cfg.__class__(
+        **{
+            f.name: getattr(cfg, f.name)
+            for f in cfg.__dataclass_fields__.values()
+            if f.name not in ("reference_orbit",) and f.init
+        },
+        reference_orbit=ReferenceOrbitState.from_keplerian(
+            semi_major_axis_m=7000e3,
+            eccentricity=0.0,
+            inclination=0.0,
+            raan=0.0,
+            argument_of_perigee=0.0,
+            mean_anomaly=0.0,
+        ),
+    )
+    out = json.loads(cfg.to_json())
+    assert "position_eci" in out["reference_orbit"]
+    assert "velocity_eci" in out["reference_orbit"]
+    assert "keplerian" not in out["reference_orbit"]
+
+
+def test_from_json_rejects_reference_orbit_with_both_forms():
+    """Specifying both Cartesian and keplerian keys is ambiguous and must fail fast."""
+    import json
+
+    cfg = make_config()
+    raw = json.loads(cfg.to_json())
+    raw["reference_orbit"] = {
+        "position_eci": [7000e3, 0.0, 0.0],
+        "velocity_eci": [0.0, 7.5e3, 0.0],
+        "keplerian": {
+            "semi_major_axis_m": 7000e3,
+            "eccentricity": 0.0,
+            "inclination": 0.0,
+            "raan": 0.0,
+            "argument_of_perigee": 0.0,
+            "mean_anomaly": 0.0,
+        },
+    }
+    with pytest.raises(ValueError, match="reference_orbit"):
+        ScenarioConfig.from_json(json.dumps(raw))
+
+
+def test_from_json_rejects_empty_reference_orbit_block():
+    """An empty/unrecognized reference_orbit block must fail fast with a clear error."""
+    import json
+
+    cfg = make_config()
+    raw = json.loads(cfg.to_json())
+    raw["reference_orbit"] = {}
+    with pytest.raises(ValueError, match="reference_orbit"):
+        ScenarioConfig.from_json(json.dumps(raw))

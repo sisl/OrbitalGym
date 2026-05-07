@@ -27,9 +27,11 @@ from orbital_game.viz.glyphs import (
     draw_belief_ellipse_2d,
     draw_belief_ellipsoid,
     draw_circle,
+    draw_cone_3d,
     draw_cube,
     draw_sphere,
     draw_thrust_arrow,
+    draw_wedge_2d,
     quat_to_rotation_matrix,
 )
 
@@ -107,6 +109,21 @@ def _quat_history(side_state: Any) -> np.ndarray | None:
     return None
 
 
+def _walk_for_conical(obs_fn: Any) -> list:
+    """Recurse through CompositeObservation; return all ConicalObservation instances."""
+    from orbital_game.observations.composite import CompositeObservation
+    from orbital_game.observations.conical import ConicalObservation
+
+    if isinstance(obs_fn, ConicalObservation):
+        return [obs_fn]
+    if isinstance(obs_fn, CompositeObservation):
+        out = []
+        for c in obs_fn.constituents:
+            out.extend(_walk_for_conical(c))
+        return out
+    return []
+
+
 def _infer_sensor_ranges(cfg: Any) -> dict[Side, float | None]:
     """Read ``sensor_range_m`` from a config if its observation fn is range-limited."""
     from orbital_game.observations.range_limited import RangeLimitedObservation
@@ -135,6 +152,12 @@ class RolloutScene:
     ``cfg.guard_observation_fn`` / ``cfg.bandit_observation_fn`` if they
     are ``RangeLimitedObservation``; otherwise the layer is silently
     skipped for that side.
+
+    Limitation: every side must have ``ImpulsiveManeuver`` in its action
+    components (the scene reads ``.dv`` for thrust quivers). For attitude-
+    only scenarios, configure ``ImpulsiveManeuver`` with ``track_mass=False``
+    and emit zero Δv from the policy — this satisfies the constructor
+    without changing dynamics.
     """
 
     traj: Trajectory
@@ -152,6 +175,7 @@ class RolloutScene:
     show_trail: bool = True
     show_cubes: bool = True
     show_sensor_range: bool = False
+    show_sensor_cones: bool = False
     show_thrust: bool = False
     show_belief: bool = False
     show_reference_marker: bool = True
@@ -161,6 +185,9 @@ class RolloutScene:
     sensor_range_m: dict[Side, float] | None = None
     sensor_range_color: str = "gray"
     sensor_range_alpha: float = 0.08
+    cone_length_m: float | None = None  # None ⇒ render to plot edge (cones are unbounded);
+    # set to a float to truncate (cosmetic only).
+    cone_alpha: float = 0.15
     thrust_max_fraction: float = 1.0 / 20.0
     thrust_color: str = "orange"
     belief_history: BySide | None = None
@@ -460,11 +487,15 @@ def _render_side_3d(scene: RolloutScene, ax: Any, frame: int, side: Side) -> Non
         action = scene._g_action
         quat = scene._g_quat
         color = _GUARD_COLORS
+        obs_fn = getattr(scene.cfg, "guard_observation_fn", None) if scene.cfg is not None else None
     else:
         xyz = scene._b_xyz
         action = scene._b_action
         quat = scene._b_quat
         color = _BANDIT_COLORS
+        obs_fn = (
+            getattr(scene.cfg, "bandit_observation_fn", None) if scene.cfg is not None else None
+        )
 
     sensor_range = scene._sensor_ranges.get(side)
 
@@ -479,6 +510,33 @@ def _render_side_3d(scene: RolloutScene, ax: Any, frame: int, side: Side) -> Non
                 color=scene.sensor_range_color,
                 alpha=scene.sensor_range_alpha,
             )
+
+        if scene.show_sensor_cones:
+            eff_length = (
+                scene.cone_length_m if scene.cone_length_m is not None else 2.5 * scene._axis_limit
+            )
+            for cone_obs in _walk_for_conical(obs_fn):
+                R_body = (  # noqa: N806
+                    _RTN_TO_PLOT @ quat_to_rotation_matrix(quat[frame, i])
+                    if quat is not None
+                    else np.eye(3)
+                )
+                boresights = np.asarray(cone_obs.sensor_boresights_body)  # (k, 3)
+                if isinstance(cone_obs.half_angle_rad, (int, float)):
+                    half_angles = [float(cone_obs.half_angle_rad)] * boresights.shape[0]
+                else:
+                    half_angles = [float(a) for a in np.asarray(cone_obs.half_angle_rad).ravel()]
+                for s in range(boresights.shape[0]):
+                    b_world = R_body @ boresights[s]
+                    draw_cone_3d(
+                        ax,
+                        center,
+                        b_world,
+                        half_angles[s],
+                        eff_length,
+                        color=color,
+                        alpha=scene.cone_alpha,
+                    )
 
         if scene.show_cubes:
             # Quat is body→RTN; the plot frame is permuted from RTN, so
@@ -513,11 +571,17 @@ def _render_side_2d(scene: RolloutScene, ax: Any, frame: int, side: Side) -> Non
     if side is Side.GUARD:
         xyz = scene._g_xyz
         action = scene._g_action
+        quat = scene._g_quat
         color = _GUARD_COLORS
+        obs_fn = getattr(scene.cfg, "guard_observation_fn", None) if scene.cfg is not None else None
     else:
         xyz = scene._b_xyz
         action = scene._b_action
+        quat = scene._b_quat
         color = _BANDIT_COLORS
+        obs_fn = (
+            getattr(scene.cfg, "bandit_observation_fn", None) if scene.cfg is not None else None
+        )
 
     sensor_range = scene._sensor_ranges.get(side)
 
@@ -532,6 +596,33 @@ def _render_side_2d(scene: RolloutScene, ax: Any, frame: int, side: Side) -> Non
                 color=scene.sensor_range_color,
                 alpha=scene.sensor_range_alpha,
             )
+
+        if scene.show_sensor_cones:
+            eff_length = (
+                scene.cone_length_m if scene.cone_length_m is not None else 2.5 * scene._axis_limit
+            )
+            for cone_obs in _walk_for_conical(obs_fn):
+                R_rtn = (  # noqa: N806
+                    quat_to_rotation_matrix(quat[frame, i]) if quat is not None else np.eye(3)
+                )
+                boresights = np.asarray(cone_obs.sensor_boresights_body)  # (k, 3)
+                if isinstance(cone_obs.half_angle_rad, (int, float)):
+                    half_angles = [float(cone_obs.half_angle_rad)] * boresights.shape[0]
+                else:
+                    half_angles = [float(a) for a in np.asarray(cone_obs.half_angle_rad).ravel()]
+                for s in range(boresights.shape[0]):
+                    b_rtn = R_rtn @ boresights[s]
+                    # Project to 2D plot coords [T, R]: b_rtn is [R, T, N] order
+                    b_plot_xy = np.array([b_rtn[1], b_rtn[0]])  # [T, R]
+                    draw_wedge_2d(
+                        ax,
+                        np.array([cx, cy]),
+                        b_plot_xy,
+                        half_angles[s],
+                        eff_length,
+                        color=color,
+                        alpha=scene.cone_alpha,
+                    )
 
         if scene.show_cubes:
             # No 3D orientation in 2D — render the agent as a filled square
@@ -685,7 +776,11 @@ def save_animation(
     dpi: int = 100,
     fig: Any | None = None,
 ) -> str:
-    """Render the scene to a video file (requires ``ffmpeg``).
+    """Render the scene to a video or GIF file.
+
+    The writer is chosen from the file extension:
+      - ``.mp4`` / ``.mov`` / ``.mkv`` → ffmpeg (must be on PATH).
+      - ``.gif`` → PillowWriter (bundled with matplotlib; no external dep).
 
     Returns the output path on success.
     """
@@ -694,13 +789,22 @@ def save_animation(
 
     import matplotlib.animation as mpl_animation
 
-    if shutil.which("ffmpeg") is None:
-        raise RuntimeError(
-            "save_animation requires the 'ffmpeg' binary on PATH, but it was "
-            "not found. Install it (e.g. `brew install ffmpeg` on macOS, "
-            "`apt-get install ffmpeg` on Debian/Ubuntu) and retry. "
-            "Without this check, matplotlib silently substitutes PillowWriter "
-            "and fails later with a confusing 'unknown file extension: .mp4'."
+    ext = os.path.splitext(output_path)[1].lower()
+    if ext == ".gif":
+        writer: Any = mpl_animation.PillowWriter(fps=fps)
+    elif ext in (".mp4", ".mov", ".mkv"):
+        if shutil.which("ffmpeg") is None:
+            raise RuntimeError(
+                f"save_animation({ext}) requires the 'ffmpeg' binary on PATH, "
+                "but it was not found. Install it (e.g. `brew install ffmpeg` "
+                "on macOS, `apt-get install ffmpeg` on Debian/Ubuntu), or save "
+                "as .gif instead (no external dependency)."
+            )
+        writer = "ffmpeg"
+    else:
+        raise ValueError(
+            f"save_animation: unsupported extension {ext!r} for {output_path!r}. "
+            "Use .mp4/.mov/.mkv (ffmpeg) or .gif (PillowWriter)."
         )
 
     out_dir = os.path.dirname(os.path.abspath(output_path))
@@ -727,6 +831,13 @@ def save_animation(
         frames=scene.n_frames,
         interval=1000 // max(fps, 1),
     )
-    anim.save(output_path, writer="ffmpeg", fps=fps, dpi=dpi)
+    # When `writer` is an already-instantiated MovieWriter (e.g. PillowWriter),
+    # matplotlib raises if fps/codec/etc. are also passed to anim.save — those
+    # must be supplied only at writer construction time.  When it is a string
+    # (e.g. "ffmpeg"), anim.save forwards them to the writer it creates.
+    if isinstance(writer, str):
+        anim.save(output_path, writer=writer, fps=fps, dpi=dpi)
+    else:
+        anim.save(output_path, writer=writer, dpi=dpi)
     plt.close(fig)
     return output_path

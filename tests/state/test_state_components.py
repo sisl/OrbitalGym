@@ -4,6 +4,8 @@ import jax.numpy as jnp
 import pytest
 
 from orbital_game.state.components import (
+    AppliedDV,
+    AppliedTorque,
     Attitude,
     BodyRates,
     Mass,
@@ -22,6 +24,8 @@ from orbital_game.state.components import (
         (Power, {"charge": ()}),
         (Attitude, {"quat": (4,)}),
         (BodyRates, {"omega": (3,)}),
+        (AppliedDV, {"applied_dv": (3,)}),
+        (AppliedTorque, {"applied_torque": (3,)}),
     ],
 )
 def test_component_fields_match_spec(component, expected_fields):
@@ -37,6 +41,8 @@ def test_component_fields_match_spec(component, expected_fields):
         (Power, "charge", (5,)),
         (Attitude, "quat", (5, 4)),
         (BodyRates, "omega", (5, 3)),
+        (AppliedDV, "applied_dv", (5, 3)),
+        (AppliedTorque, "applied_torque", (5, 3)),
     ],
 )
 def test_component_zeros_shapes(component, field, expected_leaf_shape):
@@ -52,8 +58,11 @@ def test_component_zeros_shapes(component, field, expected_leaf_shape):
 
 
 def test_component_names_unique():
-    names = {c.name for c in (RTState, RTNState, Mass, Power, Attitude, BodyRates)}
-    assert len(names) == 6
+    names = {
+        c.name
+        for c in (RTState, RTNState, Mass, Power, Attitude, BodyRates, AppliedDV, AppliedTorque)
+    }
+    assert len(names) == 8
 
 
 def test_eci_state_zeros():
@@ -77,3 +86,23 @@ def test_eci_state_assemble():
     cls = build_state_class([ECIState], n_vehicles=2, class_name="EciOnly")
     inst = cls.zeros(2)
     assert inst.eci.shape == (2, 6)
+
+
+def test_applied_dv_fields():
+    assert AppliedDV.fields() == {"applied_dv": (3,)}
+
+
+def test_applied_dv_zeros_shape():
+    z = AppliedDV.zeros(5)
+    assert z["applied_dv"].shape == (5, 3)
+    assert jnp.all(z["applied_dv"] == 0.0)
+
+
+def test_applied_torque_fields():
+    assert AppliedTorque.fields() == {"applied_torque": (3,)}
+
+
+def test_applied_torque_zeros_shape():
+    z = AppliedTorque.zeros(4)
+    assert z["applied_torque"].shape == (4, 3)
+    assert jnp.all(z["applied_torque"] == 0.0)

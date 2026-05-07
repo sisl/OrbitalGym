@@ -8,3 +8,7 @@ from orbital_game.dynamics import (
     j2,  # noqa: F401
     keplerian,  # noqa: F401
 )
+from orbital_game.dynamics.attitude import (  # noqa: F401
+    AttitudeParams,
+    rigid_body_attitude_step,
+)

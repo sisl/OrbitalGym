@@ -16,7 +16,6 @@ def test_controlled_cookbook_walkthrough():
 
     from orbital_game.actions.assemble import build_command_class
     from orbital_game.actions.components import ImpulsiveManeuver
-    from orbital_game.dynamics.hcw import hcw_rtn_step
     from orbital_game.policies import ZeroControl
     from orbital_game.policies.controlled import (
         CompositeActionPolicy,
@@ -27,9 +26,7 @@ def test_controlled_cookbook_walkthrough():
 
     # An ImpulsiveManeuver-only Command class is enough for the cookbook patterns
     # (each emits a single dv field, no other components).
-    maneuver = ImpulsiveManeuver(
-        truth_dynamics=hcw_rtn_step, action_frame=Frame.RTN, truth_frame=Frame.RTN
-    )
+    maneuver = ImpulsiveManeuver(action_frame=Frame.RTN, truth_frame=Frame.RTN)
     cmd_cls = build_command_class((maneuver,), 1, "_CookbookCommand")
 
     # --8<-- [start:scripted-with-fallback-pattern]

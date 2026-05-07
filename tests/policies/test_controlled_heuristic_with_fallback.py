@@ -11,7 +11,6 @@ import jax.numpy as jnp
 
 from orbital_game.actions.assemble import build_command_class
 from orbital_game.actions.components import Communicate, ImpulsiveManeuver
-from orbital_game.dynamics.hcw import hcw_rtn_step
 from orbital_game.policies import ZeroControl
 from orbital_game.policies.controlled import HeuristicWithFallbackPolicy
 from orbital_game.registry import Frame
@@ -20,7 +19,6 @@ from tests.policies._helpers import make_impulsive_maneuver_command_cls
 
 def _impulsive_rtn() -> ImpulsiveManeuver:
     return ImpulsiveManeuver(
-        truth_dynamics=hcw_rtn_step,
         action_frame=Frame.RTN,
         truth_frame=Frame.RTN,
         track_mass=False,

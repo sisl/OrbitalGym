@@ -30,12 +30,19 @@ def command_flat_dim(command_cls) -> int:
 
 
 def flatten_command(cmd) -> jax.Array:
-    """Concatenate every field in registration order, flattened."""
+    """Concatenate every field in registration order, flattened.
+
+    Returns a zero-length float array when the Command has no fields
+    (empty action-component tuple), which is valid for dynamics-only
+    scenarios where env.step propagates translation without any action.
+    """
     parts = []
     for comp in type(cmd)._orbital_game_action_components:
         for fname in comp.fields():
             v = getattr(cmd, fname)
             parts.append(v.reshape(-1))
+    if not parts:
+        return jnp.zeros((0,))
     return jnp.concatenate(parts)
 
 

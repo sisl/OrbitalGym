@@ -18,7 +18,7 @@ import jax
 import jax.numpy as jnp
 
 from orbital_game.actions.assemble import build_command_class
-from orbital_game.actions.components import Communicate, ImpulsiveManeuver
+from orbital_game.actions.components import AttitudeControl, Communicate, ImpulsiveManeuver
 from orbital_game.config import ScenarioConfig
 from orbital_game.dynamics.hcw import hcw_rt_step, hcw_rtn_step
 from orbital_game.dynamics.j2 import j2_eci_step
@@ -32,9 +32,12 @@ from orbital_game.registry import (
     DynamicsKey,
     Frame,
     StateComponentKey,
+    resolve,
 )
 from orbital_game.state.assemble import build_state_class
 from orbital_game.state.components import (
+    AppliedDV,
+    AppliedTorque,
     Attitude,
     BodyRates,
     ECIState,
@@ -53,6 +56,8 @@ _COMP_LOOKUP = {
     StateComponentKey.POWER: Power,
     StateComponentKey.ATTITUDE: Attitude,
     StateComponentKey.BODY_RATES: BodyRates,
+    StateComponentKey.APPLIED_DV: AppliedDV,
+    StateComponentKey.APPLIED_TORQUE: AppliedTorque,
 }
 
 # Mirror of `_COMP_LOOKUP` for action components. Resolves an
@@ -63,6 +68,7 @@ _COMP_LOOKUP = {
 _ACTION_COMP_LOOKUP: dict[ActionComponentKey, type] = {
     ActionComponentKey.IMPULSIVE_MANEUVER: ImpulsiveManeuver,
     ActionComponentKey.COMMUNICATE: Communicate,
+    ActionComponentKey.ATTITUDE_CONTROL: AttitudeControl,
 }
 
 _DYN_LOOKUP = {
@@ -202,6 +208,24 @@ class OrbitalGameEnv:
             config.reference_orbit_dynamics_resolved
         )
 
+        # Attitude dynamics + per-side params (None when not configured).
+        self.attitude_dynamics: Any | None
+        if config.attitude_dynamics_key is not None:
+            self.attitude_dynamics = resolve(config.attitude_dynamics_key)
+            self.guard_attitude_params = config.guard_attitude_params
+            self.bandit_attitude_params = config.bandit_attitude_params
+        else:
+            self.attitude_dynamics = None
+            self.guard_attitude_params = None
+            self.bandit_attitude_params = None
+
+        # Per-side booleans: True iff that side has ATTITUDE state components.
+        # Used in step() to guard attitude propagation on each side independently,
+        # so asymmetric configurations (only one side has ATTITUDE+BODY_RATES)
+        # do not raise AttributeError on the other side's .quat/.omega access.
+        self.guard_has_attitude = StateComponentKey.ATTITUDE in config.guard_components
+        self.bandit_has_attitude = StateComponentKey.ATTITUDE in config.bandit_components
+
         # Precompute the truth frame and the per-side spatial-frame set so step()
         # can look up canonical / derived fields without re-resolving registry
         # metadata every call. Mass/Power/etc. have no frame and are filtered out.
@@ -233,13 +257,18 @@ class OrbitalGameEnv:
                 cls = _ACTION_COMP_LOOKUP[key]
                 if cls is ImpulsiveManeuver:
                     inst = ImpulsiveManeuver(
-                        truth_dynamics=self.truth_dynamics,
                         action_frame=self.action_frame,
                         truth_frame=self.truth_frame,
                         track_mass=track_mass,
                     )
                 elif cls is Communicate:
                     inst = Communicate()
+                elif cls is AttitudeControl:
+                    rotation_dim = 1 if self.action_frame is Frame.RT else 3
+                    inst = AttitudeControl(
+                        rotation_dim=rotation_dim,
+                        torque_max=self.config.attitude_control_torque_max,
+                    )
                 else:
                     raise ValueError(f"No instance constructor for action component {key!r}")
                 instances.append(inst)
@@ -459,8 +488,8 @@ class OrbitalGameEnv:
 
         # Per-side action-component fold. Each component reads its slice of
         # the side's Command pytree and returns the post-component side state.
-        # ImpulsiveManeuver subsumes the impulsive Δv application + frame-conversion +
-        # `truth_dynamics` calls that previously lived inline in env.step.
+        # ImpulsiveManeuver writes applied_dv (Δv in truth-frame, padded to width 3).
+        # The explicit translational dynamics block below then propagates both sides.
         next_guards = state.guards
         for component in self.guard_action_component_instances:
             next_guards = component.apply(
@@ -483,11 +512,65 @@ class OrbitalGameEnv:
                 k_dyn,
             )
 
+        # Translational dynamics — always runs. Action-free sides (no
+        # ImpulsiveManeuver) have applied_dv=0, giving pure free-drift. Sides
+        # with an ImpulsiveManeuver had their applied_dv written by the fold
+        # above. After propagation, applied_dv is zeroed so it does not
+        # accumulate across steps.
+        truth_field_name = _truth_field(self.truth_frame)
+
+        def _propagate_translation(side_state, params):
+            truth_arr = getattr(side_state, truth_field_name)
+            applied_dv = side_state.applied_dv
+            # Slice to truth-frame width (2 for RT, 3 for RTN/ECI).
+            dv = applied_dv[:, : self.truth_frame.dim]
+            new_truth = self.truth_dynamics(truth_arr, dv, params, self.config.dt)
+            return side_state.replace(
+                **{truth_field_name: new_truth},
+                applied_dv=jnp.zeros_like(applied_dv),
+            )
+
+        next_guards = _propagate_translation(next_guards, self.guard_params)
+        next_bandits = _propagate_translation(next_bandits, self.bandit_params)
+
+        # Attitude dynamics — runs iff configured. Free precession is the zero-torque path;
+        # AttitudeControl actions populate applied_torque earlier in the step.
+        # Each side is guarded independently so asymmetric configurations (e.g. only
+        # the guard has ATTITUDE+BODY_RATES while the bandit has only RTN) do not
+        # raise AttributeError when the other side lacks .quat/.omega/.applied_torque.
+        if self.attitude_dynamics is not None:
+            if self.guard_has_attitude:
+                quat_g, omega_g = self.attitude_dynamics(
+                    next_guards.quat,
+                    next_guards.omega,
+                    next_guards.applied_torque,
+                    self.guard_attitude_params,
+                    self.config.dt,
+                )
+                next_guards = next_guards.replace(
+                    quat=quat_g,
+                    omega=omega_g,
+                    applied_torque=jnp.zeros_like(next_guards.applied_torque),
+                )
+
+            if self.bandit_has_attitude:
+                quat_b, omega_b = self.attitude_dynamics(
+                    next_bandits.quat,
+                    next_bandits.omega,
+                    next_bandits.applied_torque,
+                    self.bandit_attitude_params,
+                    self.config.dt,
+                )
+                next_bandits = next_bandits.replace(
+                    quat=quat_b,
+                    omega=omega_b,
+                    applied_torque=jnp.zeros_like(next_bandits.applied_torque),
+                )
+
         # Materialize every non-truth frame from the post-step truth array. Use
         # the *propagated* reference orbit (ref_next) so derived views are
         # consistent with the truth state at t+dt. HCW-only scenarios skip this
         # because the only spatial frame is the truth frame.
-        truth_field_name = _truth_field(self.truth_frame)
         ref_eci6 = jnp.concatenate([ref_next.position_eci, ref_next.velocity_eci])
         next_guards = _materialize_derived_views(
             next_guards,

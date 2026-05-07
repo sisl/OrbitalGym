@@ -19,9 +19,11 @@ or remove them across frames if needed.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import numpy as np
+from matplotlib.patches import Wedge
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 _CUBE_VERTICES = (
@@ -240,6 +242,95 @@ def draw_belief_ellipse_2d(
     pts = unit * radii  # (n_pts, 2)
     pts = pts @ eigvecs.T + np.asarray(mean_xy)
     return ax.fill(pts[:, 0], pts[:, 1], color=color, alpha=alpha, linewidth=0)[0]
+
+
+def draw_wedge_2d(
+    ax,
+    apex,  # (2,) array-like
+    axis_xy,  # (2,) unit world-frame boresight (in-plane)
+    half_angle_rad: float,
+    length: float,
+    *,
+    color="C0",
+    alpha: float = 0.2,
+    edgecolor="k",
+    linewidth: float = 0.5,
+    zorder: int = 1,
+) -> Wedge:
+    """Translucent 2D FOV wedge rooted at ``apex``, opening along ``axis_xy``.
+
+    The wedge is a `matplotlib.patches.Wedge` covering ±half_angle_rad
+    around the bearing of ``axis_xy``.
+    """
+    apex_pt = (float(apex[0]), float(apex[1]))
+    bearing_rad = math.atan2(float(axis_xy[1]), float(axis_xy[0]))
+    bearing_deg = math.degrees(bearing_rad)
+    half_deg = math.degrees(float(half_angle_rad))
+    wedge = Wedge(
+        apex_pt,
+        length,
+        bearing_deg - half_deg,
+        bearing_deg + half_deg,
+        facecolor=color,
+        alpha=alpha,
+        edgecolor=edgecolor,
+        linewidth=linewidth,
+        zorder=zorder,
+    )
+    ax.add_patch(wedge)
+    return wedge
+
+
+def draw_cone_3d(
+    ax,
+    apex,  # (3,) array-like
+    axis,  # (3,) unit world-frame boresight
+    half_angle_rad: float,
+    length: float,
+    *,
+    n_segments: int = 24,
+    color="C0",
+    alpha: float = 0.15,
+    edgecolor=None,
+    linewidth: float = 0.0,
+    zorder: int = 1,
+) -> Poly3DCollection:
+    """Translucent cone surface as a triangle fan from ``apex``.
+
+    The cone is built as ``n_segments`` triangles whose apex is ``apex`` and
+    whose base ring lies on a circle of radius ``length * tan(half_angle)``
+    centered on ``apex + length * axis``, perpendicular to ``axis``.
+    """
+    apex = np.asarray(apex, dtype=float)
+    axis = np.asarray(axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+
+    base_center = apex + length * axis
+    radius = length * np.tan(float(half_angle_rad))
+
+    # Orthonormal frame whose z aligns with `axis`.
+    helper = np.array([0.0, 0.0, 1.0]) if abs(axis[2]) < 0.9 else np.array([1.0, 0.0, 0.0])
+    u = np.cross(axis, helper)
+    u = u / np.linalg.norm(u)
+    v = np.cross(axis, u)
+
+    thetas = np.linspace(0, 2 * np.pi, n_segments + 1)
+    ring = base_center[None, :] + radius * (
+        np.cos(thetas)[:, None] * u[None, :] + np.sin(thetas)[:, None] * v[None, :]
+    )
+
+    triangles = [[apex, ring[i], ring[i + 1]] for i in range(n_segments)]
+
+    coll = Poly3DCollection(
+        triangles,
+        facecolor=color,
+        alpha=alpha,
+        edgecolor=edgecolor,
+        linewidth=linewidth,
+        zorder=zorder,
+    )
+    ax.add_collection3d(coll)
+    return coll
 
 
 def quat_to_rotation_matrix(quat_wxyz: np.ndarray) -> np.ndarray:

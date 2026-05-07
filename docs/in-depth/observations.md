@@ -76,6 +76,60 @@ measures the position of every opposing entity within
 has shape `(N_self, N_total)`. The downstream belief updater uses
 `visible` to decide which corrections to apply.
 
+### `ConicalObservation`
+
+Per-pair full-state measurement gated by body-fixed sensor cones. Designed
+for scenarios where agents must point their sensors at a target to receive
+belief updates.
+
+```python
+import jax.numpy as jnp
+from orbital_game.observations.conical import ConicalObservation
+
+boresights = jnp.array([
+    [ 1.0,  0.0, 0.0],   # +R body axis
+    [-1.0,  0.0, 0.0],   # -R
+    [ 0.0,  1.0, 0.0],   # +T
+    [ 0.0, -1.0, 0.0],   # -T
+])
+
+obs_fn = ConicalObservation(
+    layout=cfg.layout,
+    sensor_boresights_body=boresights,
+    half_angle_rad=0.5236,   # 30-degree half-angle
+    sigma=10.0,              # measurement noise std (m or m/s)
+)
+```
+
+**Body-fixed boresights:** `sensor_boresights_body` is a `(k, 3)` array of
+unit vectors in the observer's body frame. One row per sensor. `ConicalObservation`
+rotates them into the world frame using the observer's quaternion (from
+`env_state.guards.quat` / `env_state.bandits.quat`) before testing visibility.
+
+**Visibility logic:** A (observer, target) pair is visible iff the
+line-of-sight vector to the target falls inside **any** of the observer's
+cones (angle to boresight < `half_angle_rad`) AND the target is on the
+opposing side. Own-side pairs are always masked out.
+
+**Multi-sensor handling:** Visibility across all `k` sensors is OR-reduced
+(`jnp.any` over the sensor axis) inside `ConicalObservation`. A single
+`Observation` channel is returned regardless of sensor count — the belief
+updater sees the same interface as any other channel.
+
+**Measurement model:** When visible, `obs[i, j, :]` is the target's full
+dynamics state plus additive Gaussian noise (`sigma` std, independent per
+entry). `H = I_d`, `R = sigma² I_d`. Setting `sigma=0` produces
+`R = 1e-12 I` (near-noiseless) rather than `R = 0` so that Kalman updates
+remain numerically stable and correctly weight near-perfect measurements.
+
+**2D / 3D handling:** Works in both RT and RTN scenarios. For RT (2D),
+positions are zero-padded to 3D internally before the cone math. The
+`layout.dynamics_state_dim` attribute drives the padding automatically.
+
+**Per-sensor half-angles:** Pass a `(k,)` tuple to `half_angle_rad` for
+sensors with different FOVs (e.g., a wide fore sensor paired with narrow
+aft sensors).
+
 ### `CompositeObservation`
 
 Concatenates multiple channels into one tuple. Use when an observer
@@ -91,6 +145,7 @@ independent across channels.
 | Full state visible to both sides | `FullObservation` |
 | Each vehicle sees only its own state (with noise) | `OnboardGPSObservation` |
 | Distance-gated measurements of opponents | `RangeLimitedObservation` |
+| Body-frame cone-gated measurements (attitude-dependent) | `ConicalObservation` |
 | Multiple of the above on the same observer | `CompositeObservation` |
 
 ## How adapters consume observations

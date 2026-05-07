@@ -146,3 +146,44 @@ class BodyRates:
     @staticmethod
     def zeros(n: int) -> Mapping[str, jax.Array]:
         return {"omega": jnp.zeros((n, 3))}
+
+
+class AppliedDV:
+    """Per-step applied translational Δv (m/s) in the truth frame.
+
+    Transient: written by ImpulsiveManeuver.apply (or any other action
+    component that produces Δv), consumed by the translational dynamics
+    block in env.step, then zeroed.
+
+    Width is always 3 on state for shape uniformity. The dynamics step
+    slices [:, :2] for Frame.RT, [:, :3] for RTN/ECI.
+    """
+
+    name: ClassVar[str] = "applied_dv"
+
+    @staticmethod
+    def fields() -> Mapping[str, tuple[int, ...]]:
+        return {"applied_dv": (3,)}
+
+    @staticmethod
+    def zeros(n: int) -> Mapping[str, jax.Array]:
+        return {"applied_dv": jnp.zeros((n, 3))}
+
+
+class AppliedTorque:
+    """Per-step applied body-frame torque (N·m).
+
+    Transient: written by AttitudeControl.apply (or any other torque-
+    producing action component), consumed by rigid_body_attitude_step in
+    env.step, then zeroed.
+    """
+
+    name: ClassVar[str] = "applied_torque"
+
+    @staticmethod
+    def fields() -> Mapping[str, tuple[int, ...]]:
+        return {"applied_torque": (3,)}
+
+    @staticmethod
+    def zeros(n: int) -> Mapping[str, jax.Array]:
+        return {"applied_torque": jnp.zeros((n, 3))}

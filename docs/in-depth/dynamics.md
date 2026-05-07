@@ -1,11 +1,13 @@
 # Dynamics
 
 `OrbitalGameEnv` composes per-side **action components** (commands →
-post-component side state, including any state propagation) with the
-configured **dynamics**. The bundled `ImpulsiveManeuver` action
-component applies an impulsive `Δv` and then invokes `truth_dynamics` for the
-remainder of the step. Both action components and dynamics are
-swappable.
+post-component side state) with the configured **dynamics**. The bundled
+`ImpulsiveManeuver` action component reads `command.dv`, converts to the
+truth frame, optionally deducts propellant, and writes the result to
+`state.applied_dv` (a transient state field). The env's `step()` then
+explicitly invokes the configured `truth_dynamics` with `applied_dv` as the
+control input, propagating the truth-frame state, and zeros `applied_dv`
+after consumption. Both action components and dynamics are swappable.
 
 ## What ships
 
@@ -16,7 +18,7 @@ swappable.
 | `DynamicsKey.KEPLERIAN_ECI` | Point-mass two-body in ECI | `[rx, ry, rz, vx, vy, vz]` (6) | typed-instance class |
 | `DynamicsKey.J2_ECI` | Two-body + J2 oblateness in ECI | `[rx, ry, rz, vx, vy, vz]` (6) | step function |
 | `DynamicsKey.ASTROJAX_ORBIT` | Configurable astrojax force model | `[rx, ry, rz, vx, vy, vz]` (6) | typed-instance class |
-| `ActionComponentKey.IMPULSIVE_MANEUVER` | Frame-aware Δv impulse + propagation | n/a (Δv is `(N_side, 2)` for RT, `(N_side, 3)` for RTN/ECI) | action component |
+| `ActionComponentKey.IMPULSIVE_MANEUVER` | Frame-aware Δv impulse (writes `applied_dv`; env.step propagates) | n/a (Δv is `(N_side, 2)` for RT, `(N_side, 3)` for RTN/ECI) | action component |
 
 Both HCW dynamics ignore J2, drag, and finite-burn duration. They are
 exact for instantaneous impulses applied to a circular reference orbit.
@@ -67,6 +69,26 @@ The dynamics callable operates on the raw `rtn` array (or `rt` for the
 method handles the wrapping/unwrapping; calling the dynamics directly
 gives you the same physics with no observation, reward, or
 termination machinery in the way.
+
+## Attitude dynamics layer
+
+Translational dynamics (always runs) and attitude dynamics (runs iff
+`cfg.attitude_dynamics_key` is set) are orthogonal. Every step:
+
+1. Action components write `applied_dv` and/or `applied_torque` onto the
+   side state.
+2. The translational dynamics block propagates the orbital state using
+   `applied_dv`, then zeros it.
+3. The attitude dynamics block integrates `(quat, omega)` using
+   `applied_torque`, then zeros it.
+
+The two layers share no state. Scenarios with no `attitude_dynamics_key` run
+only the translational block; the attitude fields (`quat`, `omega`) are
+untouched by `env.step` and stay at whatever the IC sampler produced.
+
+See [Attitude dynamics & conical sensors](attitude.md) for the full story —
+`rigid_body_attitude_step`, `AttitudeParams`, reaction-wheel saturation, and
+the `ConicalObservation` model that makes attitude decision-relevant.
 
 ## Composition with the actuator
 
@@ -136,6 +158,9 @@ the precision flip to pick up the new dtype.
 
 ## Where to next
 
+- [Attitude dynamics & conical sensors](attitude.md) — the attitude
+  dynamics layer, `rigid_body_attitude_step`, `AttitudeParams`, and the
+  `ConicalObservation` model.
 - [State layout & adding a Power component](state-layout.md) — what
   the dynamics step reads and writes.
 - [API reference → Components](../api/components.md) — `Dynamics` and

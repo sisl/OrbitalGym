@@ -60,6 +60,7 @@ nav = [
     { "Action components" = "in-depth/action-components.md" },
     { "Dynamics" = "in-depth/dynamics.md" },
     { "Observations" = "in-depth/observations.md" },
+    { "Attitude & conical sensors" = "in-depth/attitude.md" },
     { "Belief" = "in-depth/belief.md" },
   ] },
   { "Extending" = [

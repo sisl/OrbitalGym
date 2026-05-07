@@ -3,13 +3,11 @@ import jax.numpy as jnp
 
 from orbital_game.actions.assemble import build_command_class
 from orbital_game.actions.components import ImpulsiveManeuver
-from orbital_game.dynamics.hcw import hcw_rtn_step
 from orbital_game.registry import Frame
 
 
 def _maneuver():
     return ImpulsiveManeuver(
-        truth_dynamics=hcw_rtn_step,
         action_frame=Frame.RTN,
         truth_frame=Frame.RTN,
         track_mass=True,
@@ -25,7 +23,6 @@ def test_single_component_command_has_dv_field():
 def test_rt_action_frame_yields_2d_dv():
     """Frame-aware fields(): RT action_frame should produce a 2-D dv field."""
     rt_maneuver = ImpulsiveManeuver(
-        truth_dynamics=hcw_rtn_step,  # callable identity is irrelevant for fields()
         action_frame=Frame.RT,
         truth_frame=Frame.RT,
         track_mass=True,

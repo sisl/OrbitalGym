@@ -1,16 +1,19 @@
-"""ImpulsiveManeuver applied to RTN state with HCW dynamics: rocket-equation
-propellant burn + truth_dynamics propagation, with the track_mass flag
-gating propellant tracking."""
+"""ImpulsiveManeuver: Δv producer that writes applied_dv onto state.
+
+After the Task 2.2+2.3 refactor, ImpulsiveManeuver no longer calls
+truth_dynamics. It writes dv (converted to truth frame, padded to width 3)
+onto side_state.applied_dv and optionally deducts propellant. The actual
+truth-dynamics propagation is done by env.step.
+"""
 
 import flax
 import jax
 import jax.numpy as jnp
 
 from orbital_game.actions.components import ImpulsiveManeuver
-from orbital_game.dynamics.hcw import hcw_rtn_step
 from orbital_game.registry import Frame
 from orbital_game.state.assemble import build_state_class
-from orbital_game.state.components import Mass, RTNState
+from orbital_game.state.components import AppliedDV, Mass, RTNState
 
 
 @flax.struct.dataclass
@@ -36,17 +39,17 @@ class _Command:
 
 
 def _make_side_state(n_vehicles: int):
-    Cls = build_state_class([RTNState, Mass], n_vehicles, "TestState")  # noqa: N806
+    Cls = build_state_class([RTNState, Mass, AppliedDV], n_vehicles, "TestState")  # noqa: N806
     return Cls.zeros(n_vehicles).replace(
         rtn=jnp.array([[100.0, 0.0, 0.0, 0.0, 0.1, 0.0]]),
         propellant_mass=jnp.array([10.0]),
     )
 
 
-def test_impulsive_maneuver_zero_dv_no_state_change():
+def test_impulsive_maneuver_zero_dv_no_propellant_burn():
+    """Zero Δv leaves propellant unchanged."""
     state = _make_side_state(1)
     m = ImpulsiveManeuver(
-        truth_dynamics=hcw_rtn_step,
         action_frame=Frame.RTN,
         truth_frame=Frame.RTN,
         track_mass=True,
@@ -55,14 +58,13 @@ def test_impulsive_maneuver_zero_dv_no_state_change():
     ref_eci6 = jnp.array([7e6, 0.0, 0.0, 0.0, 7.5e3, 0.0])
     key = jax.random.PRNGKey(0)
     new_state = m.apply(cmd, state, _make_params(), dt=10.0, ref_eci6=ref_eci6, key=key)
-    # State propagates by HCW even with zero dv; check propellant unchanged.
     assert jnp.allclose(new_state.propellant_mass, state.propellant_mass)
 
 
 def test_impulsive_maneuver_nonzero_dv_burns_propellant():
+    """Non-zero Δv deducts propellant via the rocket equation."""
     state = _make_side_state(1)
     m = ImpulsiveManeuver(
-        truth_dynamics=hcw_rtn_step,
         action_frame=Frame.RTN,
         truth_frame=Frame.RTN,
         track_mass=True,
@@ -75,9 +77,9 @@ def test_impulsive_maneuver_nonzero_dv_burns_propellant():
 
 
 def test_impulsive_maneuver_track_mass_false_preserves_propellant():
+    """track_mass=False leaves propellant unchanged even with non-zero dv."""
     state = _make_side_state(1)
     m = ImpulsiveManeuver(
-        truth_dynamics=hcw_rtn_step,
         action_frame=Frame.RTN,
         truth_frame=Frame.RTN,
         track_mass=False,
@@ -87,3 +89,31 @@ def test_impulsive_maneuver_track_mass_false_preserves_propellant():
     key = jax.random.PRNGKey(0)
     new_state = m.apply(cmd, state, _make_params(), dt=10.0, ref_eci6=ref_eci6, key=key)
     assert jnp.allclose(new_state.propellant_mass, state.propellant_mass)
+
+
+def test_apply_writes_applied_dv_rtn():
+    """RTN scenario: 3-D dv command is written to applied_dv unchanged."""
+    state = _make_side_state(1)
+    m = ImpulsiveManeuver(
+        action_frame=Frame.RTN,
+        truth_frame=Frame.RTN,
+        track_mass=False,
+    )
+    dv = jnp.array([[0.1, 0.2, 0.3]])
+    cmd = _Command(dv=dv)
+    ref_eci6 = jnp.array([7e6, 0.0, 0.0, 0.0, 7.5e3, 0.0])
+    key = jax.random.PRNGKey(0)
+    new_state = m.apply(cmd, state, _make_params(), dt=10.0, ref_eci6=ref_eci6, key=key)
+    assert jnp.allclose(new_state.applied_dv, dv)
+    # truth state must NOT be mutated by apply
+    assert jnp.allclose(new_state.rtn, state.rtn)
+
+
+def test_apply_does_not_invoke_dynamics():
+    """After refactor, ImpulsiveManeuver has no truth_dynamics attribute."""
+    comp = ImpulsiveManeuver(
+        action_frame=Frame.RTN,
+        truth_frame=Frame.RTN,
+        track_mass=False,
+    )
+    assert not hasattr(comp, "truth_dynamics")

@@ -42,6 +42,10 @@ or pass the flat state directly when calling the policy manually.
 
 ::: orbital_game.observations.reference.FullObservation
 
+::: orbital_game.observations.range_limited.RangeLimitedObservation
+
+::: orbital_game.observations.conical.ConicalObservation
+
 ## Rewards
 
 ::: orbital_game.rewards.base.RewardFn
@@ -76,6 +80,40 @@ or pass the flat state directly when calling the policy manually.
 
 ::: orbital_game.state.assemble.build_state_class
 
+::: orbital_game.state.components.RTState
+
+::: orbital_game.state.components.RTNState
+
+::: orbital_game.state.components.ECIState
+
+::: orbital_game.state.components.Mass
+
+::: orbital_game.state.components.Power
+
+::: orbital_game.state.components.Attitude
+
+::: orbital_game.state.components.BodyRates
+
+::: orbital_game.state.components.AppliedDV
+
+::: orbital_game.state.components.AppliedTorque
+
+## Action components
+
+::: orbital_game.actions.components.ActionComponent
+
+::: orbital_game.actions.components.ImpulsiveManeuver
+
+::: orbital_game.actions.components.Communicate
+
+::: orbital_game.actions.components.AttitudeControl
+
+## Attitude dynamics
+
+::: orbital_game.dynamics.attitude.AttitudeParams
+
+::: orbital_game.dynamics.attitude.rigid_body_attitude_step
+
 ## IC sampling
 
 ::: orbital_game.sampling.spec.ICSpec
@@ -91,3 +129,13 @@ or pass the flat state directly when calling the policy manually.
 ::: orbital_game.sampling.validators.MinSeparation
 
 ::: orbital_game.sampling.validators.MaxRange
+
+::: orbital_game.sampling.attitude.IdentityAttitude
+
+::: orbital_game.sampling.attitude.FixedAttitude
+
+::: orbital_game.sampling.attitude.UniformAttitude
+
+::: orbital_game.sampling.attitude.UniformBodyRates
+
+::: orbital_game.sampling.attitude.UniformAttitudeAndRates

@@ -83,13 +83,11 @@ def test_indepth_action_components_build_command_class():
     # --8<-- [start:build-command-class]
     from orbital_game.actions.assemble import build_command_class
     from orbital_game.actions.components import Communicate, ImpulsiveManeuver
-    from orbital_game.dynamics.hcw import hcw_rtn_step
     from orbital_game.registry import Frame
 
     # Per-side Command classes are built from a tuple of ActionComponent
     # *instances*. Order in this tuple determines apply order in env.step.
     maneuver = ImpulsiveManeuver(
-        truth_dynamics=hcw_rtn_step,
         action_frame=Frame.RTN,
         truth_frame=Frame.RTN,
     )

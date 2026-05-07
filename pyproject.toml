@@ -68,6 +68,10 @@ extend-exclude = ["*.ipynb"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "B", "UP", "SIM", "PYI"]
 
+[tool.ruff.lint.per-file-ignores]
+# Notebook generator: long lines are notebook cell source — not library code.
+"make_attitude_notebooks.py" = ["E501"]
+
 [tool.pyrefly]
 project-includes = ["src/orbital_game"]
 project-excludes = ["src/orbital_game/viz", "src/orbital_game/logging"]

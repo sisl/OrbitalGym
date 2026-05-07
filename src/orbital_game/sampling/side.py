@@ -39,9 +39,18 @@ from orbital_game.registry import (
     StateComponentKey,
     register,
 )
+from orbital_game.sampling.attitude import (
+    FixedAttitude,
+    IdentityAttitude,
+    UniformAttitude,
+    UniformAttitudeAndRates,
+    UniformBodyRates,
+)
 from orbital_game.sampling.mass import ConstantMass, UniformMass
 from orbital_game.state.assemble import build_state_class
 from orbital_game.state.components import (
+    AppliedDV,
+    AppliedTorque,
     Attitude,
     BodyRates,
     ECIState,
@@ -59,6 +68,8 @@ _COMP_LOOKUP = {
     StateComponentKey.POWER: Power,
     StateComponentKey.ATTITUDE: Attitude,
     StateComponentKey.BODY_RATES: BodyRates,
+    StateComponentKey.APPLIED_DV: AppliedDV,
+    StateComponentKey.APPLIED_TORQUE: AppliedTorque,
 }
 
 
@@ -81,6 +92,33 @@ def _maybe_sample_mass(mass_sampler, components, n_vehicles, key):
             "Use ConstantMass(...) or UniformMass(...) on the per-side sampler."
         )
     return mass_sampler(n_vehicles=n_vehicles, key=key)
+
+
+_ATTITUDE_SAMPLER_TYPES = (
+    IdentityAttitude,
+    FixedAttitude,
+    UniformAttitude,
+    UniformBodyRates,
+    UniformAttitudeAndRates,
+)
+
+
+def _maybe_sample_attitude(attitude_sampler, components, n_vehicles, key):
+    """Return (quat, omega) if Attitude+BodyRates are in components, else (None, None).
+
+    If only one of Attitude/BodyRates is in components (which the config
+    validator forbids), we still permissively return the corresponding
+    half — but this shouldn't be reached in practice.
+    """
+    has_attitude = StateComponentKey.ATTITUDE in components
+    has_rates = StateComponentKey.BODY_RATES in components
+    if not (has_attitude or has_rates):
+        return None, None
+    if attitude_sampler is None:
+        # Default: identity quaternion, zero body rates (back-compat).
+        attitude_sampler = IdentityAttitude()
+    quat, omega = attitude_sampler(n_vehicles=n_vehicles, key=key)
+    return (quat if has_attitude else None, omega if has_rates else None)
 
 
 def _broadcast_to_n(x, n):
@@ -125,6 +163,14 @@ class RelativeKeplerian:
     mean_delta_mean_anomaly_rad: jnp.ndarray | float = 0.0
     sigma_delta_mean_anomaly_rad: jnp.ndarray | float = 0.0
     mass_sampler: ConstantMass | UniformMass | None = None
+    attitude_sampler: (
+        IdentityAttitude
+        | FixedAttitude
+        | UniformAttitude
+        | UniformBodyRates
+        | UniformAttitudeAndRates
+        | None
+    ) = None
 
     def __call__(
         self,
@@ -136,7 +182,7 @@ class RelativeKeplerian:
         class_name,
     ) -> Any:
         cls = _build_side_class(components, n_vehicles, class_name)
-        k_sample, k_mass = jax.random.split(key, 2)
+        k_sample, k_mass, k_attitude = jax.random.split(key, 3)
 
         # 1. Reference orbit osculating elements (KOE = [a, e, i, RAAN, omega, M])
         ref_state_eci = jnp.concatenate(
@@ -198,6 +244,14 @@ class RelativeKeplerian:
         if propellant is not None:
             kwargs["propellant_mass"] = propellant
 
+        quat, omega = _maybe_sample_attitude(
+            self.attitude_sampler, components, n_vehicles, k_attitude
+        )
+        if quat is not None:
+            kwargs["quat"] = quat
+        if omega is not None:
+            kwargs["omega"] = omega
+
         zeroed = cls.zeros(n_vehicles)
         return zeroed.replace(**kwargs)
 
@@ -232,6 +286,14 @@ class RelativeEllipse:
     sigma_along_track_offset_m: jnp.ndarray | float = 0.0
     phase_rad: jnp.ndarray | float | None = None
     mass_sampler: ConstantMass | UniformMass | None = None
+    attitude_sampler: (
+        IdentityAttitude
+        | FixedAttitude
+        | UniformAttitude
+        | UniformBodyRates
+        | UniformAttitudeAndRates
+        | None
+    ) = None
 
     def __call__(
         self,
@@ -243,7 +305,7 @@ class RelativeEllipse:
         class_name,
     ) -> Any:
         cls = _build_side_class(components, n_vehicles, class_name)
-        k_extents, k_phase, k_mass = jax.random.split(key, 3)
+        k_extents, k_phase, k_mass, k_attitude = jax.random.split(key, 4)
 
         # Use the shared reference-orbit mean-motion helper so sampler and
         # dynamics agree exactly on `n` — required for the IC to satisfy the
@@ -311,6 +373,14 @@ class RelativeEllipse:
         propellant = _maybe_sample_mass(self.mass_sampler, components, n_vehicles, k_mass)
         if propellant is not None:
             kwargs["propellant_mass"] = propellant
+
+        quat, omega = _maybe_sample_attitude(
+            self.attitude_sampler, components, n_vehicles, k_attitude
+        )
+        if quat is not None:
+            kwargs["quat"] = quat
+        if omega is not None:
+            kwargs["omega"] = omega
 
         zeroed = cls.zeros(n_vehicles)
         return zeroed.replace(**kwargs)

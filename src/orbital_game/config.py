@@ -23,6 +23,7 @@ from orbital_game.games.base import Game, NoGame
 from orbital_game.reference_orbit import ReferenceOrbitState
 from orbital_game.registry import (
     ActionComponentKey,
+    AttitudeDynamicsKey,
     BeliefInitializerKey,
     BeliefUpdaterKey,
     DynamicsKey,
@@ -139,6 +140,17 @@ class ScenarioConfig:
     # Game catalog (typed knob bundle; default NoGame for custom scenarios)
     game: Any = None  # populated in __post_init__
 
+    # Attitude dynamics. Validated and consumed in __post_init__:
+    #   - attitude_dynamics_key: selects the rigid-body integrator (or None).
+    #   - guard/bandit_attitude_params: per-side AttitudeParams carrying inertia
+    #     and omega_max. Required when the matching side has ATTITUDE+BODY_RATES.
+    #   - attitude_control_torque_max: optional per-axis torque limit threaded
+    #     into AttitudeControl action components (None = unconstrained).
+    attitude_dynamics_key: AttitudeDynamicsKey | None = None
+    guard_attitude_params: Any = None  # AttitudeParams | None
+    bandit_attitude_params: Any = None  # AttitudeParams | None
+    attitude_control_torque_max: tuple[float, float, float] | None = None
+
     # State layout — derived from n_guards/n_bandits/components. Built once
     # in __post_init__ so custom observation functions can read it via
     # `cfg.layout` without reaching into the default `FullObservation`.
@@ -160,14 +172,6 @@ class ScenarioConfig:
             raise ValueError("max_horizon_s must be > 0")
         if self.max_horizon_s < self.dt:
             raise ValueError("max_horizon_s must be >= dt")
-        # Empty action-component tuples produce a Command pytree with no fields,
-        # which makes `flatten_command` raise on `jnp.concatenate([])`. Reject
-        # at construction so the failure surface is the config, not the adapter.
-        if not self.guard_action_components:
-            raise ValueError("guard_action_components must contain at least one component")
-        if not self.bandit_action_components:
-            raise ValueError("bandit_action_components must contain at least one component")
-
         # The spatial state component must match the truth dynamics frame. Truth
         # is the authoritative role; policy/belief frames need not be in the
         # user-supplied components — they are added by the auto-extension below
@@ -291,6 +295,62 @@ class ScenarioConfig:
         object.__setattr__(self, "guard_components_extended", _extend(self.guard_components))
         object.__setattr__(self, "bandit_components_extended", _extend(self.bandit_components))
 
+        # Auto-extend with APPLIED_DV for any spatial-frame scenario so that
+        # env.step's translational-dynamics block always has an applied_dv field
+        # to consume, regardless of whether an ImpulsiveManeuver component is wired.
+        _spatial_keys = (StateComponentKey.RT, StateComponentKey.RTN, StateComponentKey.ECI)
+
+        def _ensure_applied_dv(
+            extended: tuple[StateComponentKey, ...],
+        ) -> tuple[StateComponentKey, ...]:
+            if (
+                any(k in extended for k in _spatial_keys)
+                and StateComponentKey.APPLIED_DV not in extended
+            ):
+                return extended + (StateComponentKey.APPLIED_DV,)
+            return extended
+
+        object.__setattr__(
+            self,
+            "guard_components_extended",
+            _ensure_applied_dv(self.guard_components_extended),
+        )
+        object.__setattr__(
+            self,
+            "bandit_components_extended",
+            _ensure_applied_dv(self.bandit_components_extended),
+        )
+
+        # Validate attitude wiring before auto-extending — validation reads
+        # the user-supplied components (not the extended tuples).
+        self._validate_attitude_config()
+
+        # Auto-extend with APPLIED_TORQUE when a side has both ATTITUDE and
+        # BODY_RATES, so env.step's attitude-dynamics block always has an
+        # applied_torque field to consume, regardless of whether an
+        # AttitudeControl component is wired.
+        def _ensure_applied_torque(
+            extended: tuple[StateComponentKey, ...],
+        ) -> tuple[StateComponentKey, ...]:
+            if (
+                StateComponentKey.ATTITUDE in extended
+                and StateComponentKey.BODY_RATES in extended
+                and StateComponentKey.APPLIED_TORQUE not in extended
+            ):
+                return extended + (StateComponentKey.APPLIED_TORQUE,)
+            return extended
+
+        object.__setattr__(
+            self,
+            "guard_components_extended",
+            _ensure_applied_torque(self.guard_components_extended),
+        )
+        object.__setattr__(
+            self,
+            "bandit_components_extended",
+            _ensure_applied_torque(self.bandit_components_extended),
+        )
+
         # Build the canonical StateLayout once. It is derived purely from
         # n_guards/n_bandits/components, so it's always the same regardless
         # of which obs/reward/policy the user wires in. Custom observation
@@ -349,6 +409,64 @@ class ScenarioConfig:
             from orbital_game.policies import ZeroControl
 
             object.__setattr__(self, "bandit_policy", ZeroControl())
+
+    def _validate_attitude_config(self) -> None:
+        """Fail-fast checks for attitude wiring. No silent defaulting."""
+        has_attitude_g = StateComponentKey.ATTITUDE in self.guard_components
+        has_attitude_b = StateComponentKey.ATTITUDE in self.bandit_components
+        has_rates_g = StateComponentKey.BODY_RATES in self.guard_components
+        has_rates_b = StateComponentKey.BODY_RATES in self.bandit_components
+
+        if has_attitude_g != has_rates_g:
+            raise ValueError(
+                "guard_components: ATTITUDE and BODY_RATES must appear together "
+                f"or both be absent, got attitude={has_attitude_g}, body_rates={has_rates_g}"
+            )
+        if has_attitude_b != has_rates_b:
+            raise ValueError(
+                "bandit_components: ATTITUDE and BODY_RATES must appear together "
+                f"or both be absent, got attitude={has_attitude_b}, body_rates={has_rates_b}"
+            )
+
+        side_has_attitude = (has_attitude_g and has_rates_g) or (has_attitude_b and has_rates_b)
+
+        if side_has_attitude and self.attitude_dynamics_key is None:
+            raise ValueError(
+                "ATTITUDE/BODY_RATES components present but attitude_dynamics_key "
+                "is None — set attitude_dynamics_key=AttitudeDynamicsKey.RIGID_BODY"
+            )
+        if self.attitude_dynamics_key is not None and not side_has_attitude:
+            raise ValueError(
+                "attitude_dynamics_key is set but neither side has ATTITUDE+BODY_RATES "
+                "components — add them or unset attitude_dynamics_key"
+            )
+
+        if self.attitude_dynamics_key is not None:
+            if has_attitude_g and self.guard_attitude_params is None:
+                raise ValueError(
+                    "guard_attitude_params is None but guards have ATTITUDE+BODY_RATES; "
+                    "supply AttitudeParams(inertia_diag=..., omega_max=...)"
+                )
+            if has_attitude_b and self.bandit_attitude_params is None:
+                raise ValueError(
+                    "bandit_attitude_params is None but bandits have ATTITUDE+BODY_RATES; "
+                    "supply AttitudeParams(inertia_diag=..., omega_max=...)"
+                )
+
+        if ActionComponentKey.ATTITUDE_CONTROL in self.guard_action_components and not (
+            has_attitude_g and has_rates_g
+        ):
+            raise ValueError(
+                "guard_action_components contains ATTITUDE_CONTROL but guards lack "
+                "ATTITUDE+BODY_RATES state components"
+            )
+        if ActionComponentKey.ATTITUDE_CONTROL in self.bandit_action_components and not (
+            has_attitude_b and has_rates_b
+        ):
+            raise ValueError(
+                "bandit_action_components contains ATTITUDE_CONTROL but bandits lack "
+                "ATTITUDE+BODY_RATES state components"
+            )
 
     def to_json(self) -> str:
         return json.dumps(_config_to_primitive(self), sort_keys=True)
@@ -515,6 +633,16 @@ def _config_to_primitive(cfg: ScenarioConfig) -> dict[str, Any]:
             d[f.name] = asdict(v)
         elif isinstance(v, ICSpec):
             d[f.name] = _ic_spec_to_primitive(v)
+        elif f.name in ("guard_attitude_params", "bandit_attitude_params"):
+            if v is None:
+                d[f.name] = None
+            else:
+                # AttitudeParams is a flax.struct.dataclass; serialise as a dict
+                # of plain Python floats so JSON round-trips cleanly.
+                d[f.name] = {
+                    "inertia_diag": [float(x) for x in v.inertia_diag],
+                    "omega_max": [float(x) for x in v.omega_max],
+                }
         elif f.name in _TYPED_INSTANCE_FIELDS:
             if v is None:
                 d[f.name] = None
@@ -533,6 +661,41 @@ def _config_to_primitive(cfg: ScenarioConfig) -> dict[str, Any]:
         else:
             d[f.name] = v
     return d
+
+
+def _reference_orbit_from_primitive(v: dict[str, Any]) -> ReferenceOrbitState:
+    """Build a ReferenceOrbitState from a JSON-loaded primitive dict.
+
+    Two forms are accepted:
+
+    - **Cartesian** (canonical): ``{"position_eci": [x,y,z], "velocity_eci": [vx,vy,vz]}``.
+      This is the form emitted by ``to_json``.
+    - **Keplerian**: ``{"keplerian": {"semi_major_axis_m": ..., "eccentricity": ...,
+      "inclination": ..., "raan": ..., "argument_of_perigee": ..., "mean_anomaly": ...,
+      "as_degrees": True}}``. ``as_degrees`` is optional and defaults to ``True``.
+
+    Specifying both forms in the same block raises ``ValueError``; an empty or
+    unrecognized block also raises ``ValueError``.
+    """
+    has_cartesian = "position_eci" in v or "velocity_eci" in v
+    has_keplerian = "keplerian" in v
+    if has_cartesian and has_keplerian:
+        raise ValueError(
+            "reference_orbit JSON block must specify either Cartesian "
+            "(position_eci/velocity_eci) OR keplerian, not both."
+        )
+    if has_cartesian:
+        return ReferenceOrbitState(
+            position_eci=jnp.asarray(v["position_eci"]),
+            velocity_eci=jnp.asarray(v["velocity_eci"]),
+        )
+    if has_keplerian:
+        return ReferenceOrbitState.from_keplerian(**v["keplerian"])
+    raise ValueError(
+        "reference_orbit JSON block must contain either "
+        "{'position_eci', 'velocity_eci'} or {'keplerian': {...}}; "
+        f"got keys {sorted(v.keys())!r}."
+    )
 
 
 def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> ScenarioConfig:
@@ -555,14 +718,31 @@ def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> Scen
                 continue
             kwargs[f.name] = _ENUM_FIELDS[f.name](v)
         elif f.name == "reference_orbit":
-            kwargs[f.name] = ReferenceOrbitState(
-                position_eci=jnp.asarray(v["position_eci"]),
-                velocity_eci=jnp.asarray(v["velocity_eci"]),
-            )
+            kwargs[f.name] = _reference_orbit_from_primitive(v)
         elif f.name in ("guard_params", "bandit_params"):
             kwargs[f.name] = VehicleParamsSpec(**v)
         elif f.name == "ic_sampler":
             kwargs[f.name] = _ic_spec_from_primitive(v)
+        elif f.name == "attitude_dynamics_key":
+            if v is None:
+                pass  # leave absent; __post_init__ handles None
+            else:
+                kwargs[f.name] = AttitudeDynamicsKey(v)
+        elif f.name == "attitude_control_torque_max":
+            if v is None:
+                pass
+            else:
+                kwargs[f.name] = tuple(float(x) for x in v)
+        elif f.name in ("guard_attitude_params", "bandit_attitude_params"):
+            if v is None:
+                pass  # leave absent; __post_init__ validates None is allowed
+            else:
+                from orbital_game.dynamics.attitude import AttitudeParams
+
+                kwargs[f.name] = AttitudeParams(
+                    inertia_diag=jnp.asarray(v["inertia_diag"], dtype=jnp.float32),
+                    omega_max=jnp.asarray(v["omega_max"], dtype=jnp.float32),
+                )
         elif f.name in _TYPED_INSTANCE_FIELDS:
             if v is None:
                 # Leave absent so __post_init__ supplies the default instance.

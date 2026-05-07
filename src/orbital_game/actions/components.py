@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -49,18 +49,21 @@ class ActionComponent(Protocol):
         ref_eci6: jax.Array,
         key: jax.Array,
     ) -> Any:
-        """Return the post-component side_state. May invoke dynamics."""
+        """Return the post-component side_state. Must not invoke any dynamics
+        — translational and attitude propagation are both owned by env.step."""
         ...
 
 
 @dataclass(frozen=True)
 class ImpulsiveManeuver:
-    """Impulsive Δv applied at the start of the step + truth-dynamics propagation.
+    """Impulsive Δv producer.
 
-    Applies an impulsive Δv (with optional propellant tracking via the rocket
-    equation) and then invokes `truth_dynamics` to propagate the side state
-    through `dt`. After this component runs, the side's truth-frame state
-    field has been updated and propellant has been deducted.
+    Reads ``command.dv`` (in ``action_frame``), converts to ``truth_frame``,
+    optionally deducts propellant via the rocket equation, and writes the
+    result onto ``side_state.applied_dv`` (always width 3, zero-padded for RT).
+
+    Does NOT integrate the dynamics — ``env.step`` owns the translational
+    dynamics call (see the explicit propagation block in ``OrbitalGameEnv.step``).
 
     The Δv field shape follows ``action_frame.dim`` — 2 for RT (radial,
     along-track) and 3 for RTN/ECI. ``fields()`` and ``zeros()`` are instance
@@ -69,13 +72,11 @@ class ImpulsiveManeuver:
     *instances* so it can read this.
 
     Init knobs (env wires these from ScenarioConfig):
-        truth_dynamics: the step function (signature: state6, dv, params, dt -> state6')
-        action_frame:   frame the policy emits Δv in
-        truth_frame:    frame `truth_dynamics` integrates in
-        track_mass:     whether to deduct propellant via the rocket equation
+        action_frame: frame the policy emits Δv in
+        truth_frame:  frame the truth dynamics integrates in
+        track_mass:   whether to deduct propellant via the rocket equation
     """
 
-    truth_dynamics: Callable
     action_frame: Frame
     truth_frame: Frame
     track_mass: bool = True
@@ -95,24 +96,27 @@ class ImpulsiveManeuver:
         ref_eci6: jax.Array,
         key: jax.Array,
     ) -> Any:
-        del key  # impulsive maneuver is deterministic
-        dv_action = command.dv
+        del key, dt  # impulsive maneuver is deterministic; dt consumed by env.step
+        dv_action = command.dv  # (n, action_frame.dim)
 
+        # Frame conversion: rotate Δv from action frame to truth frame.
         dv_truth = convert_action(dv_action, self.action_frame, self.truth_frame, ref_eci6)
 
-        truth_field = self.truth_frame.value  # "rt" / "rtn" / "eci"
-        truth_arr = getattr(side_state, truth_field)
-        new_truth = self.truth_dynamics(truth_arr, dv_truth, side_params, dt)
-        new_state = side_state.replace(**{truth_field: new_truth})
+        # Pad to width 3 (RT produces 2-D, RTN/ECI produce 3-D).
+        pad_width = 3 - self.truth_frame.dim  # 0 for RTN/ECI, 1 for RT
+        dv_padded = jnp.pad(dv_truth, ((0, 0), (0, pad_width)))
+
+        replacements: dict[str, Any] = {"applied_dv": dv_padded}
 
         if self.track_mass:
             dv_mag = jnp.linalg.norm(dv_action, axis=-1)
             wet_mass = side_params.dry_mass_kg + side_state.propellant_mass
             delta_propellant = wet_mass * (1.0 - jnp.exp(-dv_mag / (side_params.isp_s * G0)))
-            new_state = new_state.replace(
-                propellant_mass=jnp.maximum(new_state.propellant_mass - delta_propellant, 0.0)
+            replacements["propellant_mass"] = jnp.maximum(
+                side_state.propellant_mass - delta_propellant, 0.0
             )
-        return new_state
+
+        return side_state.replace(**replacements)
 
 
 @dataclass(frozen=True)
@@ -153,3 +157,55 @@ class Communicate:
     ) -> Any:
         del command, side_params, dt, ref_eci6, key
         return side_state
+
+
+@dataclass(frozen=True)
+class AttitudeControl:
+    """Torque-commanding attitude control.
+
+    Reads command.torque (length rotation_dim — 1 in RT, 3 in RTN), lifts to a
+    3-vector in 2D (zero x,y), optionally clips per-axis to ±torque_max, writes
+    the result onto side_state.applied_torque.
+
+    Does NOT integrate dynamics — env.step invokes rigid_body_attitude_step
+    after the action fold. Mirror of the unified action↔dynamics pattern set
+    by ImpulsiveManeuver: action produces, env consumes.
+    """
+
+    rotation_dim: int  # 1 (RT) or 3 (RTN)
+    torque_max: tuple[float, ...] | None = None  # per-axis actuator clip (length 3)
+
+    def fields(self) -> Mapping[str, tuple[int, ...]]:
+        return {"torque": (self.rotation_dim,)}
+
+    def zeros(self, n: int) -> Mapping[str, jax.Array]:
+        return {"torque": jnp.zeros((n, self.rotation_dim), dtype=jnp.float32)}
+
+    def apply(
+        self,
+        command: Any,
+        side_state: Any,
+        side_params: Any,
+        dt: float,
+        ref_eci6: jax.Array,
+        key: jax.Array,
+    ) -> Any:
+        del side_params, dt, ref_eci6, key
+        tau = command.torque  # (n, rotation_dim)
+
+        if self.rotation_dim == 1:
+            # 2D: rotation only about body z (N axis). Lift to (n, 3) with [0, 0, τz].
+            n = tau.shape[0]
+            tau_3d = jnp.concatenate([jnp.zeros((n, 2), dtype=tau.dtype), tau], axis=1)
+        elif self.rotation_dim == 3:
+            tau_3d = tau
+        else:
+            raise ValueError(
+                f"AttitudeControl: rotation_dim must be 1 or 3, got {self.rotation_dim}"
+            )
+
+        if self.torque_max is not None:
+            tmax = jnp.asarray(self.torque_max, dtype=tau_3d.dtype)
+            tau_3d = jnp.clip(tau_3d, -tmax, tmax)
+
+        return side_state.replace(applied_torque=tau_3d)

@@ -87,8 +87,56 @@ shape.
 The Power component is illustrative — it is not part of the merged
 library. The point is the pattern: a frozen dataclass + the
 assembler hook + a sampler + a dynamics-side update + an optional
-viz hook. Apply the same template to attitude state, sensor health,
-or anything else you want side-states to carry.
+viz hook. Apply the same template to sensor health or any other
+per-vehicle quantity you want side-states to carry.
+
+## Attitude-related components
+
+Two state components track rigid-body rotation:
+
+- **`Attitude`** — quaternion `(n, 4)` in wxyz convention. Initialized to
+  the identity quaternion `(1, 0, 0, 0)`. Represents body-to-reference
+  rotation.
+- **`BodyRates`** — body-frame angular rate `(n, 3)` in rad/s. Zero-initialized.
+
+Add them to `guard_components` or `bandit_components` together (they must
+appear as a pair; having one without the other raises in `__post_init__`):
+
+```python
+from orbital_game.registry import StateComponentKey
+
+guard_components=(
+    StateComponentKey.RTN,
+    StateComponentKey.MASS,
+    StateComponentKey.ATTITUDE,
+    StateComponentKey.BODY_RATES,
+)
+```
+
+## Transient control components
+
+Two additional components carry "control input for this tick" from action
+components to the dynamics block. Both are **auto-extended** onto the per-side
+components by `ScenarioConfig.__post_init__` — users do not list them
+explicitly:
+
+- **`AppliedDV`** — translational Δv `(n, 3)` in m/s (truth frame). Added
+  automatically whenever the side has any spatial component (`RT`, `RTN`, or
+  `ECI`). Written by `ImpulsiveManeuver.apply`; read and zeroed by
+  `env.step`'s translational dynamics block.
+- **`AppliedTorque`** — body-frame torque `(n, 3)` in N·m. Added
+  automatically whenever the side has both `ATTITUDE` and `BODY_RATES`.
+  Written by `AttitudeControl.apply`; read and zeroed by `env.step`'s
+  attitude dynamics block.
+
+Both are zeroed each step after dynamics consumes them, so they always read
+zero outside the dynamics block. They appear in the flat state layout (since
+the flat layout covers the full assembled pytree) but are not meaningful as
+persistent quantities — treat them as implementation detail of the
+action-to-dynamics handoff.
+
+`AppliedDV` is always width 3 for shape uniformity. The dynamics block slices
+`[:, :2]` for `Frame.RT` and `[:, :3]` for `RTN`/`ECI`.
 
 ## Where to next
 

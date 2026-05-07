@@ -5,22 +5,29 @@ returned artist is non-None and added to the axes. The visual correctness
 is verified by exercising the helpers from the animation tests.
 """
 
+import math
+
 import matplotlib
 
 matplotlib.use("Agg")
 
+import jax.numpy as jnp  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
+from matplotlib.patches import Wedge  # noqa: E402
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # noqa: E402
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection as _Poly3DCollection  # noqa: E402
 
 from orbital_game.viz.glyphs import (  # noqa: E402
     draw_belief_ellipse_2d,
     draw_belief_ellipsoid,
     draw_body_axes,
     draw_circle,
+    draw_cone_3d,
     draw_cube,
     draw_sphere,
     draw_thrust_arrow,
+    draw_wedge_2d,
     quat_to_rotation_matrix,
 )
 
@@ -119,3 +126,30 @@ def test_quat_to_rotation_matrix_normalizes():
 def test_quat_to_rotation_matrix_zero_returns_identity():
     R = quat_to_rotation_matrix(np.zeros(4))  # noqa: N806
     np.testing.assert_allclose(R, np.eye(3), atol=1e-10)
+
+
+def test_draw_wedge_2d_returns_wedge_patch():
+    fig, ax = plt.subplots()
+    patch = draw_wedge_2d(
+        ax,
+        apex=jnp.array([0.0, 0.0], dtype=jnp.float32),
+        axis_xy=jnp.array([1.0, 0.0], dtype=jnp.float32),
+        half_angle_rad=math.radians(30.0),
+        length=10.0,
+    )
+    assert isinstance(patch, Wedge)
+    plt.close(fig)
+
+
+def test_draw_cone_3d_returns_poly3d_collection():
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+    coll = draw_cone_3d(
+        ax,
+        apex=jnp.zeros(3, dtype=jnp.float32),
+        axis=jnp.array([1.0, 0.0, 0.0], dtype=jnp.float32),
+        half_angle_rad=math.radians(30.0),
+        length=10.0,
+    )
+    assert isinstance(coll, _Poly3DCollection)
+    plt.close(fig)
