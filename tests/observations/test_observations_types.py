@@ -58,3 +58,29 @@ def test_flatten_observations_empty_tuple_raises():
 
     with pytest.raises(ValueError, match="at least one channel"):
         flatten_observations(())
+
+
+def test_observation_has_visibility_score_fn_field_defaulting_to_none():
+    """Observation gains an optional visibility_score_fn field for PF
+    negative-information updates. Default None preserves backward compatibility."""
+    o = Observation(
+        obs=jnp.zeros((1, 1, 2)),
+        visible=jnp.array([[True]]),
+        obs_matrix=jnp.eye(2),
+        obs_noise=jnp.eye(2),
+    )
+    assert o.visibility_score_fn is None
+
+
+def test_observation_accepts_visibility_score_fn():
+    def score(particles):
+        return jnp.zeros(particles.shape[:-1])
+
+    o = Observation(
+        obs=jnp.zeros((1, 1, 2)),
+        visible=jnp.array([[True]]),
+        obs_matrix=jnp.eye(2),
+        obs_noise=jnp.eye(2),
+        visibility_score_fn=score,
+    )
+    assert o.visibility_score_fn is score

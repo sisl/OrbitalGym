@@ -102,3 +102,42 @@ def test_range_limited_obs_at_in_range_pair_equals_target_position_when_no_noise
     ch = out[0]
 
     assert jnp.allclose(ch.obs[0, 1], jnp.array([50.0, 30.0, 10.0]))
+
+
+def test_range_limited_attaches_visibility_score_fn():
+    """RangeLimitedObservation must attach a closure that returns
+    sensor_range_m - distance for each particle relative to its observer."""
+    n_guards = 1
+    n_bandits = 1
+    d = 6
+    layout = _Layout(n_guards=n_guards, n_bandits=n_bandits, d=d)
+    # Guard at origin, bandit at (5000, 0, 0) — out of range (irrelevant for
+    # the score-fn check below, but matches the spec's geometry).
+    guards_rtn = jnp.zeros((n_guards, d))
+    bandits_rtn = jnp.zeros((n_bandits, d))
+    bandits_rtn = bandits_rtn.at[0, :3].set(jnp.array([5000.0, 0.0, 0.0]))
+    env = _Env(guards_rtn=guards_rtn, bandits_rtn=bandits_rtn)
+
+    sensor = RangeLimitedObservation(layout=layout, sensor_range_m=1000.0, sigma_range=1.0)
+    (channel,) = sensor(
+        env_state=env,
+        actions=None,
+        side=Side.GUARD,
+        params=None,
+        key=jax.random.PRNGKey(0),
+        t=jnp.array(0.0),
+    )
+
+    assert channel.visibility_score_fn is not None
+
+    # Particles tensor shape: (N_obs=1, N_total=2, K=1, d=6).
+    # Index 0 in the target axis is the self-pair (guard observing guard).
+    # Index 1 is the cross-pair (guard observing bandit).
+    particles = jnp.zeros((1, 2, 1, d))
+    particles = particles.at[0, 1, 0, :3].set(jnp.array([1500.0, 0.0, 0.0]))
+    scores = channel.visibility_score_fn(particles)
+    assert scores.shape == (1, 2, 1)
+    # Bandit-pair particle at distance 1500 m -> score = 1000 - 1500 = -500.
+    assert jnp.allclose(scores[0, 1, 0], -500.0, atol=1e-6)
+    # Self-pair particle at origin -> score = 1000 - 0 = +1000.
+    assert jnp.allclose(scores[0, 0, 0], 1000.0, atol=1e-6)

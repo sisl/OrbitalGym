@@ -53,7 +53,7 @@ Updater pipeline per step:
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import flax.struct
@@ -62,8 +62,15 @@ import jax.numpy as jnp
 
 from orbital_game.belief._common import _truth_arrays_for_side
 from orbital_game.env.types import Side
+from orbital_game.observations.negative_info import Hard, NegativeInfoMode, Off, Soft
 from orbital_game.observations.types import Observation
 from orbital_game.registry import BeliefInitializerKey, BeliefUpdaterKey, register
+
+# log(1e-12) — used as the "crushing" log-weight in Hard mode (and as a
+# floor in Soft mode if the score is large enough to saturate). Finite
+# (≈ -27.6) so resampling's softmax+cumsum can't produce NaN even on a
+# fully saturated cloud.
+LOG_EPS = float(jnp.log(jnp.asarray(1e-12)))
 
 
 @flax.struct.dataclass
@@ -147,6 +154,7 @@ class ParticleFilterBeliefUpdater:
     dt: float
     n_eff_threshold: float = 0.5
     resample_jitter_scale: float = 0.0
+    negative_info: NegativeInfoMode = field(default_factory=Off)
 
     def __call__(
         self,
@@ -157,6 +165,27 @@ class ParticleFilterBeliefUpdater:
         key: jax.Array,
     ) -> ParticleFilterBelief:
         del side
+        # ---- VALIDATE negative-info config against observation channels ----
+        if not isinstance(self.negative_info, Off):
+            gated_indices = [
+                i for i, ch in enumerate(observations) if ch.visibility_score_fn is not None
+            ]
+            if not gated_indices:
+                raise ValueError(
+                    f"negative_info={type(self.negative_info).__name__}() requires at least one "
+                    "observation channel with a visibility_score_fn, but no observation channel "
+                    "supplied one. Either switch to Off() or use a gated sensor "
+                    "(RangeLimitedObservation, ConicalObservation)."
+                )
+        if isinstance(self.negative_info, Soft):
+            n_chan = len(observations)
+            n_soft = len(self.negative_info.softness_per_channel)
+            if n_soft != n_chan:
+                raise ValueError(
+                    f"Soft.softness_per_channel has {n_soft} entries but {n_chan} observation "
+                    "channels were supplied. Provide one positive softness per channel "
+                    "(non-gated channel entries are ignored but required for positional alignment)."
+                )
         n_obs, n_total, k_particles, d = belief.particles.shape
 
         k_predict, k_update, k_resample = jax.random.split(key, 3)
@@ -185,8 +214,8 @@ class ParticleFilterBeliefUpdater:
 
         # ---- UPDATE (sequential per channel) ----
         log_w = belief.log_weights
-        for ch in observations:
-            log_w = self._apply_channel(predicted, log_w, ch)
+        for i, ch in enumerate(observations):
+            log_w = self._apply_channel(predicted, log_w, ch, i)
 
         # Normalize once after folding all channels.
         log_w = jax.nn.log_softmax(log_w, axis=-1)
@@ -220,6 +249,7 @@ class ParticleFilterBeliefUpdater:
         particles: jax.Array,  # (N_obs, N_total, K, d)
         log_w: jax.Array,  # (N_obs, N_total, K)
         ch: Observation,
+        channel_index: int,
     ) -> jax.Array:
         if ch.obs_fn is None:
             H = ch.obs_matrix  # noqa: N806
@@ -236,14 +266,28 @@ class ParticleFilterBeliefUpdater:
 
             base = lik_one_nonlinear
 
-        # vmap over particle (K), then target (N_total), then observer (N_obs).
         per_particle = jax.vmap(base, in_axes=(0, None))
         per_target = jax.vmap(per_particle, in_axes=(0, 0))
         per_observer = jax.vmap(per_target, in_axes=(0, 0))
         log_lik = per_observer(particles, ch.obs)  # (N_obs, N_total, K)
 
-        visible = ch.visible[:, :, None]  # (N_obs, N_total, 1)
-        return jnp.where(visible, log_w + log_lik, log_w)
+        # Negative-information branch (only when channel is gated and mode != Off).
+        if ch.visibility_score_fn is None or isinstance(self.negative_info, Off):
+            log_p_no_detect = jnp.zeros_like(log_w)
+        else:
+            score = ch.visibility_score_fn(particles)  # (N_obs, N_total, K)
+            if isinstance(self.negative_info, Hard):
+                log_p_no_detect = jnp.where(score > 0, LOG_EPS, 0.0)
+            elif isinstance(self.negative_info, Soft):
+                softness = self.negative_info.softness_per_channel[channel_index]
+                log_p_no_detect = jax.nn.log_sigmoid(-score / softness)
+            else:
+                raise TypeError(
+                    f"Unsupported NegativeInfoMode: {type(self.negative_info).__name__}"
+                )
+
+        visible = ch.visible[:, :, None]
+        return jnp.where(visible, log_w + log_lik, log_w + log_p_no_detect)
 
     def _apply_resample(
         self,

@@ -152,7 +152,38 @@ class ConicalObservation:
         # near-perfect measurements instead of treating them as unit-noise.
         sigma_sq = self.sigma**2 if self.sigma > 0 else 1e-12
         R_mat = jnp.eye(m, dtype=dtype) * jnp.asarray(sigma_sq, dtype=dtype)  # noqa: N806
-        return (Observation(obs=obs, visible=visible, obs_matrix=H, obs_noise=R_mat),)
+
+        # Closure for negative-information updates: signed-distance score
+        # in radians to the *best-margin* sensor cone. Closes over the
+        # rotated boresights, observer positions, and per-sensor half-angles.
+        boresights_world = b_world  # (n_self, k, 3)
+        observer_pos_3d = observer_pos  # (n_self, 3) — already padded to 3D above
+
+        def visibility_score_fn(particles: jax.Array) -> jax.Array:
+            # particles: (N_obs, N_total, K, d)
+            particle_pos = particles[..., :pos_dim]
+            if pos_dim == 2:
+                pad_shape = particle_pos.shape[:-1] + (1,)
+                particle_pos = jnp.concatenate(
+                    [particle_pos, jnp.zeros(pad_shape, dtype=particle_pos.dtype)], axis=-1
+                )
+            diff = particle_pos - observer_pos_3d[:, None, None, :]  # (N_obs, N_total, K, 3)
+            dist = jnp.linalg.norm(diff, axis=-1, keepdims=True)
+            los = diff / jnp.maximum(dist, jnp.asarray(1e-12, dtype=dtype))
+            cos_theta = jnp.einsum("osi,otki->ostk", boresights_world, los)
+            angle = jnp.arccos(jnp.clip(cos_theta, -1.0, 1.0))
+            score_per_sensor = half_angles[None, :, None, None] - angle
+            return jnp.max(score_per_sensor, axis=1)
+
+        return (
+            Observation(
+                obs=obs,
+                visible=visible,
+                obs_matrix=H,
+                obs_noise=R_mat,
+                visibility_score_fn=visibility_score_fn,
+            ),
+        )
 
     @staticmethod
     def _read_own_quat(env_state, side):

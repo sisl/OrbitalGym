@@ -54,4 +54,25 @@ class RangeLimitedObservation:
 
         H = jnp.eye(m, d)  # noqa: N806
         R = jnp.eye(m) * self.sigma_range**2 if self.sigma_range > 0 else jnp.eye(m)  # noqa: N806
-        return (Observation(obs=obs, visible=visible, obs_matrix=H, obs_noise=R),)
+
+        # Closure for negative-information updates: signed-distance score
+        # to the range gate, in meters. Closes over observer_pos so the
+        # PF only needs to pass the particle tensor.
+        sensor_range_m = self.sensor_range_m
+
+        def visibility_score_fn(particles: jax.Array) -> jax.Array:
+            # particles: (N_obs, N_total, K, d)
+            particle_pos = particles[..., :3]
+            diff = particle_pos - observer_pos[:, None, None, :]
+            distance = jnp.linalg.norm(diff, axis=-1)
+            return sensor_range_m - distance
+
+        return (
+            Observation(
+                obs=obs,
+                visible=visible,
+                obs_matrix=H,
+                obs_noise=R,
+                visibility_score_fn=visibility_score_fn,
+            ),
+        )

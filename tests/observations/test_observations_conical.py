@@ -353,6 +353,155 @@ def test_dtype_preserved_float64_sigma_zero():
     assert jnp.allclose(obs.obs_noise, expected_r, atol=0.0, rtol=0.0)
 
 
+def test_conical_attaches_visibility_score_fn():
+    """ConicalObservation must attach a closure returning
+    max_s (half_angle_s - angle_s_to_particle) per (observer, target, particle)."""
+    layout = _layout_rtn()
+    half = jnp.float32(0.5)  # ~28.6 degrees
+    obs_fn = ConicalObservation(
+        layout=layout,
+        sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float32),
+        half_angle_rad=half,
+        sigma=1.0,
+    )
+    env_state = _state_rtn(
+        jnp.zeros((1, 3), dtype=jnp.float32),
+        jnp.array([[10.0, 0.0, 0.0]], dtype=jnp.float32),
+    )
+    out = obs_fn(
+        env_state,
+        None,
+        Side.GUARD,
+        None,
+        jax.random.PRNGKey(0),
+        jnp.asarray(0.0, dtype=jnp.float32),
+    )
+    channel = out[0]
+    assert channel.visibility_score_fn is not None
+
+    # Particle directly along +x at any distance → angle = 0 → score = +half.
+    particles_on_boresight = jnp.array(
+        [
+            [
+                [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],  # self-pair (irrelevant)
+                [[100.0, 0.0, 0.0, 0.0, 0.0, 0.0]],  # cross-pair on boresight
+            ]
+        ],
+        dtype=jnp.float32,
+    )  # (N_obs=1, N_total=2, K=1, d=6)
+    scores_on = channel.visibility_score_fn(particles_on_boresight)
+    assert scores_on.shape == (1, 2, 1)
+    assert float(scores_on[0, 1, 0]) > 0.0  # cross-pair particle inside cone
+    assert jnp.isclose(scores_on[0, 1, 0], half, atol=1e-5)
+
+    # Particle perpendicular (along +y) → angle = pi/2 → score = half - pi/2.
+    particles_perp = jnp.array(
+        [
+            [
+                [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
+                [[0.0, 100.0, 0.0, 0.0, 0.0, 0.0]],  # cross-pair perpendicular
+            ]
+        ],
+        dtype=jnp.float32,
+    )
+    scores_perp = channel.visibility_score_fn(particles_perp)
+    assert float(scores_perp[0, 1, 0]) < 0.0  # cross-pair particle outside cone
+    assert jnp.isclose(scores_perp[0, 1, 0], half - jnp.float32(jnp.pi / 2), atol=1e-5)
+
+
+def test_conical_visibility_score_fn_rt_layout():
+    """Closure must work with RT (d=4) layout — pos_dim=2 zero-pad path."""
+    layout = _layout_rt()
+    half = jnp.float32(0.5)
+    obs_fn = ConicalObservation(
+        layout=layout,
+        sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float32),
+        half_angle_rad=half,
+        sigma=1.0,
+    )
+    own = jnp.array([[0.0, 0.0, 0.0, 0.0]], dtype=jnp.float32)
+    opp = jnp.array([[10.0, 0.0, 0.0, 0.0]], dtype=jnp.float32)
+    env_state = _state_rt(own, opp)
+    out = obs_fn(
+        env_state,
+        None,
+        Side.GUARD,
+        None,
+        jax.random.PRNGKey(0),
+        jnp.asarray(0.0, dtype=jnp.float32),
+    )
+    channel = out[0]
+    assert channel.visibility_score_fn is not None
+
+    # Particle on boresight (+x) — d=4 (RT layout).
+    particles_on = jnp.array(
+        [
+            [
+                [[0.0, 0.0, 0.0, 0.0]],
+                [[50.0, 0.0, 0.0, 0.0]],
+            ]
+        ],
+        dtype=jnp.float32,
+    )
+    scores_on = channel.visibility_score_fn(particles_on)
+    assert scores_on.shape == (1, 2, 1)
+    assert float(scores_on[0, 1, 0]) > 0.0
+    assert jnp.isclose(scores_on[0, 1, 0], half, atol=1e-5)
+
+    particles_perp = jnp.array(
+        [
+            [
+                [[0.0, 0.0, 0.0, 0.0]],
+                [[0.0, 50.0, 0.0, 0.0]],
+            ]
+        ],
+        dtype=jnp.float32,
+    )
+    scores_perp = channel.visibility_score_fn(particles_perp)
+    assert float(scores_perp[0, 1, 0]) < 0.0
+
+
+def test_conical_visibility_score_fn_max_over_sensors():
+    """With opposing boresights ±x, score is max — particle on +x is positive,
+    particle on +y is negative for both sensors."""
+    layout = _layout_rtn()
+    half = jnp.float32(0.5)
+    obs_fn = ConicalObservation(
+        layout=layout,
+        sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]], dtype=jnp.float32),
+        half_angle_rad=half,
+        sigma=1.0,
+    )
+    env_state = _state_rtn(
+        jnp.zeros((1, 3), dtype=jnp.float32),
+        jnp.array([[10.0, 0.0, 0.0]], dtype=jnp.float32),
+    )
+    out = obs_fn(
+        env_state,
+        None,
+        Side.GUARD,
+        None,
+        jax.random.PRNGKey(0),
+        jnp.asarray(0.0, dtype=jnp.float32),
+    )
+    channel = out[0]
+    assert channel.visibility_score_fn is not None
+
+    # Particle on -x boresight: covered by sensor 1 (best margin = +half).
+    particles_neg_x = jnp.array(
+        [
+            [
+                [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
+                [[-100.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
+            ]
+        ],
+        dtype=jnp.float32,
+    )
+    scores = channel.visibility_score_fn(particles_neg_x)
+    assert float(scores[0, 1, 0]) > 0.0
+    assert jnp.isclose(scores[0, 1, 0], half, atol=1e-5)
+
+
 def test_rotated_attitude_changes_visibility():
     """Same target, rotate observer 180° about z: in-cone → out-of-cone."""
     layout = _layout_rtn()

@@ -31,6 +31,13 @@ class Observation:
     the EKF updater computes H = jax.jacfwd(obs_fn)(predicted_mean) per pair
     and uses obs_fn directly for the innovation. The KF updater rejects
     channels with obs_fn set.
+
+    `visibility_score_fn` (optional): closure
+    `(particles: (N_obs, N_total, K, d)) -> (N_obs, N_total, K)` returning
+    a signed-distance score to the channel's visibility boundary in
+    native units — positive inside, negative outside. Consumed by the
+    particle filter for negative-information updates on non-detections.
+    Non-gated channels (e.g. GPS) leave it None.
     """
 
     obs: jax.Array
@@ -38,6 +45,7 @@ class Observation:
     obs_matrix: jax.Array
     obs_noise: jax.Array
     obs_fn: Callable | None = flax.struct.field(default=None, pytree_node=False)
+    visibility_score_fn: Callable | None = flax.struct.field(default=None, pytree_node=False)
 
 
 def flatten_observations(channels: tuple[Observation, ...]) -> jax.Array:
