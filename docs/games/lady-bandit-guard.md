@@ -140,3 +140,23 @@ Sensible gallery picks for Lady-Bandit-Guard:
 - **Tutorial:** [T1 — First rollout](../tutorials/t1-first-rollout.md).
 - **API:** [`LadyBanditGuard`](../api/games.md).
 - **In depth:** [Symmetric core](../in-depth/symmetric-core.md), [State layout](../in-depth/state-layout.md).
+
+## Ground-station extension
+
+LBG can be extended with ground-station-gated communications. In this
+mode, one (or both) sides only update their plans during contact
+windows; the rest of the time they execute the most recently uplinked
+plan open-loop. This models real space-domain operational constraints
+where vehicles can't update from belief continuously.
+
+The example notebook
+[`examples/lbg_groundstations_delayed_planning.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/lbg_groundstations_delayed_planning.ipynb)
+demonstrates a 2-guard / 1-bandit scenario where the bandit's planning
+is gated by a 2-station network (Alaska + Australia) with a 1-contact
+upload lag. A lag sweep over `replan_contacts_lag ∈ {0, 1, 2, 3}` shows
+how the guards can exploit the bandit's planning gaps as lag grows.
+
+See:
+
+- [Ground stations (in-depth)](../in-depth/ground-stations.md)
+- [Modeling comms windows (how-to)](../how-to/model-comms-windows.md)

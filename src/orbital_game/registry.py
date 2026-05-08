@@ -111,6 +111,8 @@ class TerminationFnKey(StrEnum):
     LBG_EVENTS = "lbg_events_termination"
     PURSUIT_EVASION = "pursuit_evasion_termination"
     GET_OFF_MY_LAWN = "get_off_my_lawn_termination"
+    MAX_DISTANCE = "max_distance_termination"
+    ANY_OF = "any_of_termination"
 
 
 class SideSamplerKey(StrEnum):
@@ -149,6 +151,12 @@ class BeliefUpdaterKey(StrEnum):
     KF = "kf"
     EKF = "ekf"
     PF = "pf"
+
+
+class BeliefSyncKey(StrEnum):
+    KF_TEAM_FUSION = "kf_team_fusion"
+    EKF_TEAM_FUSION = "ekf_team_fusion"
+    PF_TEAM_FUSION = "pf_team_fusion"
 
 
 class GameKey(StrEnum):

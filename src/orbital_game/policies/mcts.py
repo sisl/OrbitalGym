@@ -98,6 +98,15 @@ class MCTSPolicy:
     # the searched vehicle's slot is overwritten by the searched action.
     teammate_model: Any = None
 
+    # Optional ContactSchedule. When set, the opponent_model is treated as a
+    # *delayed-LQR* controller: its command is recomputed only when the
+    # simulated time falls inside a contact window; outside contacts the
+    # last-cached command is replayed. The cached Δv is carried as part of
+    # the MCTS embedding so it persists across tree-edge advances. Default
+    # `None` keeps the original "call opponent_model fresh every step"
+    # behaviour.
+    opponent_schedule: Any = None
+
     def __post_init__(self) -> None:
         if self.command_cls is None:
             raise ValueError(
@@ -215,7 +224,16 @@ class MCTSPolicy:
             cmd, _ = opponent_model(None, opp_view, k, state.t)
             return cmd.dv
 
-        def _step_one(s: jax.Array, joint_idx: jax.Array, k: jax.Array):
+        # When `opponent_schedule` is set, the opponent is modelled as a
+        # delayed-LQR controller: command is recomputed during contact
+        # windows, otherwise the cached Δv is replayed. The cache lives in
+        # the MCTS embedding so it persists across tree-edge advances.
+        opp_schedule = self.opponent_schedule
+        use_schedule = opp_schedule is not None
+        if use_schedule:
+            from orbital_game.groundstations.contacts import in_contact_now
+
+        def _step_one_no_schedule(s: jax.Array, joint_idx: jax.Array, k: jax.Array):
             k_opp, k_step = jax.random.split(k, 2)
             self_dv = _per_v_dv(_decode_joint(joint_idx))
             opp_dv = _opponent_dv(s, k_opp)
@@ -237,24 +255,99 @@ class MCTSPolicy:
             r = adapter.reward(s, a_flat, s_next, side)
             return s_next, r
 
-        def recurrent_fn(_params, rng_key, action, embedding):
-            keys = jax.random.split(rng_key, action.shape[0])
-            s_next, r = jax.vmap(_step_one)(embedding, action, keys)
-            value_next = jax.vmap(leaf_value)(s_next)
-            batch = action.shape[0]
-            recurrent_out = mctx.RecurrentFnOutput(
-                reward=r.astype(s_flat.dtype),
-                discount=jnp.broadcast_to(discount, (batch,)),
-                prior_logits=jnp.zeros((batch, a_joint), dtype=s_flat.dtype),
-                value=value_next.astype(s_flat.dtype),
+        def _step_one_with_schedule(
+            s: jax.Array,
+            opp_cached_dv: jax.Array,
+            joint_idx: jax.Array,
+            k: jax.Array,
+        ):
+            """Step with delayed-LQR opponent semantics.
+
+            The opponent's Δv is *recomputed* only when the simulated tick's
+            ``state.t`` is inside a contact window of ``opponent_schedule``.
+            Otherwise the cached Δv from the most recent contact tick is
+            replayed. The (possibly-updated) cached Δv is returned alongside
+            ``s_next`` so it can persist as part of the MCTS embedding.
+            """
+            k_opp, k_step = jax.random.split(k, 2)
+            self_dv = _per_v_dv(_decode_joint(joint_idx))
+
+            state = adapter.unpack(s)
+            in_contact = in_contact_now(opp_schedule, state.t)
+            new_opp_cached_dv = jax.lax.cond(
+                in_contact,
+                lambda: _opponent_dv(s, k_opp),
+                lambda: opp_cached_dv,
             )
-            return recurrent_out, s_next
+            opp_dv = new_opp_cached_dv
+
+            self_cmd = self.command_cls.zeros(n_self).replace(
+                dv=self_dv.astype(self.command_cls.zeros(n_self).dv.dtype)
+            )
+            opp_cmd = opp_command_cls.zeros(n_opp).replace(
+                dv=opp_dv.astype(opp_command_cls.zeros(n_opp).dv.dtype)
+            )
+            self_flat = flatten_command(self_cmd)
+            opp_flat = flatten_command(opp_cmd)
+            if side is Side.GUARD:
+                a_flat = jnp.concatenate([self_flat, opp_flat])
+            else:
+                a_flat = jnp.concatenate([opp_flat, self_flat])
+
+            s_next = adapter.transition(s, a_flat, k_step)
+            r = adapter.reward(s, a_flat, s_next, side)
+            return s_next, new_opp_cached_dv, r
+
+        if use_schedule:
+
+            def recurrent_fn(_params, rng_key, action, embedding):
+                s_emb, opp_cached_emb = embedding
+                keys = jax.random.split(rng_key, action.shape[0])
+                s_next, new_opp_cached, r = jax.vmap(_step_one_with_schedule)(
+                    s_emb, opp_cached_emb, action, keys
+                )
+                value_next = jax.vmap(leaf_value)(s_next)
+                batch = action.shape[0]
+                recurrent_out = mctx.RecurrentFnOutput(
+                    reward=r.astype(s_flat.dtype),
+                    discount=jnp.broadcast_to(discount, (batch,)),
+                    prior_logits=jnp.zeros((batch, a_joint), dtype=s_flat.dtype),
+                    value=value_next.astype(s_flat.dtype),
+                )
+                return recurrent_out, (s_next, new_opp_cached)
+        else:
+
+            def recurrent_fn(_params, rng_key, action, embedding):
+                keys = jax.random.split(rng_key, action.shape[0])
+                s_next, r = jax.vmap(_step_one_no_schedule)(embedding, action, keys)
+                value_next = jax.vmap(leaf_value)(s_next)
+                batch = action.shape[0]
+                recurrent_out = mctx.RecurrentFnOutput(
+                    reward=r.astype(s_flat.dtype),
+                    discount=jnp.broadcast_to(discount, (batch,)),
+                    prior_logits=jnp.zeros((batch, a_joint), dtype=s_flat.dtype),
+                    value=value_next.astype(s_flat.dtype),
+                )
+                return recurrent_out, s_next
 
         s_flat_b = s_flat[None, :]
+        if use_schedule:
+            # Compute initial cached opponent Δv at the root by calling the
+            # opponent_model on the current state. This means: at t=0 (or
+            # whenever the search root is evaluated) the bandit assumes the
+            # opponent's last commanded Δv is the freshly-solved LQR Δv —
+            # the most defensible prior given no prior contact history.
+            key_root, key = jax.random.split(key)
+            opp_cached_dv_root = _opponent_dv(s_flat, key_root)
+            opp_cached_b = opp_cached_dv_root[None, ...]
+            embedding_root: Any = (s_flat_b, opp_cached_b)
+        else:
+            embedding_root = s_flat_b
+
         root = mctx.RootFnOutput(
             prior_logits=jnp.zeros((1, a_joint), dtype=s_flat.dtype),
             value=jnp.atleast_1d(leaf_value(s_flat).astype(s_flat.dtype)),
-            embedding=s_flat_b,
+            embedding=embedding_root,
         )
 
         empty_params: dict = {}
@@ -360,7 +453,12 @@ class MCTSPolicy:
             cmd, _ = opponent_model(None, opp_view, k, state.t)
             return cmd.dv
 
-        def _step_one(s: jax.Array, action_idx: jax.Array, k: jax.Array):
+        opp_schedule = self.opponent_schedule
+        use_schedule = opp_schedule is not None
+        if use_schedule:
+            from orbital_game.groundstations.contacts import in_contact_now
+
+        def _step_one_no_schedule(s: jax.Array, action_idx: jax.Array, k: jax.Array):
             k_opp, k_team, k_step = jax.random.split(k, 3)
             # Teammate baseline for the whole self-side fleet, then override
             # the searched vehicle's slot with the searched Δv.
@@ -386,24 +484,88 @@ class MCTSPolicy:
             r = adapter.reward(s, a_flat, s_next, side)
             return s_next, r
 
-        def recurrent_fn(_params, rng_key, action, embedding):
-            keys = jax.random.split(rng_key, action.shape[0])
-            s_next, r = jax.vmap(_step_one)(embedding, action, keys)
-            value_next = jax.vmap(leaf_value)(s_next)
-            batch = action.shape[0]
-            recurrent_out = mctx.RecurrentFnOutput(
-                reward=r.astype(s_flat.dtype),
-                discount=jnp.broadcast_to(discount, (batch,)),
-                prior_logits=jnp.zeros((batch, a_count), dtype=s_flat.dtype),
-                value=value_next.astype(s_flat.dtype),
+        def _step_one_with_schedule(
+            s: jax.Array,
+            opp_cached_dv: jax.Array,
+            action_idx: jax.Array,
+            k: jax.Array,
+        ):
+            k_opp, k_team, k_step = jax.random.split(k, 3)
+            self_dv = _teammate_dv(s, k_team)
+            my_dv = _self_dv_for_action(action_idx).astype(self_dv.dtype)
+            self_dv = self_dv.at[self_index].set(my_dv)
+
+            state = adapter.unpack(s)
+            in_contact = in_contact_now(opp_schedule, state.t)
+            new_opp_cached_dv = jax.lax.cond(
+                in_contact,
+                lambda: _opponent_dv(s, k_opp),
+                lambda: opp_cached_dv,
             )
-            return recurrent_out, s_next
+            opp_dv = new_opp_cached_dv
+
+            self_cmd = self.command_cls.zeros(n_self).replace(
+                dv=self_dv.astype(self.command_cls.zeros(n_self).dv.dtype)
+            )
+            opp_cmd = opp_command_cls.zeros(n_opp).replace(
+                dv=opp_dv.astype(opp_command_cls.zeros(n_opp).dv.dtype)
+            )
+            self_flat = flatten_command(self_cmd)
+            opp_flat = flatten_command(opp_cmd)
+            if side is Side.GUARD:
+                a_flat = jnp.concatenate([self_flat, opp_flat])
+            else:
+                a_flat = jnp.concatenate([opp_flat, self_flat])
+
+            s_next = adapter.transition(s, a_flat, k_step)
+            r = adapter.reward(s, a_flat, s_next, side)
+            return s_next, new_opp_cached_dv, r
+
+        if use_schedule:
+
+            def recurrent_fn(_params, rng_key, action, embedding):
+                s_emb, opp_cached_emb = embedding
+                keys = jax.random.split(rng_key, action.shape[0])
+                s_next, new_opp_cached, r = jax.vmap(_step_one_with_schedule)(
+                    s_emb, opp_cached_emb, action, keys
+                )
+                value_next = jax.vmap(leaf_value)(s_next)
+                batch = action.shape[0]
+                recurrent_out = mctx.RecurrentFnOutput(
+                    reward=r.astype(s_flat.dtype),
+                    discount=jnp.broadcast_to(discount, (batch,)),
+                    prior_logits=jnp.zeros((batch, a_count), dtype=s_flat.dtype),
+                    value=value_next.astype(s_flat.dtype),
+                )
+                return recurrent_out, (s_next, new_opp_cached)
+        else:
+
+            def recurrent_fn(_params, rng_key, action, embedding):
+                keys = jax.random.split(rng_key, action.shape[0])
+                s_next, r = jax.vmap(_step_one_no_schedule)(embedding, action, keys)
+                value_next = jax.vmap(leaf_value)(s_next)
+                batch = action.shape[0]
+                recurrent_out = mctx.RecurrentFnOutput(
+                    reward=r.astype(s_flat.dtype),
+                    discount=jnp.broadcast_to(discount, (batch,)),
+                    prior_logits=jnp.zeros((batch, a_count), dtype=s_flat.dtype),
+                    value=value_next.astype(s_flat.dtype),
+                )
+                return recurrent_out, s_next
 
         s_flat_b = s_flat[None, :]
+        if use_schedule:
+            key_root, key = jax.random.split(key)
+            opp_cached_dv_root = _opponent_dv(s_flat, key_root)
+            opp_cached_b = opp_cached_dv_root[None, ...]
+            embedding_root: Any = (s_flat_b, opp_cached_b)
+        else:
+            embedding_root = s_flat_b
+
         root = mctx.RootFnOutput(
             prior_logits=jnp.zeros((1, a_count), dtype=s_flat.dtype),
             value=jnp.atleast_1d(leaf_value(s_flat).astype(s_flat.dtype)),
-            embedding=s_flat_b,
+            embedding=embedding_root,
         )
 
         empty_params: dict = {}
@@ -440,3 +602,76 @@ class MCTSPolicy:
         elif grid_dim > target_dim:
             per_v_dv = per_v_dv[:, :target_dim]
         return cmd_template.replace(dv=per_v_dv.astype(cmd_template.dv.dtype))
+
+
+@dataclass(frozen=True)
+class BeliefAdaptedMCTSPolicy:
+    """Wrap an :class:`MCTSPolicy` so it accepts a Belief-shaped ``agent_view``.
+
+    `MCTSPolicy.__call__` already dispatches between flat-array and
+    ``.mean``-bearing inputs, but a flat ``.mean`` is only valid when the
+    belief mean shape matches the env's flat-state width. KF/EKF beliefs
+    expose ``mean`` of shape ``(N_obs, N_total, d)`` — three orders of
+    magnitude smaller than the env's flat state, and missing the
+    mass/attitude tail. This wrapper bridges the two by writing observer
+    0's per-target view into a captured ``template_env_state`` and packing
+    via the env adapter, then forwarding the resulting flat state to the
+    underlying MCTS.
+
+    Construct once at scenario setup::
+
+        env = OrbitalGameEnv(cfg)
+        adapter = POMDPAdapter(env)
+        mcts = MCTSPolicy(env_model=adapter, ..., command_cls=...)
+        template_state, _ = env.reset(jax.random.key(0))
+        belief_mcts = BeliefAdaptedMCTSPolicy(
+            inner_mcts=mcts, template_env_state=template_state
+        )
+
+    The wrapper transparently passes ``ContactAwareBelief`` through to its
+    ``.inner.mean`` — the contact gating is handled by `PlanCachePolicy`,
+    not by the searcher.
+    """
+
+    inner_mcts: MCTSPolicy
+    template_env_state: Any
+
+    @property
+    def n_vehicles(self) -> int:
+        return self.inner_mcts.n_vehicles
+
+    @property
+    def command_cls(self) -> Any:
+        return self.inner_mcts.command_cls
+
+    @property
+    def side(self) -> Side:
+        return self.inner_mcts.side
+
+    def __call__(
+        self,
+        policy_state: Any,
+        agent_view: Any,
+        key: jax.Array,
+        t: jax.Array,
+    ) -> tuple[Any, Any]:
+        # Flat-array path: degenerate to plain MCTS.
+        if isinstance(agent_view, jax.Array):
+            return self.inner_mcts(policy_state, agent_view, key, t)
+
+        # ContactAwareBelief wraps an inner Belief — peel it off.
+        belief_mean = agent_view.inner.mean if hasattr(agent_view, "inner") else agent_view.mean
+        # If the wrapped mean is already 1-D (e.g. an _OracleBelief whose
+        # mean *is* the flat state), forward it unchanged.
+        if belief_mean.ndim == 1:
+            return self.inner_mcts(policy_state, belief_mean, key, t)
+
+        from orbital_game.belief.flatten import belief_mean_to_flat_state
+
+        s_flat = belief_mean_to_flat_state(
+            belief_mean,
+            self.inner_mcts.side,
+            self.inner_mcts.env_model,
+            self.template_env_state,
+        )
+        return self.inner_mcts(policy_state, s_flat, key, t)

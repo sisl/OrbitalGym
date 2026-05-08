@@ -28,6 +28,8 @@ from orbital_game.viz.glyphs import (
     draw_thrust_arrow,
     quat_to_rotation_matrix,
 )
+from orbital_game.viz.groundstation_compound import make_compound_figure
+from orbital_game.viz.groundtrack import plot_groundtrack
 from orbital_game.viz.per_rollout import (
     plot_rollout_3d,
     plot_rollout_mass,
@@ -63,8 +65,10 @@ __all__ = [
     "draw_sphere",
     "draw_thrust_arrow",
     "interactive_viewer",
+    "make_compound_figure",
     "plot_get_off_my_lawn_diagnostic",
     "plot_get_off_my_lawn_position_sweep",
+    "plot_groundtrack",
     "plot_lady_bandit_guard_diagnostic",
     "plot_lady_bandit_guard_position_sweep",
     "plot_mass_curve",

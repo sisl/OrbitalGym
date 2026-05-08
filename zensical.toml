@@ -53,6 +53,7 @@ nav = [
     { "vmap rollouts over seeds" = "how-to/vmap-rollouts.md" },
     { "Round-trip config to JSON" = "how-to/json-roundtrip-config.md" },
     { "Pick an observation channel" = "how-to/pick-observation-channel.md" },
+    { "Model comms windows" = "how-to/model-comms-windows.md" },
   ] },
   { "In depth" = [
     { "Overview" = "in-depth/index.md" },
@@ -63,6 +64,7 @@ nav = [
     { "Observations" = "in-depth/observations.md" },
     { "Attitude & conical sensors" = "in-depth/attitude.md" },
     { "Belief" = "in-depth/belief.md" },
+    { "Ground stations" = "in-depth/ground-stations.md" },
   ] },
   { "Extending" = [
     { "Overview" = "extending/index.md" },
@@ -82,6 +84,9 @@ nav = [
     { "Games" = "api/games.md" },
     { "Adapters" = "api/adapters.md" },
     { "Policies, observations, rewards" = "api/components.md" },
+    { "Ground stations" = "api/groundstations.md" },
+    { "Plan-cache policy" = "api/policies-plan-cache.md" },
+    { "Belief sync & contact-aware belief" = "api/belief-sync.md" },
   ] },
 ]
 

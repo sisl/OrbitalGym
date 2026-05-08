@@ -122,6 +122,8 @@ class ScenarioConfig:
     # mutable-default issues and circular imports.
     guard_observation_fn: Any = None  # ObservationFn
     bandit_observation_fn: Any = None
+    guard_ground_station_network: Any = None  # GroundStationNetwork | None
+    bandit_ground_station_network: Any = None  # GroundStationNetwork | None
     reward_fn: Any = None  # RewardFn
     termination_fn: Any = None  # TerminationFn
 
@@ -409,6 +411,19 @@ class ScenarioConfig:
             from orbital_game.policies import ZeroControl
 
             object.__setattr__(self, "bandit_policy", ZeroControl())
+
+        # Ground-station networks: if set, must carry a non-empty precomputed schedule.
+        for side_name, net in (
+            ("guard", self.guard_ground_station_network),
+            ("bandit", self.bandit_ground_station_network),
+        ):
+            if net is None:
+                continue
+            if net.schedule is None or int(net.schedule.n_valid) == 0:
+                raise ValueError(
+                    f"{side_name}_ground_station_network: schedule has no valid windows. "
+                    f"Did you forget to call precompute_contact_schedule(...)?"
+                )
 
     def _validate_attitude_config(self) -> None:
         """Fail-fast checks for attitude wiring. No silent defaulting."""

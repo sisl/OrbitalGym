@@ -179,6 +179,30 @@ class RolloutScene:
     show_thrust: bool = False
     show_belief: bool = False
     show_reference_marker: bool = True
+    show_contact_state: bool = False
+    # When True, render the cached LQR plan as a faint dashed polyline
+    # forward from each agent's current position. Reads
+    # ``traj.sides.<side>.policy_state.{plan, step_in_plan}`` and
+    # propagates the remaining Δv commands forward from the agent's
+    # CURRENT (pos, vel) state — read from
+    # ``traj.env_state.<side>.rtn[frame, v, :6]`` — through ``plan_propagator``
+    # if set, or a velocity-aware Euler fallback otherwise.
+    #
+    # ``plan_propagator`` signature: ``(state_rtn_6, dv_rtn_3, dt) ->
+    # next_state_rtn_6``. The function should apply the impulsive Δv to
+    # the velocity components and propagate one tick through the
+    # scenario's dynamics. For HCW scenarios pass a function built from
+    # the closed-form HCW STM. If left ``None``, the renderer uses a
+    # straight-line Euler approximation that includes the agent's
+    # initial velocity but NOT Coriolis / gravity-gradient terms — the
+    # resulting polyline diverges from the true HCW response after a
+    # quarter-orbit or so. Set this to get a curve that matches the
+    # spacecraft's actual response.
+    show_planned_trajectory: bool = False
+    plan_trajectory_color: str = "magenta"
+    plan_trajectory_alpha: float = 0.6
+    plan_trajectory_linewidth: float = 1.2
+    plan_propagator: Any = None
 
     # ---- layer params ----
     cube_scale: float | None = None
@@ -559,6 +583,12 @@ def _render_frame_3d(scene: RolloutScene, ax: Any, frame: int) -> None:
     if scene.show_belief and scene.belief_history is not None:
         _render_belief_3d(scene, ax, frame)
 
+    if scene.show_contact_state:
+        _render_contact_state_3d(scene, ax, frame)
+
+    if scene.show_planned_trajectory:
+        _render_planned_trajectory_3d(scene, ax, frame)
+
     _set_title(scene, ax, frame)
 
 
@@ -586,6 +616,12 @@ def _render_frame_2d(scene: RolloutScene, ax: Any, frame: int) -> None:
 
     if scene.show_belief and scene.belief_history is not None:
         _render_belief_2d(scene, ax, frame)
+
+    if scene.show_contact_state:
+        _render_contact_state_2d(scene, ax, frame)
+
+    if scene.show_planned_trajectory:
+        _render_planned_trajectory_2d(scene, ax, frame)
 
     _set_title(scene, ax, frame)
 
@@ -912,6 +948,248 @@ def _render_pf_belief_3d(
                 facecolors="none",
                 edgecolors=color,
                 linewidths=1.2,
+            )
+
+
+def _render_contact_state_3d(scene: RolloutScene, ax: Any, frame: int) -> None:
+    """Draw a bright outline ring around in-contact agents (3D scatter).
+
+    Skipped silently for sides whose policy_state lacks an ``in_contact_prev``
+    field, or when the flag is False at the current frame.
+    """
+    for side, color, positions in (
+        (Side.GUARD, _GUARD_COLORS, scene._g_xyz),
+        (Side.BANDIT, _BANDIT_COLORS, scene._b_xyz),
+    ):
+        policy_state = getattr(scene.traj.sides, side.value).policy_state
+        in_contact_prev = (
+            getattr(policy_state, "in_contact_prev", None) if policy_state is not None else None
+        )
+        if in_contact_prev is None:
+            continue
+        if not bool(np.asarray(in_contact_prev[frame])):
+            continue
+        for v in range(positions.shape[1]):
+            pt = positions[frame, v]
+            ax.scatter(
+                *pt,
+                marker="o",
+                facecolors="none",
+                edgecolors=color,
+                s=200,
+                linewidths=1.5,
+            )
+
+
+def _render_contact_state_2d(scene: RolloutScene, ax: Any, frame: int) -> None:
+    """2D analogue of :func:`_render_contact_state_3d`."""
+    for side, color, positions in (
+        (Side.GUARD, _GUARD_COLORS, scene._g_xyz),
+        (Side.BANDIT, _BANDIT_COLORS, scene._b_xyz),
+    ):
+        policy_state = getattr(scene.traj.sides, side.value).policy_state
+        in_contact_prev = (
+            getattr(policy_state, "in_contact_prev", None) if policy_state is not None else None
+        )
+        if in_contact_prev is None:
+            continue
+        if not bool(np.asarray(in_contact_prev[frame])):
+            continue
+        for v in range(positions.shape[1]):
+            pt = positions[frame, v]
+            ax.scatter(
+                pt[0],
+                pt[1],
+                marker="o",
+                facecolors="none",
+                edgecolors=color,
+                s=200,
+                linewidths=1.5,
+            )
+
+
+_RTN_POS_TO_PLOT_3D = np.array([1, 2, 0])  # [R, T, N] → [T, N, R]
+_RT_POS_TO_PLOT_2D = np.array([1, 0])  # [R, T] → [T, R]
+
+
+def _planned_trajectory_path(
+    plan_remaining: np.ndarray,  # (T_remaining, dv_dim) in [R, T, N] order
+    cur_state_rtn: np.ndarray,  # (6,) [R, T, N, dR, dT, dN] — full state in RTN
+    dt: float,
+    plot_dim: int,
+    propagator: Any = None,  # optional callable (state, dv, dt) -> next_state
+) -> np.ndarray:
+    """Propagate the remaining plan forward from the agent's CURRENT
+    (pos, vel) state to produce a polyline of predicted positions.
+
+    `cur_state_rtn` is the full RTN state ``[R, T, N, dR, dT, dN]`` read
+    from the recorded trajectory. The agent's velocity at the current
+    frame is what makes the predicted curve diverge from a straight
+    line (orbital drift dominates over the LQR Δv at HCW scales).
+
+    If ``propagator`` is provided, it propagates ``state`` through the
+    scenario's true dynamics each tick (so the curve matches what the
+    spacecraft actually does). Signature:
+    ``propagator(state_rtn_6, dv_rtn_3, dt) -> next_state_rtn_6``.
+
+    Without a propagator, the helper uses a velocity-aware Euler
+    fallback that produces a straight line through the agent's
+    instantaneous velocity. This shows direction and magnitude but does
+    NOT match the true HCW curve.
+
+    Returns a polyline of shape ``(T_remaining + 1, plot_dim)`` in plot
+    axis order — [T, R] for 2D or [T, N, R] for 3D.
+    """
+    n_remaining = plan_remaining.shape[0]
+    cur_pos_plot = (
+        cur_state_rtn[:3][_RTN_POS_TO_PLOT_3D]
+        if plot_dim == 3
+        else cur_state_rtn[:2][_RT_POS_TO_PLOT_2D]
+    )
+    if n_remaining == 0:
+        return cur_pos_plot.reshape(1, -1)
+
+    # Pad Δv to width 3 (R, T, N) — natural form the propagator expects.
+    dv_dim = plan_remaining.shape[-1]
+    if dv_dim < 3:
+        pad = np.zeros((n_remaining, 3 - dv_dim))
+        plan_rtn = np.concatenate([plan_remaining, pad], axis=-1)
+    else:
+        plan_rtn = plan_remaining[:, :3]
+
+    path = np.empty((n_remaining + 1, plot_dim))
+    path[0] = cur_pos_plot
+
+    if propagator is not None:
+        # True-dynamics path: propagator handles impulse application AND
+        # one-tick free-drift propagation.
+        state = np.asarray(cur_state_rtn, dtype=np.float64).copy()
+        for h in range(n_remaining):
+            state = np.asarray(propagator(state, plan_rtn[h], dt))
+            if plot_dim == 3:
+                path[h + 1] = state[:3][_RTN_POS_TO_PLOT_3D]
+            else:
+                path[h + 1] = state[:2][_RT_POS_TO_PLOT_2D]
+        return path
+
+    # Fallback: velocity-aware Euler. Uses the agent's CURRENT velocity
+    # (so the line is tangent to the true orbit at frame=now) but
+    # straight (no Coriolis / gravity-gradient curving).
+    pos_rtn = cur_state_rtn[:3].copy()
+    vel_rtn = cur_state_rtn[3:6].copy() if cur_state_rtn.shape[0] >= 6 else np.zeros(3)
+    for h in range(n_remaining):
+        vel_rtn = vel_rtn + plan_rtn[h]
+        pos_rtn = pos_rtn + vel_rtn * dt
+        if plot_dim == 3:
+            path[h + 1] = pos_rtn[_RTN_POS_TO_PLOT_3D]
+        else:
+            path[h + 1] = pos_rtn[:2][_RT_POS_TO_PLOT_2D]
+    return path
+
+
+def _full_state_rtn(side_state: Any, frame: int, v: int) -> np.ndarray:
+    """Read the full ``(6,)`` RTN state ``[R, T, N, dR, dT, dN]`` for one
+    vehicle at one frame. Falls back to ``[R, T, dR, dT, 0, 0]`` for
+    rt-only states (planar HCW)."""
+    if hasattr(side_state, "rtn"):
+        return np.asarray(side_state.rtn[frame, v, :6], dtype=np.float64)
+    if hasattr(side_state, "rt"):
+        rt = np.asarray(side_state.rt[frame, v], dtype=np.float64)
+        # rt layout: [R, T, dR, dT]. Lift to 6-D with zero N-components.
+        return np.array([rt[0], rt[1], 0.0, rt[2], rt[3], 0.0])
+    raise AttributeError("side_state has no rtn or rt field")
+
+
+def _render_planned_trajectory_3d(scene: RolloutScene, ax: Any, frame: int) -> None:
+    """Render the cached plan as a faint dashed polyline forward from
+    each agent's current position.
+
+    Uses ``scene.plan_propagator`` (if set) to propagate through real
+    dynamics — produces the curved HCW trajectory the spacecraft will
+    actually follow. Falls back to a velocity-aware straight Euler
+    (which matches the spacecraft's velocity vector but not its curving
+    response) when no propagator is provided.
+
+    Reads ``traj.sides.<side>.policy_state.{plan, step_in_plan}`` for
+    the cached plan and ``traj.env_state.<side>.rtn[frame, v, :6]`` for
+    the agent's current full state. Skips silently when the side's
+    policy_state isn't `PlanCacheState`-shaped.
+    """
+    dt = scene.dt if scene.dt is not None else 1.0
+    for side, side_state in (
+        (Side.GUARD, scene.traj.env_state.guards),
+        (Side.BANDIT, scene.traj.env_state.bandits),
+    ):
+        policy_state = getattr(scene.traj.sides, side.value).policy_state
+        if policy_state is None:
+            continue
+        plan = getattr(policy_state, "plan", None)
+        step_in_plan = getattr(policy_state, "step_in_plan", None)
+        if plan is None or step_in_plan is None:
+            continue
+        plan_arr = np.asarray(plan[frame])  # (H, n_v, dv_dim)
+        H, n_v, _ = plan_arr.shape  # noqa: N806 — H is the plan-horizon ticks, matches the spec
+        step = int(np.asarray(step_in_plan[frame]))
+        if step >= H:
+            # Plan expired — nothing to render.
+            continue
+        plan_remaining = plan_arr[step:]  # (T_remaining, n_v, dv_dim)
+        for v in range(n_v):
+            state_rtn = _full_state_rtn(side_state, frame, v)
+            path = _planned_trajectory_path(
+                plan_remaining[:, v, :],
+                state_rtn,
+                dt,
+                plot_dim=3,
+                propagator=scene.plan_propagator,
+            )
+            ax.plot(
+                path[:, 0],
+                path[:, 1],
+                path[:, 2],
+                color=scene.plan_trajectory_color,
+                linestyle="--",
+                alpha=scene.plan_trajectory_alpha,
+                linewidth=scene.plan_trajectory_linewidth,
+            )
+
+
+def _render_planned_trajectory_2d(scene: RolloutScene, ax: Any, frame: int) -> None:
+    """2D analogue of :func:`_render_planned_trajectory_3d`."""
+    dt = scene.dt if scene.dt is not None else 1.0
+    for side, side_state in (
+        (Side.GUARD, scene.traj.env_state.guards),
+        (Side.BANDIT, scene.traj.env_state.bandits),
+    ):
+        policy_state = getattr(scene.traj.sides, side.value).policy_state
+        if policy_state is None:
+            continue
+        plan = getattr(policy_state, "plan", None)
+        step_in_plan = getattr(policy_state, "step_in_plan", None)
+        if plan is None or step_in_plan is None:
+            continue
+        plan_arr = np.asarray(plan[frame])
+        H, n_v, _ = plan_arr.shape  # noqa: N806 — H is the plan-horizon ticks, matches the spec
+        step = int(np.asarray(step_in_plan[frame]))
+        if step >= H:
+            continue
+        plan_remaining = plan_arr[step:]
+        for v in range(n_v):
+            state_rtn = _full_state_rtn(side_state, frame, v)
+            path = _planned_trajectory_path(
+                plan_remaining[:, v, :],
+                state_rtn,
+                dt,
+                plot_dim=2,
+                propagator=scene.plan_propagator,
+            )
+            ax.plot(
+                path[:, 0],
+                path[:, 1],
+                color=scene.plan_trajectory_color,
+                linestyle="--",
+                alpha=scene.plan_trajectory_alpha,
+                linewidth=scene.plan_trajectory_linewidth,
             )
 
 

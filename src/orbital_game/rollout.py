@@ -37,6 +37,7 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 
+from orbital_game.belief.contact_aware import ContactAwareBelief
 from orbital_game.env.types import (
     Actions,
     BySide,
@@ -44,6 +45,7 @@ from orbital_game.env.types import (
     SideTrajectory,
     Trajectory,
 )
+from orbital_game.groundstations.contacts import in_contact_now
 from orbital_game.observations.types import flatten_observations
 from orbital_game.registry import ActionComponentKey
 
@@ -207,18 +209,32 @@ def belief_rollout(
     belief_updaters: BySide,  # BySide[BeliefUpdater]
     key: jax.Array,
     n_steps: int,
+    *,
+    guard_ground_station_network: Any = None,
+    bandit_ground_station_network: Any = None,
+    team_sync_fns: Any = None,  # BySide[BeliefSyncFn | None] | None
 ) -> tuple[Trajectory, BySide]:
     """Belief-aware rollout: agent_view = post-update Belief.
 
     Each tick:
 
-      1. For each side, ``policies.X(ps_X, belief_X, key, t)`` produces the
-         action. Note that the policy receives the *belief* — not the
-         flattened obs.
-      2. ``env.step`` advances the world.
-      3. Each side's ``belief_updater`` folds the new per-side observation
-         channels into the prior belief.
-      4. Freeze-on-done as in :func:`rollout`.
+      1. For each side, compute a per-tick contact mask of shape
+         ``(n_side,)`` from the side's ground-station network. When the
+         network is ``None`` the mask is all-False.
+      2. Optionally fuse the side's belief across in-contact teammates via
+         ``team_sync_fns.X(belief_X, contact_X)``.
+      3. Wrap the (possibly synced) belief as a
+         :class:`~orbital_game.belief.contact_aware.ContactAwareBelief` and
+         pass it to ``policies.X(ps_X, agent_view, key, t)``.
+      4. ``env.step`` advances the world.
+      5. Each side's ``belief_updater`` folds the new per-side observation
+         channels into the synced belief (so team fusion persists into the
+         next tick's prior).
+      6. Freeze-on-done as in :func:`rollout`.
+
+    The synced belief — not the wrapped ``ContactAwareBelief`` — is what
+    flows forward in the carry: wrapping is a per-tick view, fusion is a
+    persistent state update.
 
     Returns ``(Trajectory, BySide[belief_history])``. ``belief_history`` is a
     BySide whose leaves are belief leaves with a leading time axis — what
@@ -226,6 +242,16 @@ def belief_rollout(
     ``belief_history`` parameter for animated 2σ ellipsoids.
     """
     _require_impulsive_maneuver(env.config, where="belief_rollout")
+
+    n_g = env.config.n_guards
+    n_b = env.config.n_bandits
+
+    def _contact_mask(network: Any, n_side: int, t: jax.Array) -> jax.Array:
+        """Per-side contact mask. None network → all-False of shape (n_side,)."""
+        if network is None:
+            return jnp.zeros((n_side,), dtype=jnp.bool_)
+        scalar = in_contact_now(network.schedule, t)
+        return jnp.broadcast_to(scalar, (n_side,))
 
     k_reset, k_init, k_scan = jax.random.split(key, 3)
     k_init_g, k_init_b = jax.random.split(k_init, 2)
@@ -242,10 +268,32 @@ def belief_rollout(
         es, ps_g, ps_b, belief_g, belief_b, terminated = carry
         k_act_g, k_act_b, k_env, k_g_obs, k_b_obs, k_g_upd, k_b_upd = jax.random.split(step_key, 7)
 
+        # Per-tick contact masks (closure-static branch on the Python
+        # network handles, traced lookup on `es.t`).
+        contact_g = _contact_mask(guard_ground_station_network, n_g, es.t)
+        contact_b = _contact_mask(bandit_ground_station_network, n_b, es.t)
+
+        # Optional team-belief fusion. Runs BEFORE the policy call so the
+        # policy sees the fused belief; the fused belief also replaces the
+        # carry's belief for the post-step update so fusion persists.
+        synced_belief_g = belief_g
+        synced_belief_b = belief_b
+        if team_sync_fns is not None:
+            if team_sync_fns.guard is not None:
+                synced_belief_g = team_sync_fns.guard(belief_g, contact_g)
+            if team_sync_fns.bandit is not None:
+                synced_belief_b = team_sync_fns.bandit(belief_b, contact_b)
+
+        # Wrap as ContactAwareBelief for the policy call. Existing policies
+        # that read only `.mean` are unaffected (the wrapper delegates);
+        # contact-aware policies get `.contact` for plan-cache gating.
+        view_g_for_policy = ContactAwareBelief(inner=synced_belief_g, contact=contact_g)
+        view_b_for_policy = ContactAwareBelief(inner=synced_belief_b, contact=contact_b)
+
         # Policies receive the BELIEF as agent_view. This is the core
         # contract: belief is the agent's perception output, not the raw obs.
-        action_g, next_ps_g = policies.guard(ps_g, belief_g, k_act_g, es.t)
-        action_b, next_ps_b = policies.bandit(ps_b, belief_b, k_act_b, es.t)
+        action_g, next_ps_g = policies.guard(ps_g, view_g_for_policy, k_act_g, es.t)
+        action_b, next_ps_b = policies.bandit(ps_b, view_b_for_policy, k_act_b, es.t)
         actions = Actions(sides=BySide(guard=action_g, bandit=action_b))
         step_out = env.step(k_env, es, actions)
         next_es = step_out.state
@@ -256,11 +304,13 @@ def belief_rollout(
         bandit_obs_channels = env.bandit_observation_fn(
             next_es, actions, Side.BANDIT, env.config, k_b_obs, next_es.t
         )
+        # Post-step update operates on the SYNCED belief (so team fusion
+        # persists into the next tick's prior).
         next_belief_g = belief_updaters.guard(
-            belief_g, guard_obs_channels, action_g.dv, Side.GUARD, k_g_upd
+            synced_belief_g, guard_obs_channels, action_g.dv, Side.GUARD, k_g_upd
         )
         next_belief_b = belief_updaters.bandit(
-            belief_b, bandit_obs_channels, action_b.dv, Side.BANDIT, k_b_upd
+            synced_belief_b, bandit_obs_channels, action_b.dv, Side.BANDIT, k_b_upd
         )
 
         # The trajectory still records the flat obs for downstream tooling
@@ -278,8 +328,10 @@ def belief_rollout(
         advance_es = freeze(es, next_es)
         advance_ps_g = freeze(ps_g, next_ps_g)
         advance_ps_b = freeze(ps_b, next_ps_b)
-        advance_belief_g = freeze(belief_g, next_belief_g)
-        advance_belief_b = freeze(belief_b, next_belief_b)
+        # Freeze-on-done compares the synced (carried) belief vs the
+        # post-update belief — keeps the synced one if already terminated.
+        advance_belief_g = freeze(synced_belief_g, next_belief_g)
+        advance_belief_b = freeze(synced_belief_b, next_belief_b)
 
         out_reward_g = jnp.where(terminated, jnp.zeros_like(reward_g), reward_g)
         out_reward_b = jnp.where(terminated, jnp.zeros_like(reward_b), reward_b)
@@ -295,8 +347,8 @@ def belief_rollout(
             "bandit_obs": view_b,
             "guard_ps": ps_g,
             "bandit_ps": ps_b,
-            "guard_belief": belief_g,
-            "bandit_belief": belief_b,
+            "guard_belief": synced_belief_g,
+            "bandit_belief": synced_belief_b,
         }
         return (
             advance_es,

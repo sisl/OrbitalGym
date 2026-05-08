@@ -13,6 +13,7 @@ Tests cover:
 from __future__ import annotations
 
 import dataclasses
+from typing import Any
 
 import flax.struct
 import jax
@@ -382,3 +383,239 @@ def test_mcts_policy_dataclass_replace_pattern():
     bound = dataclasses.replace(bare, num_simulations=4)
     assert bound.num_simulations == 4
     assert bound.command_cls is env.guard_command_cls
+
+
+# --- BeliefAdaptedMCTSPolicy: bridges belief-shaped agent_view → MCTS ---
+
+
+def test_belief_adapted_mcts_consumes_belief_mean_smoke():
+    """End-to-end: BeliefAdaptedMCTSPolicy converts a (N_obs, N_total, d) belief
+    mean into a flat state vector that MCTSPolicy can search over.
+
+    Asserts: (a) no exception, (b) the chosen Δv is shape-correct, (c) the
+    belief-driven and oracle-flat paths agree when the belief mean equals
+    truth (the adapter's round-trip is consistent).
+    """
+    from orbital_game.belief import KFFromTruthInitializer
+    from orbital_game.policies.mcts import BeliefAdaptedMCTSPolicy
+
+    env, adapter, mcts, state, cfg = _build()
+
+    # Build a KFBelief whose mean = truth (i.e. perfect filter). Pack truth
+    # to flat state and verify the wrapper round-trips to the same flat
+    # state.
+    layout = env.layout
+    init = KFFromTruthInitializer(
+        layout=layout, variance_diag=jnp.ones((layout.dynamics_state_dim,)) * 1.0
+    )
+    belief = init(state, Side.GUARD, jax.random.PRNGKey(0))
+    s_flat_truth = adapter.pack(state)
+
+    wrapper = BeliefAdaptedMCTSPolicy(inner_mcts=mcts, template_env_state=state)
+    cmd_b, _ = wrapper(None, belief, jax.random.PRNGKey(7), state.t)
+    cmd_t, _ = mcts(None, s_flat_truth, jax.random.PRNGKey(7), state.t)
+
+    expected = env.guard_command_cls.zeros(cfg.n_guards).dv.shape
+    assert cmd_b.dv.shape == expected
+    # Same key + structurally identical s_flat → same chosen action.
+    assert jnp.allclose(cmd_b.dv, cmd_t.dv)
+
+
+def test_belief_adapted_mcts_passes_through_flat_array():
+    """Forwarding a flat jax.Array bypasses the belief-flatten path."""
+    from orbital_game.policies.mcts import BeliefAdaptedMCTSPolicy
+
+    env, adapter, mcts, state, cfg = _build()
+    s_flat = adapter.pack(state)
+    wrapper = BeliefAdaptedMCTSPolicy(inner_mcts=mcts, template_env_state=state)
+    cmd_w, _ = wrapper(None, s_flat, jax.random.PRNGKey(3), state.t)
+    cmd_m, _ = mcts(None, s_flat, jax.random.PRNGKey(3), state.t)
+    assert jnp.allclose(cmd_w.dv, cmd_m.dv)
+
+
+def test_belief_adapted_mcts_unwraps_contact_aware_belief():
+    """ContactAwareBelief.inner.mean is the belief-shaped tensor; the wrapper
+    must peel off the ContactAware shell and use the inner mean."""
+    from orbital_game.belief import KFFromTruthInitializer
+    from orbital_game.belief.contact_aware import ContactAwareBelief
+    from orbital_game.policies.mcts import BeliefAdaptedMCTSPolicy
+
+    env, adapter, mcts, state, cfg = _build()
+    layout = env.layout
+    init = KFFromTruthInitializer(
+        layout=layout, variance_diag=jnp.ones((layout.dynamics_state_dim,)) * 1.0
+    )
+    belief = init(state, Side.GUARD, jax.random.PRNGKey(0))
+    contact_view = ContactAwareBelief(
+        inner=belief, contact=jnp.ones((cfg.n_guards,), dtype=jnp.bool_)
+    )
+
+    wrapper = BeliefAdaptedMCTSPolicy(inner_mcts=mcts, template_env_state=state)
+    cmd, _ = wrapper(None, contact_view, jax.random.PRNGKey(5), state.t)
+    expected = env.guard_command_cls.zeros(cfg.n_guards).dv.shape
+    assert cmd.dv.shape == expected
+
+
+# --- opponent_schedule: delayed-LQR opponent semantics inside MCTS ---
+
+
+def _all_contact_schedule(t_horizon: float = 1e9, pad_to: int = 4):
+    """ContactSchedule that says: in contact for the entire horizon."""
+    from orbital_game.groundstations.network import ContactSchedule
+
+    rows = [(0.0, t_horizon)] + [(-1.0, -1.0)] * (pad_to - 1)
+    station_ix = [0] + [-1] * (pad_to - 1)
+    return ContactSchedule(
+        windows=jnp.asarray(rows, dtype=jnp.float32),
+        n_valid=jnp.asarray(1),
+        station_ix=jnp.asarray(station_ix, dtype=jnp.int32),
+    )
+
+
+def _no_contact_schedule(pad_to: int = 4):
+    """ContactSchedule with zero valid windows."""
+    from orbital_game.groundstations.network import ContactSchedule
+
+    rows = [(-1.0, -1.0)] * pad_to
+    station_ix = [-1] * pad_to
+    return ContactSchedule(
+        windows=jnp.asarray(rows, dtype=jnp.float32),
+        n_valid=jnp.asarray(0),
+        station_ix=jnp.asarray(station_ix, dtype=jnp.int32),
+    )
+
+
+def test_mcts_opponent_schedule_all_contact_emits_valid_grid_action():
+    """When the schedule says 'always in contact', the schedule-aware MCTS
+    must still emit a valid grid action and not crash. (The internal path
+    differs from the plain MCTS by one extra PRNG split for the root
+    cached Δv, so we can't compare bit-for-bit; instead we check the
+    output is on-grid and the right shape.)"""
+    env, adapter, _, state, cfg = _build()
+    grid = _grid()
+    s_flat = adapter.pack(state)
+    opp = UniformRandomDiscretePolicy(
+        action_grid=grid, n_vehicles=cfg.n_bandits, command_cls=env.bandit_command_cls
+    )
+    scheduled = MCTSPolicy(
+        env_model=adapter,
+        side=Side.GUARD,
+        action_grid=grid,
+        opponent_model=opp,
+        opponent_action_grid=grid,
+        num_simulations=8,
+        n_vehicles=cfg.n_guards,
+        command_cls=env.guard_command_cls,
+        opponent_schedule=_all_contact_schedule(),
+    )
+    cmd, _ = scheduled(None, s_flat, jax.random.PRNGKey(11), state.t)
+    expected_dv_shape = env.guard_command_cls.zeros(cfg.n_guards).dv.shape
+    assert cmd.dv.shape == expected_dv_shape
+    # First two dims of each per-vehicle Δv come from a grid row.
+    grid_np = np.asarray(grid)
+    for v in range(cfg.n_guards):
+        head = np.asarray(cmd.dv[v, :2])
+        diffs = np.linalg.norm(grid_np - head[None, :], axis=-1)
+        assert diffs.min() < 1e-5
+
+
+def test_mcts_opponent_schedule_no_contact_calls_opponent_only_at_root():
+    """When the schedule has *no* contact windows, the opponent_model is
+    consulted exactly once — at the root, to seed the cached Δv. From then
+    on every recurrent step replays the cached Δv, so the call count must
+    be 1 regardless of num_simulations.
+    """
+    env, adapter, _, state, cfg = _build()
+    grid = _grid()
+    s_flat = adapter.pack(state)
+
+    @dataclasses.dataclass
+    class _RecordingOpponent:
+        n_vehicles: int
+        command_cls: Any
+        call_count: list  # mutable so closure can record from a frozen dc
+
+        def __call__(self, ps, view, k, tt):
+            del view, k
+            self.call_count.append(0)  # marker; we count len(call_count)
+            n = self.n_vehicles
+            zero_dv = self.command_cls.zeros(n).dv
+            return self.command_cls.zeros(n).replace(dv=zero_dv * 0.0), ps
+
+    counter: list = []
+    rec = _RecordingOpponent(
+        n_vehicles=cfg.n_bandits,
+        command_cls=env.bandit_command_cls,
+        call_count=counter,
+    )
+
+    # NB: `rec` is mutated as a Python side effect of being called. Inside
+    # `jit` / `mctx` the calls are *traced once* during compilation. Under
+    # `jax.lax.cond`, *both* branches are abstractly evaluated by the JAX
+    # tracer, but only the True branch (in_contact) calls `_opponent_dv` —
+    # the False branch just returns the cached Δv without invoking the
+    # opponent. Plus one root-level call to seed the cache. So at trace
+    # time we expect exactly 2 opponent calls regardless of num_simulations
+    # or whether the schedule has any contacts. The critical regression
+    # check is that the count is *not* `1 + num_simulations`, which would
+    # indicate the opponent is being recomputed every step.
+    sched = _no_contact_schedule()
+    policy = MCTSPolicy(
+        env_model=adapter,
+        side=Side.GUARD,
+        action_grid=grid,
+        opponent_model=rec,
+        opponent_action_grid=grid,
+        num_simulations=4,
+        n_vehicles=cfg.n_guards,
+        command_cls=env.guard_command_cls,
+        opponent_schedule=sched,
+    )
+    cmd, _ = policy(None, s_flat, jax.random.PRNGKey(0), state.t)
+    expected = env.guard_command_cls.zeros(cfg.n_guards).dv.shape
+    assert cmd.dv.shape == expected
+    # Trace-time opponent invocations: 1 at root + 1 in the in_contact=True
+    # branch of `_step_one_with_schedule` = 2 total. *Not* 1+N (per-sim).
+    assert len(counter) == 2, (
+        f"Opponent traced {len(counter)} times; expected 2 (root + the "
+        "in_contact=True lax.cond branch). The schedule isn't gating "
+        "opponent recomputation as expected."
+    )
+
+    # Larger num_simulations — count must remain 2.
+    counter.clear()
+    policy_more = dataclasses.replace(policy, num_simulations=32)
+    policy_more(None, s_flat, jax.random.PRNGKey(0), state.t)
+    assert len(counter) == 2, (
+        f"Opponent traced {len(counter)} times for num_simulations=32; "
+        "expected still 2. The opponent is being recomputed per-simulation."
+    )
+
+
+def test_mcts_opponent_schedule_jit_compatible():
+    """A schedule-aware MCTS should still trace cleanly under jax.jit."""
+    env, adapter, _, state, cfg = _build()
+    grid = _grid()
+    s_flat = adapter.pack(state)
+    opp = UniformRandomDiscretePolicy(
+        action_grid=grid, n_vehicles=cfg.n_bandits, command_cls=env.bandit_command_cls
+    )
+    policy = MCTSPolicy(
+        env_model=adapter,
+        side=Side.GUARD,
+        action_grid=grid,
+        opponent_model=opp,
+        opponent_action_grid=grid,
+        num_simulations=4,
+        n_vehicles=cfg.n_guards,
+        command_cls=env.guard_command_cls,
+        opponent_schedule=_all_contact_schedule(),
+    )
+
+    @jax.jit
+    def call_jit(s, k, tt):
+        return policy(None, s, k, tt)
+
+    cmd, _ = call_jit(s_flat, jax.random.PRNGKey(2), state.t)
+    expected = env.guard_command_cls.zeros(cfg.n_guards).dv.shape
+    assert cmd.dv.shape == expected

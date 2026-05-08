@@ -95,6 +95,9 @@ def make_lady_bandit_guard(
     # Observation fns (None → ScenarioConfig.__post_init__ supplies FullObservation)
     guard_observation_fn: Any = None,
     bandit_observation_fn: Any = None,
+    # Ground-station networks (per-side; None → no comms-network gating)
+    guard_ground_station_network: Any = None,
+    bandit_ground_station_network: Any = None,
     # Decentralized-communication extension. When True, the guard side gains
     # the COMMUNICATE action component and the reward function charges
     # `comm_cost` per active broadcast. Bandit-side comms-leak observation
@@ -181,6 +184,8 @@ def make_lady_bandit_guard(
         policy_dynamics=policy_dynamics,
         guard_observation_fn=guard_observation_fn,
         bandit_observation_fn=bandit_observation_fn,
+        guard_ground_station_network=guard_ground_station_network,
+        bandit_ground_station_network=bandit_ground_station_network,
         game=LadyBanditGuard(
             breach_radius_m=breach_radius_m,
             catch_radius_m=catch_radius_m,
