@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -770,11 +771,60 @@ def _render_side_2d(scene: RolloutScene, ax: Any, frame: int, side: Side) -> Non
                     )
 
         if scene.show_cubes:
-            # No 3D orientation in 2D — render the agent as a filled square
-            # marker. Quat-derived attitude is ignored for 2D scenes; project
-            # to a yaw glyph if/when an Attitude component is added.
-            ax.scatter(
-                cx, cy, marker="s", s=80, c=[color], edgecolors="black", linewidths=0.6, zorder=4
+            # 2D yaw glyph: rotated square + heading-indicator triangle
+            # pointing along the body +x axis. When `quat` is None
+            # (scenarios without an Attitude component) we fall back to
+            # an unrotated square — visually identical to the previous
+            # scatter-marker rendering.
+            if quat is not None:
+                R_rtn = quat_to_rotation_matrix(quat[frame, i])  # noqa: N806
+                # Body +x in RTN -> [R, T, N] components. Plot uses [T, R].
+                bx_t, bx_r = float(R_rtn[1, 0]), float(R_rtn[0, 0])
+                yaw = np.arctan2(bx_r, bx_t)
+            else:
+                yaw = 0.0
+            edge = scene._axis_limit / 50.0
+            half = edge / 2.0
+            cos_y, sin_y = float(np.cos(yaw)), float(np.sin(yaw))
+            R2 = np.array([[cos_y, -sin_y], [sin_y, cos_y]])  # noqa: N806
+            corners_body = np.array(
+                [
+                    [+half, +half],
+                    [-half, +half],
+                    [-half, -half],
+                    [+half, -half],
+                ]
+            )
+            corners = corners_body @ R2.T + np.array([cx, cy])
+            ax.add_patch(
+                mpatches.Polygon(
+                    corners,
+                    closed=True,
+                    facecolor=color,
+                    edgecolor="black",
+                    linewidth=0.6,
+                    alpha=0.85,
+                    zorder=4,
+                )
+            )
+            # Heading-indicator triangle: tip at +x body face, base inside.
+            tri_body = np.array(
+                [
+                    [+half * 1.7, 0.0],
+                    [+half * 0.7, +half * 0.5],
+                    [+half * 0.7, -half * 0.5],
+                ]
+            )
+            tri = tri_body @ R2.T + np.array([cx, cy])
+            ax.add_patch(
+                mpatches.Polygon(
+                    tri,
+                    closed=True,
+                    facecolor="black",
+                    edgecolor="black",
+                    linewidth=0.4,
+                    zorder=5,
+                )
             )
         else:
             ax.scatter(cx, cy, color=color, s=30, zorder=4)
