@@ -140,7 +140,11 @@ from policies.lqr_bandit import _build_horizon_matrices, _hcw_rt_AB  # noqa: E40
 
 # %%
 # ---- Geometry ---------------------------------------------------------------
-RING_RADIUS_M = 2000.0  # bandit's natural-motion ring (radial extent)
+# Bandit ring: under HCW the along-track extent is 2x the radial extent
+# (the 2:1 RT-plane natural-motion ellipse). With RING_RADIUS_M=4000 the
+# bandit starts 8 km along-track from the lady at phase=pi/2 (max-distance
+# phase), giving a longer approach window than the 2-km baseline.
+RING_RADIUS_M = 4000.0  # bandit's natural-motion ring (radial extent)
 GUARD_RING_RADIUS_M = 200.0  # guard's small co-orbiting ring near the lady
 
 # ---- Sensor parameters (per side) -------------------------------------------
@@ -169,17 +173,36 @@ BREACH_RADIUS_M = 5.0  # bandit "breaches" the lady when within this distance
 # visualization becomes useless. Episodes also end when ANY vehicle (guard
 # or bandit) exceeds this distance from the lady — this surfaces "the
 # bandit ran away" / "a guard got slung out" failures cleanly.
-MAX_DISTANCE_TERMINATION_M = 10000.0  # 10 km — about 5× the bandit ring radius
+MAX_DISTANCE_TERMINATION_M = 20000.0  # 20 km — about 2.5x the along-track ring extent
 
 # ---- Bandit thrust authority ------------------------------------------------
 # Per-step Δv cap (m/s) on the bandit's HCW-LQR controller. The
-# unclipped LQR recommendation for a state 4 km from the origin is on
+# unclipped LQR recommendation for a state 8 km from the origin is on
 # the order of m/s (much larger than 0.05); too tight a clip turns the
 # LQR into a saturated bang-bang that behaves like the naïve "thrust
 # toward origin" policy, which fails under HCW Coriolis. The default
 # 0.5 m/s gives the LQR enough authority to actually close on the lady
 # in roughly one orbital period.
 BANDIT_MAX_DV_MPS = 0.5
+
+# ---- Bandit guard-avoidance (APF) -------------------------------------------
+# The bandit's policy is HCW-LQR-toward-lady PLUS a Gaussian-decay
+# repulsion away from each guard ("artificial potential field" / APF).
+# `BANDIT_AVOIDANCE_GAIN` is the peak repulsive Δv (m/s) when the guard
+# is at zero distance — clipped by `BANDIT_MAX_DV_MPS` like every other
+# action. `BANDIT_AVOIDANCE_SIGMA_M` is the Gaussian length scale: at
+# `~3*sigma` the repulsion is essentially zero, at `~sigma` it is ~37%,
+# at zero it is full `gain`. Set `BANDIT_AVOIDANCE_GAIN=0` to turn
+# avoidance off and recover the pure lady-seeking LQR (matches the
+# previous demo behavior).
+#
+# Tuning intuition: with sigma=300m and gain=1.0, the bandit feels a
+# repulsion of >0.1 m/s within ~700m of a guard. The guards on the 200m
+# ring around the lady create a "soft wall" the bandit must work around
+# — exactly the trade-off the user wants to surface so SDecZero-style
+# guard policies can tip the balance.
+BANDIT_AVOIDANCE_GAIN = 1.0
+BANDIT_AVOIDANCE_SIGMA_M = 300.0
 
 # ---- Time / horizon ----------------------------------------------------------
 DT = 10.0  # integration step (s)
@@ -311,44 +334,50 @@ print(
 )
 
 # %% [markdown]
-# ## 3. EXTENSION POINT — Bandit policy: drive toward the lady (HCW-aware LQR)
+# ## 3. EXTENSION POINT — Bandit policy: HCW-LQR + guard avoidance (APF)
 #
-# **Why an LQR rather than a "thrust-toward-origin" rule.** Under HCW
-# dynamics, applying a constant radial-inward thrust does *not* drive
-# the bandit toward the origin — the Coriolis cross-coupling
-# (`2·n·ṫ` and `−2·n·ṙ`) converts radial acceleration into secular
-# along-track drift. A naïve `Δv = −max_dv·(pos/‖pos‖)` controller
-# will visibly drive the bandit *away* from the lady over an orbit
-# (this is the same "to slow down, speed up" surprise familiar from
-# any rendezvous textbook).
+# The bandit balances two competing goals:
 #
-# The default bandit therefore solves the **closed-form HCW LQR**:
+# 1. **Reach the lady.** Modeled by a closed-form HCW-LQR that
+#    minimizes terminal position-magnitude.
+# 2. **Avoid the guards.** Modeled by an artificial potential field
+#    (APF) — a sum of repulsive Δv contributions, one per guard, with
+#    Gaussian decay in the bandit-to-guard distance.
+#
+# Why this split? Adding a quadratic guard-avoidance penalty *inside*
+# the LQR cost would destroy its closed-form solvability (guards'
+# positions vary over the horizon, and avoidance is fundamentally
+# nonlinear in distance). The APF-on-top approach keeps the per-step
+# cost at a few matmuls + a sum:
 #
 # ```text
-#   min   ‖C·x_H‖²  +  λ · ‖U‖²
-#   s.t.  x_{k+1} = A·x_k + B·u_k                    (HCW_RT discretized)
+#   u_lqr   = -gain @ x_b                       (lady-seeking, closed-form)
+#   u_avoid = sum_g  g·exp(-d_g^2/(2sigma^2)) · (x_b - x_g)/||x_b - x_g||
+#   u       = clip(u_lqr + u_avoid, +/- max_dv)
 # ```
 #
-# where `C` selects RT position. The first action is `u₀ = −gain·x₀`
-# with `gain = (MᵀCᵀCM + λI)⁻¹ MᵀCᵀC·A^H` precomputed at build time.
-# Per-step cost is two matmuls + a clip. This is a stripped-down version
-# of `examples.policies.lqr_bandit.LQRBanditPolicy`; we use a hand-rolled
-# version here so it accepts the bandit's own RT state directly as
-# `agent_view` (the `Policy` library version expects a flat
-# FullObservation, which would need a separate adapter for the manual
-# loop in section 7).
+# Tuning knobs (in section 1):
+#
+# - `BANDIT_AVOIDANCE_GAIN` — peak repulsive Δv when the bandit is on
+#   top of a guard. Set to 0 to recover pure lady-seeking LQR.
+# - `BANDIT_AVOIDANCE_SIGMA_M` — Gaussian length scale; repulsion is
+#   ~37% of `gain` at distance sigma, ~14% at 2*sigma, ~1% at 3*sigma.
+#
+# **Bandit perceives guards via TRUTH in this demo.** The agent_view
+# passed in section 7 is a tuple `(bandit_rt, guard_pos_truth)`. To
+# move the bandit to a *belief*-based perception, swap
+# `state.guards.rt[:, :2]` for the bandit's PF cross-pair mean over
+# the guards.
 #
 # Drop-in replacements:
 #
-# - **A naïve "head toward origin"** — provided as
-#   `GoToLadyPolicyNaive` below for comparison; uncomment to see the
-#   HCW drift problem first-hand.
-# - **`LQRBanditPolicy.from_env(env, ...)`** — same math but reads a
-#   flat FullObservation. Use this via `belief_rollout` once your
-#   stack is wired up.
-# - **`UniformRandomDiscretePolicy`** — sanity-check baseline.
-# - **A POMDP solver** — pass a belief as `agent_view`; this is the
-#   integration target for SDecZero.
+# - **Pure LQR (no avoidance)**: set `BANDIT_AVOIDANCE_GAIN = 0` in
+#   section 1. Equivalent to the previous demo's policy.
+# - **`GoToLadyPolicyNaive`** — naïve "thrust toward origin" — visibly
+#   drifts the bandit AWAY from the lady due to HCW Coriolis coupling.
+#   Useful for the educational ablation.
+# - **A POMDP solver** — replace the policy entirely; pass a belief as
+#   `agent_view`. This is the integration target for SDecZero.
 
 
 # %%
@@ -408,6 +437,83 @@ class LQRGoToLadyPolicy:
 
 
 @dataclass(frozen=True)
+class LQRGoToLadyWithAvoidance:
+    """HCW-LQR toward the lady + Gaussian-repulsion APF away from guards.
+
+    `agent_view` is a tuple `(bandit_rt, guard_pos)`:
+        bandit_rt:   shape (n_bandits, 4) — RT-frame state.
+        guard_pos:   shape (n_guards, 2)  — RT-frame positions only.
+
+    The output is `clip(u_lqr + u_avoid, +/- max_dv_mps)` where
+    `u_avoid` sums Gaussian-decay repulsions away from each guard:
+        magnitude = avoidance_gain * exp(-d^2 / (2*sigma^2))
+        direction = (bandit_pos - guard_pos) / ||bandit_pos - guard_pos||
+    Setting `avoidance_gain=0` recovers the pure-LQR baseline.
+    """
+
+    gain: jax.Array
+    max_dv_mps: float
+    avoidance_gain: float
+    avoidance_sigma_m: float
+    n_vehicles: int = 1
+    command_cls: Any = None
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        mean_motion,
+        dt,
+        horizon=8,
+        control_cost=1e-3,
+        max_dv_mps=0.5,
+        avoidance_gain=1.0,
+        avoidance_sigma_m=300.0,
+        n_vehicles=1,
+        command_cls=None,
+    ):
+        A, B = _hcw_rt_AB(mean_motion, dt)  # noqa: N806
+        A_powH, M = _build_horizon_matrices(A, B, horizon)  # noqa: N806
+        C = jnp.array([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]])  # noqa: N806
+        H_lam = M.T @ C.T @ C @ M + control_cost * jnp.eye(M.shape[1])  # noqa: N806
+        K = jnp.linalg.solve(H_lam, M.T @ C.T @ C @ A_powH)  # noqa: N806
+        gain = K[:2, :]
+        return cls(
+            gain=gain,
+            max_dv_mps=max_dv_mps,
+            avoidance_gain=avoidance_gain,
+            avoidance_sigma_m=avoidance_sigma_m,
+            n_vehicles=n_vehicles,
+            command_cls=command_cls,
+        )
+
+    def __call__(self, policy_state, agent_view, key, t):
+        del key, t
+        if self.command_cls is None:
+            raise ValueError("LQRGoToLadyWithAvoidance was constructed without command_cls.")
+        bandit_rt, guard_pos = agent_view  # (n_b, 4), (n_g, 2)
+
+        # ---- Lady-seeking (LQR) ----
+        u_lqr = -bandit_rt @ self.gain.T  # (n_b, 2)
+
+        # ---- Guard avoidance (APF) ----
+        # diff[b, g, :] = bandit_pos[b] - guard_pos[g]; shape (n_b, n_g, 2)
+        bandit_pos = bandit_rt[:, None, :2]
+        gp = guard_pos[None, :, :]
+        diff = bandit_pos - gp
+        dist = jnp.linalg.norm(diff, axis=-1, keepdims=True)  # (n_b, n_g, 1)
+        direction = diff / (dist + 1e-9)
+        sigma = self.avoidance_sigma_m
+        magnitude = self.avoidance_gain * jnp.exp(-(dist**2) / (2.0 * sigma**2))
+        u_avoid = (magnitude * direction).sum(axis=1)  # (n_b, 2)
+
+        u = u_lqr + u_avoid
+        dvs = jnp.clip(u, -self.max_dv_mps, self.max_dv_mps)
+        cmd_template = self.command_cls.zeros(self.n_vehicles)
+        return cmd_template.replace(dv=dvs), policy_state
+
+
+@dataclass(frozen=True)
 class GoToLadyPolicyNaive:
     """Naïve "thrust-toward-origin" controller — included for comparison.
 
@@ -422,7 +528,10 @@ class GoToLadyPolicyNaive:
 
     def __call__(self, policy_state, agent_view, key, t):
         del key, t
-        own_pos = agent_view[:, :2]
+        # accepts either bare bandit_rt or the tuple (bandit_rt, guard_pos);
+        # the naive policy ignores guard positions.
+        bandit_rt = agent_view[0] if isinstance(agent_view, tuple) else agent_view
+        own_pos = bandit_rt[:, :2]
         norm = jnp.linalg.norm(own_pos, axis=-1, keepdims=True)
         direction = -own_pos / (norm + 1e-9)
         dv = direction * self.max_dv_mps
@@ -431,12 +540,14 @@ class GoToLadyPolicyNaive:
 
 
 # Bandit policy instance — swap this line for any Policy-conforming object.
-bandit_policy = LQRGoToLadyPolicy.build(
+bandit_policy = LQRGoToLadyWithAvoidance.build(
     mean_motion=N_MOTION,
     dt=cfg.dt,
     horizon=8,
     control_cost=1e-3,
     max_dv_mps=BANDIT_MAX_DV_MPS,
+    avoidance_gain=BANDIT_AVOIDANCE_GAIN,
+    avoidance_sigma_m=BANDIT_AVOIDANCE_SIGMA_M,
     n_vehicles=cfg.n_bandits,
     command_cls=env.bandit_command_cls,
 )
@@ -609,8 +720,10 @@ for step in range(n_steps):
 
     # Guard policy: ZeroControl ignores agent_view (None is fine).
     g_action, _ = guard_policy(None, None, k_g, state.t)
-    # Bandit policy: GoToLadyPolicy reads bandit's own RT state.
-    b_view = state.bandits.rt
+    # Bandit policy: LQR + APF avoidance reads (bandit_rt, guard_pos).
+    # Truth is used for guard positions in this demo; swap for the
+    # bandit's PF cross-pair mean to make the bandit belief-aware.
+    b_view = (state.bandits.rt, state.guards.rt[:, :2])
     b_action, _ = bandit_policy(None, b_view, k_b, state.t)
 
     actions = Actions(sides=BySide(guard=g_action, bandit=b_action))
@@ -843,7 +956,12 @@ fusion_events = []
 for step in range(n_steps):
     key_fuse, k_g, k_b, k_env, k_g_obs, k_b_obs, k_g_pf, k_b_pf = jax.random.split(key_fuse, 8)
     g_action, _ = guard_policy(None, None, k_g, state_f.t)
-    b_action, _ = bandit_policy(None, state_f.bandits.rt, k_b, state_f.t)
+    b_action, _ = bandit_policy(
+        None,
+        (state_f.bandits.rt, state_f.guards.rt[:, :2]),
+        k_b,
+        state_f.t,
+    )
     actions = Actions(sides=BySide(guard=g_action, bandit=b_action))
     step_out = env.step(k_env, state_f, actions)
     next_state = step_out.state
@@ -1081,12 +1199,14 @@ def run_one_episode(seed: int):
     """Run a single rollout with the given seed; return per-episode stats."""
     cfg_seed = make_cfg(guard_obs_fn=guard_obs_fn, bandit_obs_fn=bandit_obs_fn, seed=seed)
     env_seed = OrbitalGameEnv(cfg_seed)
-    bandit_policy_seed = LQRGoToLadyPolicy.build(
+    bandit_policy_seed = LQRGoToLadyWithAvoidance.build(
         mean_motion=N_MOTION,
         dt=cfg_seed.dt,
         horizon=8,
         control_cost=1e-3,
         max_dv_mps=BANDIT_MAX_DV_MPS,
+        avoidance_gain=BANDIT_AVOIDANCE_GAIN,
+        avoidance_sigma_m=BANDIT_AVOIDANCE_SIGMA_M,
         n_vehicles=cfg_seed.n_bandits,
         command_cls=env_seed.bandit_command_cls,
     )
@@ -1113,7 +1233,12 @@ def run_one_episode(seed: int):
     for step in range(n_steps_local):
         key, k_g, k_b, k_env, k_g_obs, k_b_obs, k_g_pf, k_b_pf = jax.random.split(key, 8)
         g_action, _ = guard_policy_seed(None, None, k_g, state.t)
-        b_action, _ = bandit_policy_seed(None, state.bandits.rt, k_b, state.t)
+        b_action, _ = bandit_policy_seed(
+            None,
+            (state.bandits.rt, state.guards.rt[:, :2]),
+            k_b,
+            state.t,
+        )
         actions = Actions(sides=BySide(guard=g_action, bandit=b_action))
         step_out = env_seed.step(k_env, state, actions)
         next_state = step_out.state
