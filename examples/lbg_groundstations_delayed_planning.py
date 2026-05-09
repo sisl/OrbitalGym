@@ -87,7 +87,7 @@ from orbital_game.belief.pf import (  # noqa: E402
     ParticleFilterFromTruthInitializer,
 )
 from orbital_game.config import VehicleParamsSpec  # noqa: E402
-from orbital_game.dynamics.hcw import hcw_rt_step  # noqa: E402
+from orbital_game.dynamics.hcw import hcw_rt_step, hcw_rtn_stm  # noqa: E402
 from orbital_game.env.types import BySide  # noqa: E402
 from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard  # noqa: E402
 from orbital_game.groundstations import GroundStation, GroundStationNetwork  # noqa: E402
@@ -365,34 +365,14 @@ print(f"Total ticks for {HORIZON_S:.0f}s @ dt={DT:.0f}s: {int(HORIZON_S / DT)}")
 layout = env.layout
 d = layout.dynamics_state_dim  # 6 for RTN
 
-
-def _hcw_rtn_stm(mean_motion_rad_s: float, dt: float) -> jnp.ndarray:
-    n = mean_motion_rad_s
-    s = jnp.sin(n * dt)
-    c = jnp.cos(n * dt)
-    phi_in = jnp.array(
-        [
-            [4 - 3 * c, 0.0, s / n, 2 * (1 - c) / n],
-            [6 * (s - n * dt), 1.0, -2 * (1 - c) / n, (4 * s - 3 * n * dt) / n],
-            [3 * n * s, 0.0, c, 2 * s],
-            [-6 * n * (1 - c), 0.0, -2 * s, 4 * c - 3],
-        ]
-    )
-    phi_out = jnp.array(
-        [
-            [c, s / n],
-            [-n * s, c],
-        ]
-    )
-    Phi = jnp.zeros((6, 6))  # noqa: N806 - state transition matrix (math convention)
-    in_axes = jnp.asarray([0, 1, 3, 4])
-    Phi = Phi.at[jnp.ix_(in_axes, in_axes)].set(phi_in)  # noqa: N806
-    out_axes = jnp.asarray([2, 5])
-    Phi = Phi.at[jnp.ix_(out_axes, out_axes)].set(phi_out)  # noqa: N806
-    return Phi
-
-
-stm = _hcw_rtn_stm(env.mean_motion, DT)
+# 6x6 closed-form HCW-RTN STM, shared with the env's hcw_rtn_step (single
+# source of truth in orbital_game.dynamics.hcw). This is the plant Jacobian
+# the KF and the LQR both consume — using the shared helper guarantees that
+# any future change to the dynamics module propagates here automatically.
+stm = hcw_rtn_stm(env.mean_motion, DT)
+# Control matrix B = Phi[:, vel_axes]: an impulsive Δv at the start of the
+# tick adds to the velocity components, then the full state propagates
+# through Phi, so x_{k+1} = Phi x_k + Phi[:, 3:6] u_k under hcw_rtn_step.
 control_matrix = stm[:, jnp.asarray([3, 4, 5])]
 process_noise_kf = jnp.eye(d) * 0.5
 
@@ -977,7 +957,7 @@ def _hcw_plan_propagator(state_rtn_6: np.ndarray, dv_rtn_3: np.ndarray, dt_s: fl
     state = np.asarray(state_rtn_6, dtype=np.float64).copy()
     state[3:6] += np.asarray(dv_rtn_3, dtype=np.float64)
     # Reuse the notebook's existing HCW STM (computed at the top of the
-    # belief-setup cell as `stm = _hcw_rtn_stm(env.mean_motion, DT)`).
+    # belief-setup cell as `stm = hcw_rtn_stm(env.mean_motion, DT)`).
     return np.asarray(stm) @ state
 
 

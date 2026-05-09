@@ -43,6 +43,45 @@ def _hcw_in_plane_stm(s: jax.Array, c: jax.Array, n: float, dt: float) -> jax.Ar
     )
 
 
+def _hcw_cross_track_stm(s: jax.Array, c: jax.Array, n: float) -> jax.Array:
+    """Closed-form 2x2 HCW cross-track STM.
+
+    The cross-track channel is a decoupled simple harmonic oscillator at the
+    orbital mean motion: N'' + n^2 N = 0. State is (N, Ndot).
+    """
+    return jnp.array(
+        [
+            [c, s / n],
+            [-n * s, c],
+        ]
+    )
+
+
+def hcw_rtn_stm(mean_motion: float, dt: float) -> jax.Array:
+    """Closed-form 6x6 HCW-RTN state transition matrix.
+
+    Maps state x = [R, T, N, Rdot, Tdot, Ndot] forward by dt under the
+    natural HCW dynamics (no impulse): x_{k+1} = Phi @ x_k. Composes the
+    in-plane 4x4 block (R, T, Rdot, Tdot) and the cross-track 2x2 block
+    (N, Ndot), placed at the appropriate axis indices.
+
+    Callers building a Kalman filter, LQR, or any analysis tool that needs the
+    plant Jacobian over one tick should use this rather than re-deriving the
+    closed-form blocks. Stays consistent with hcw_rtn_step by construction.
+    """
+    n = mean_motion
+    s = jnp.sin(n * dt)
+    c = jnp.cos(n * dt)
+    phi_in = _hcw_in_plane_stm(s, c, n, dt)
+    phi_out = _hcw_cross_track_stm(s, c, n)
+    phi = jnp.zeros((6, 6))
+    in_axes = jnp.asarray([0, 1, 3, 4])
+    phi = phi.at[jnp.ix_(in_axes, in_axes)].set(phi_in)
+    out_axes = jnp.asarray([2, 5])
+    phi = phi.at[jnp.ix_(out_axes, out_axes)].set(phi_out)
+    return phi
+
+
 @register(DynamicsKey.HCW_RT, frame=Frame.RT, kind=DynamicsKind.RELATIVE)
 def hcw_rt_step(state: jax.Array, dv: jax.Array, params, dt: float) -> jax.Array:
     """In-plane HCW step via closed-form 4x4 STM.
@@ -89,13 +128,7 @@ def hcw_rtn_step(state: jax.Array, dv: jax.Array, params, dt: float) -> jax.Arra
     out_plane = jnp.stack([s0[:, 2], s0[:, 5]], axis=-1)  # (n, 2)
 
     phi_in = _hcw_in_plane_stm(s, c, n, dt)
-    # Cross-track STM: [[cos, sin/n], [-n sin, cos]]
-    phi_out = jnp.array(
-        [
-            [c, s / n],
-            [-n * s, c],
-        ]
-    )
+    phi_out = _hcw_cross_track_stm(s, c, n)
 
     # Same batch-first convention as hcw_rt_step: each row is a vehicle.
     new_in = in_plane @ phi_in.T
