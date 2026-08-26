@@ -5,7 +5,7 @@ from __future__ import annotations
 import jax.numpy as jnp
 from flax.struct import dataclass as fdataclass
 
-from orbital_game.sampling.validators import (
+from orbitalgym.sampling.validators import (
     MaxRange,
     MinSeparation,
     SeparationScope,

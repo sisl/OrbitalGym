@@ -11,8 +11,8 @@ def test_sun_blocking_variants():
 
     import jax.numpy as jnp
 
-    from orbital_game import make_sun_blocking
-    from orbital_game.policies.heuristic import SunTrackerBlocker
+    from orbitalgym import make_sun_blocking
+    from orbitalgym.policies.heuristic import SunTrackerBlocker
 
     cfg = make_sun_blocking(seed=0, max_horizon_s=5400.0)
     sun_bandit = SunTrackerBlocker(
@@ -23,7 +23,7 @@ def test_sun_blocking_variants():
     # --8<-- [end:variant-sun-tracker-bandit]
 
     # --8<-- [start:variant-jittered-sun-tracker]
-    from orbital_game.policies.heuristic import JitteredPolicy
+    from orbitalgym.policies.heuristic import JitteredPolicy
 
     base = SunTrackerBlocker(
         sun_dir_rtn=jnp.array([1.0, 0.0, 0.0]),

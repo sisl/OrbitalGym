@@ -13,9 +13,9 @@ def test_customize_ic_sampling_walkthrough():
 
     import jax.numpy as jnp
 
-    from orbital_game import OrbitalGameEnv, SingleAgentView, make_pursuit_evasion
-    from orbital_game.sampling.side import RelativeEllipse
-    from orbital_game.sampling.spec import ICSpec
+    from orbitalgym import OrbitalGymEnv, SingleAgentView, make_pursuit_evasion
+    from orbitalgym.sampling.side import RelativeEllipse
+    from orbitalgym.sampling.spec import ICSpec
     # --8<-- [end:imports]
 
     # --8<-- [start:tighter-gaussian]
@@ -42,7 +42,7 @@ def test_customize_ic_sampling_walkthrough():
     # --8<-- [start:wire-it-up]
     cfg = make_pursuit_evasion(seed=0, max_horizon_s=200.0)
     cfg = dataclasses.replace(cfg, ic_sampler=tight_ic)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     # --8<-- [end:wire-it-up]
 
     view = SingleAgentView(env)

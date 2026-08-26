@@ -12,7 +12,7 @@ We test that without control, the state over 10 orbital periods has bounded magn
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.dynamics.hcw import hcw_rt_step
+from orbitalgym.dynamics.hcw import hcw_rt_step
 
 
 def test_hcw_rt_closed_orbit_remains_bounded():

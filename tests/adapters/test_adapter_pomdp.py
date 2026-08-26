@@ -6,14 +6,14 @@ import jax
 import jax.numpy as jnp
 
 from examples.reference_scenario import build_config
-from orbital_game.adapters.pomdp import POMDPAdapter
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Side
+from orbitalgym.adapters.pomdp import POMDPAdapter
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Side
 
 
 def _make_adapter():
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     return POMDPAdapter(env), env, cfg
 
 

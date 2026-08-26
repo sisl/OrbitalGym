@@ -2,8 +2,8 @@ import importlib
 
 import pytest
 
-from orbital_game import registry as _registry
-from orbital_game.registry import (
+from orbitalgym import registry as _registry
+from orbitalgym.registry import (
     DynamicsKey,
     DynamicsKind,
     Frame,
@@ -63,7 +63,7 @@ def test_register_without_frame_kind_still_works():
     # Non-DynamicsKey keys (e.g. PolicyKey) don't represent dynamics, so
     # frame/kind metadata is optional. DynamicsKey itself requires both —
     # see test_register_dynamics_key_requires_frame / _kind below.
-    from orbital_game.registry import PolicyKey
+    from orbitalgym.registry import PolicyKey
 
     @register(PolicyKey.ZERO_CONTROL)
     def f(state, dv, params, dt):
@@ -78,7 +78,7 @@ def test_register_dynamics_key_requires_frame():
     """A DynamicsKey registration without frame= should raise ValueError."""
     import pytest
 
-    from orbital_game.registry import DynamicsKey, DynamicsKind, register
+    from orbitalgym.registry import DynamicsKey, DynamicsKind, register
 
     with pytest.raises(ValueError, match="frame=Frame"):
 
@@ -91,7 +91,7 @@ def test_register_dynamics_key_requires_kind():
     """A DynamicsKey registration without kind= should raise ValueError."""
     import pytest
 
-    from orbital_game.registry import DynamicsKey, Frame, register
+    from orbitalgym.registry import DynamicsKey, Frame, register
 
     with pytest.raises(ValueError, match="kind=DynamicsKind"):
 
@@ -104,7 +104,7 @@ def test_register_non_dynamics_key_allows_no_metadata():
     """Non-DynamicsKey (e.g. PolicyKey) registrations work without frame/kind."""
     from dataclasses import dataclass
 
-    from orbital_game.registry import PolicyKey, register, resolve
+    from orbitalgym.registry import PolicyKey, register, resolve
 
     @register(PolicyKey.ZERO_CONTROL)
     @dataclass(frozen=True)
@@ -117,10 +117,10 @@ def test_register_non_dynamics_key_allows_no_metadata():
 
 def test_hcw_rt_has_frame_and_kind():
     # The autouse _clear_registry fixture wipes the registry dicts before
-    # this test runs, but Python's import cache means orbital_game.dynamics.hcw
+    # this test runs, but Python's import cache means orbitalgym.dynamics.hcw
     # was already imported (its @register decorators ran once at process start).
     # Reload the module so the decorators re-run and re-populate the registry.
-    from orbital_game.dynamics import hcw
+    from orbitalgym.dynamics import hcw
 
     importlib.reload(hcw)
     fn = resolve(DynamicsKey.HCW_RT)
@@ -129,7 +129,7 @@ def test_hcw_rt_has_frame_and_kind():
 
 
 def test_hcw_rtn_has_frame_and_kind():
-    from orbital_game.dynamics import hcw
+    from orbitalgym.dynamics import hcw
 
     importlib.reload(hcw)
     fn = resolve(DynamicsKey.HCW_RTN)

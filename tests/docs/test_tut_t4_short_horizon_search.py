@@ -12,8 +12,8 @@ def test_t4_short_horizon_search_walkthrough():
     import jax
     import jax.numpy as jnp
 
-    from orbital_game import (
-        OrbitalGameEnv,
+    from orbitalgym import (
+        OrbitalGymEnv,
         POMDPAdapter,
         Side,
         make_pursuit_evasion,
@@ -22,7 +22,7 @@ def test_t4_short_horizon_search_walkthrough():
 
     # --8<-- [start:adapter-setup]
     cfg = make_pursuit_evasion(seed=0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     adapter = POMDPAdapter(env)
 
     states_dim = adapter.states_dim

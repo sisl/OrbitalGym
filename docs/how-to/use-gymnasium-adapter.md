@@ -1,16 +1,16 @@
 # Use the Gymnasium adapter
 
-Wrap `OrbitalGameEnv` as a `gymnasium.Env` for single-agent RL training.
+Wrap `OrbitalGymEnv` as a `gymnasium.Env` for single-agent RL training.
 
 ## Recipe
 
 ```python
 import numpy as np
-from orbital_game import OrbitalGameEnv, make_lady_bandit_guard
-from orbital_game.adapters.gymnasium import GymnasiumAdapter
+from orbitalgym import OrbitalGymEnv, make_lady_bandit_guard
+from orbitalgym.adapters.gymnasium import GymnasiumAdapter
 
 cfg = make_lady_bandit_guard()
-env = GymnasiumAdapter(OrbitalGameEnv(cfg), seed=0)
+env = GymnasiumAdapter(OrbitalGymEnv(cfg), seed=0)
 
 obs, info = env.reset(seed=0)
 done = False

@@ -6,17 +6,17 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.reference_orbit import ReferenceOrbitState
-from orbital_game.registry import StateComponentKey
-from orbital_game.sampling.mass import ConstantMass
-from orbital_game.sampling.side import RelativeKeplerian
+from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+from orbitalgym.reference_orbit import ReferenceOrbitState
+from orbitalgym.registry import StateComponentKey
+from orbitalgym.sampling.mass import ConstantMass
+from orbitalgym.sampling.side import RelativeKeplerian
 
 
 def _config(n_guards=2, n_bandits=1):
     # Minimal config — only fields the sampler reads matter.
-    from orbital_game.sampling.side import RelativeEllipse
-    from orbital_game.sampling.spec import ICSpec
+    from orbitalgym.sampling.side import RelativeEllipse
+    from orbitalgym.sampling.spec import ICSpec
 
     return ScenarioConfig(
         n_guards=n_guards,

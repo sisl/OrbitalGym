@@ -14,14 +14,14 @@ import jax.numpy as jnp
 def test_controlled_cookbook_walkthrough():
     # --8<-- [start:imports]
 
-    from orbital_game.actions.assemble import build_command_class
-    from orbital_game.actions.components import ImpulsiveManeuver
-    from orbital_game.policies import ZeroControl
-    from orbital_game.policies.controlled import (
+    from orbitalgym.actions.assemble import build_command_class
+    from orbitalgym.actions.components import ImpulsiveManeuver
+    from orbitalgym.policies import ZeroControl
+    from orbitalgym.policies.controlled import (
         CompositeActionPolicy,
         HeuristicWithFallbackPolicy,
     )
-    from orbital_game.registry import Frame
+    from orbitalgym.registry import Frame
     # --8<-- [end:imports]
 
     # An ImpulsiveManeuver-only Command class is enough for the cookbook patterns

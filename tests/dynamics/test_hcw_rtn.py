@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from orbital_game.dynamics.hcw import hcw_rtn_step, hcw_rtn_stm
+from orbitalgym.dynamics.hcw import hcw_rtn_step, hcw_rtn_stm
 
 
 def test_cross_track_is_sinusoidal_and_decoupled():

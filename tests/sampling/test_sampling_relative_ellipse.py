@@ -5,17 +5,17 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.dynamics.hcw import hcw_rtn_step
-from orbital_game.reference_orbit import ReferenceOrbitState, mean_motion
-from orbital_game.registry import StateComponentKey
-from orbital_game.sampling.side import RelativeEllipse
+from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+from orbitalgym.dynamics.hcw import hcw_rtn_step
+from orbitalgym.reference_orbit import ReferenceOrbitState, mean_motion
+from orbitalgym.registry import StateComponentKey
+from orbitalgym.sampling.side import RelativeEllipse
 
 
 def _config(n_guards=1, velocity_y_mps=7546.05):
     """Build a minimal scenario config. Default velocity is circular at r=7000km;
     pass a different value to construct an elliptical reference orbit."""
-    from orbital_game.sampling.spec import ICSpec
+    from orbitalgym.sampling.spec import ICSpec
 
     return ScenarioConfig(
         n_guards=n_guards,

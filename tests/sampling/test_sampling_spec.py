@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from orbital_game.sampling.spec import ICSpec, SideSampler, Validator
+from orbitalgym.sampling.spec import ICSpec, SideSampler, Validator
 
 
 def test_icspec_holds_samplers_and_validators():

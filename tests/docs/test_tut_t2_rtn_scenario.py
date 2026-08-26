@@ -21,10 +21,10 @@ def test_t2_rtn_scenario():
     import jax
     import jax.numpy as jnp
 
-    from orbital_game import OrbitalGameEnv, make_pursuit_evasion
-    from orbital_game.env.types import BySide
-    from orbital_game.policies import ZeroControl
-    from orbital_game.rollout import episode_mask, rollout
+    from orbitalgym import OrbitalGymEnv, make_pursuit_evasion
+    from orbitalgym.env.types import BySide
+    from orbitalgym.policies import ZeroControl
+    from orbitalgym.rollout import episode_mask, rollout
     # --8<-- [end:imports]
 
     # --8<-- [start:build-config]
@@ -38,7 +38,7 @@ def test_t2_rtn_scenario():
     # --8<-- [end:build-config]
 
     # --8<-- [start:run-rollout]
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     policies = BySide(
         guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards),
         bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=cfg.n_bandits),
@@ -80,15 +80,15 @@ def test_t2_plots_render():
     """The plot calls in the snippet block actually produce non-empty figures."""
     import matplotlib.pyplot as plt
 
-    from orbital_game import OrbitalGameEnv, make_pursuit_evasion
-    from orbital_game.env.types import BySide
-    from orbital_game.policies import ZeroControl
-    from orbital_game.rollout import rollout
-    from orbital_game.viz.summaries import plot_reward_curve
-    from orbital_game.viz.trajectories import plot_rtn_3d
+    from orbitalgym import OrbitalGymEnv, make_pursuit_evasion
+    from orbitalgym.env.types import BySide
+    from orbitalgym.policies import ZeroControl
+    from orbitalgym.rollout import rollout
+    from orbitalgym.viz.summaries import plot_reward_curve
+    from orbitalgym.viz.trajectories import plot_rtn_3d
 
     cfg = make_pursuit_evasion(n_guards=2, n_bandits=1, seed=0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     policies = BySide(
         guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards),
         bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=cfg.n_bandits),

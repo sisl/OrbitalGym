@@ -15,11 +15,11 @@ the LBG scenario.
 
 ```python
 import jax.numpy as jnp
-from orbital_game.groundstations import (
+from orbitalgym.groundstations import (
     GroundStation, GroundStationNetwork
 )
-from orbital_game.groundstations.contacts import precompute_contact_schedule
-from orbital_game.reference_orbit import ReferenceOrbitState
+from orbitalgym.groundstations.contacts import precompute_contact_schedule
+from orbitalgym.reference_orbit import ReferenceOrbitState
 
 reference = ReferenceOrbitState.from_keplerian(
     semi_major_axis_m=6878e3, eccentricity=0.0, inclination=51.6,
@@ -45,7 +45,7 @@ schedule = precompute_contact_schedule(
 network = GroundStationNetwork(stations=stations, schedule=schedule)
 
 # Attach to the scenario:
-from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard
+from orbitalgym.games.lady_bandit_guard import make_lady_bandit_guard
 cfg = make_lady_bandit_guard(
     n_guards=1, n_bandits=1,
     guard_ground_station_network=network,
@@ -75,11 +75,11 @@ contact schedule. The two knobs that shape its behaviour:
 | > contact length | Upload silently skipped this contact. |
 
 ```python
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.policies.plan_cache import PlanCachePolicy
-from orbital_game.policies.mcts import MCTSPolicy  # or any inner planner
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.policies.plan_cache import PlanCachePolicy
+from orbitalgym.policies.mcts import MCTSPolicy  # or any inner planner
 
-env = OrbitalGameEnv(cfg)
+env = OrbitalGymEnv(cfg)
 
 inner = MCTSPolicy(...)
 cached = PlanCachePolicy(
@@ -171,7 +171,7 @@ real `guard_net`.
 
 - [Ground stations (in-depth)](../in-depth/ground-stations.md) — design
   rationale, lag semantics, side-asymmetry discussion.
-- [`examples/lbg_groundstations_delayed_planning.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/lbg_groundstations_delayed_planning.ipynb) — full
+- [`examples/lbg_groundstations_delayed_planning.ipynb`](https://github.com/sisl/OrbitalGym/blob/main/examples/lbg_groundstations_delayed_planning.ipynb) — full
   worked example with a lag sweep.
 - [API → groundstations](../api/groundstations.md),
   [API → plan-cache](../api/policies-plan-cache.md).

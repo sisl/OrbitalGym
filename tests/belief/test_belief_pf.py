@@ -7,14 +7,14 @@ from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
 
-from orbital_game.belief.pf import (
+from orbitalgym.belief.pf import (
     ParticleFilterBelief,
     ParticleFilterBeliefUpdater,
     ParticleFilterFromTruthInitializer,
     ParticleFilterRingInitializer,
 )
-from orbital_game.env.types import Side
-from orbital_game.observations.types import Observation
+from orbitalgym.env.types import Side
+from orbitalgym.observations.types import Observation
 
 # ---- helpers ------------------------------------------------------------
 
@@ -485,7 +485,7 @@ def test_pf_predict_with_hcw_rt_keeps_ring_particles_on_ring():
     """Predicting a ring-distributed particle cloud through HCW for one
     short step should leave them on the natural-motion ring (since each
     particle is itself a natural-motion solution)."""
-    from orbital_game.dynamics.hcw import hcw_rt_step
+    from orbitalgym.dynamics.hcw import hcw_rt_step
 
     n_motion = 1.13e-3
     a = 2000.0

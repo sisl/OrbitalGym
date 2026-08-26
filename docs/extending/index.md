@@ -1,6 +1,6 @@
 # Extending
 
-The four games shipping in `orbital-game` (Lady-Bandit-Guard,
+The four games shipping in `orbitalgym` (Lady-Bandit-Guard,
 Pursuit-Evasion, Sun-Blocking, Observation-Blocking) are designed to be
 *composed*. Each scenario is a `ScenarioConfig`, a frozen dataclass whose
 fields you can swap with `dataclasses.replace`. This section is a

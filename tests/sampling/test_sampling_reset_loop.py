@@ -7,13 +7,13 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 
-from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.reference_orbit import ReferenceOrbitState
-from orbital_game.registry import StateComponentKey
-from orbital_game.sampling.mass import ConstantMass
-from orbital_game.sampling.side import RelativeEllipse
-from orbital_game.sampling.spec import ICSpec
+from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.reference_orbit import ReferenceOrbitState
+from orbitalgym.registry import StateComponentKey
+from orbitalgym.sampling.mass import ConstantMass
+from orbitalgym.sampling.side import RelativeEllipse
+from orbitalgym.sampling.spec import ICSpec
 
 
 def _bounded_ellipse_config(validators=()):
@@ -49,7 +49,7 @@ def _bounded_ellipse_config(validators=()):
 
 
 def test_reset_returns_ic_valid_true_when_no_validators():
-    env = OrbitalGameEnv(_bounded_ellipse_config())
+    env = OrbitalGymEnv(_bounded_ellipse_config())
     state, _ = env.reset(jax.random.PRNGKey(0))
     assert bool(state.ic_valid)
 
@@ -60,7 +60,7 @@ def test_reset_returns_ic_valid_false_when_always_failing_validator():
         def __call__(self, config, guards, bandits):
             return jnp.asarray(False)
 
-    env = OrbitalGameEnv(_bounded_ellipse_config(validators=(_AlwaysFalse(),)))
+    env = OrbitalGymEnv(_bounded_ellipse_config(validators=(_AlwaysFalse(),)))
     state, _ = env.reset(jax.random.PRNGKey(0))
     assert not bool(state.ic_valid)
 
@@ -71,7 +71,7 @@ def test_reset_returns_ic_valid_true_when_passing_validator():
         def __call__(self, config, guards, bandits):
             return jnp.asarray(True)
 
-    env = OrbitalGameEnv(_bounded_ellipse_config(validators=(_AlwaysTrue(),)))
+    env = OrbitalGymEnv(_bounded_ellipse_config(validators=(_AlwaysTrue(),)))
     state, _ = env.reset(jax.random.PRNGKey(0))
     assert bool(state.ic_valid)
 
@@ -82,7 +82,7 @@ def test_reset_under_vmap_produces_per_lane_ic_valid():
         def __call__(self, config, guards, bandits):
             return jnp.asarray(False)
 
-    env = OrbitalGameEnv(_bounded_ellipse_config(validators=(_AlwaysFalse(),)))
+    env = OrbitalGymEnv(_bounded_ellipse_config(validators=(_AlwaysFalse(),)))
 
     def reset_fn(k):
         s, _ = env.reset(k)

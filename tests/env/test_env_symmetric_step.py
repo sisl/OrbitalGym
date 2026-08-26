@@ -5,11 +5,11 @@ from __future__ import annotations
 import jax
 
 from examples.reference_scenario import build_config
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide, SideOutput, StepOutput
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide, SideOutput, StepOutput
 
 
-def _zero_actions(env: OrbitalGameEnv) -> Actions:
+def _zero_actions(env: OrbitalGymEnv) -> Actions:
     cfg = env.config
     return Actions(
         sides=BySide(
@@ -21,7 +21,7 @@ def _zero_actions(env: OrbitalGameEnv) -> Actions:
 
 def test_step_returns_step_output():
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
     actions = _zero_actions(env)
     out = env.step(jax.random.PRNGKey(1), state, actions)
@@ -33,7 +33,7 @@ def test_step_returns_step_output():
 
 def test_step_advances_time_and_step():
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
     actions = _zero_actions(env)
     out = env.step(jax.random.PRNGKey(1), state, actions)
@@ -43,7 +43,7 @@ def test_step_advances_time_and_step():
 
 def test_step_episode_done_broadcasts_to_per_side():
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
     actions = _zero_actions(env)
     out = env.step(jax.random.PRNGKey(1), state, actions)
@@ -56,7 +56,7 @@ def test_step_episode_done_broadcasts_to_per_side():
 def test_step_jit_compiles():
     """jax.jit on env.step succeeds — sanity check for pytree purity."""
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
     actions = _zero_actions(env)
     jit_step = jax.jit(env.step)
@@ -67,7 +67,7 @@ def test_step_jit_compiles():
 def test_reset_returns_byside_outputs():
     """Reset returns (env_state, BySide[SideOutput]). Both sides populated."""
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, outputs = env.reset(jax.random.PRNGKey(0))
     assert isinstance(outputs, BySide)
     assert isinstance(outputs.guard, SideOutput)

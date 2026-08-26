@@ -6,7 +6,7 @@ by cumulative reward, ending with one planned step from a sampled
 initial state. Builds on
 [T3 — Write an active-pursuer policy](t3-active-pursuer.md); reference
 implementation at
-[`examples/planners/receding_horizon.py`](https://github.com/duncaneddy/orbital-game/blob/main/examples/planners/receding_horizon.py).
+[`examples/planners/receding_horizon.py`](https://github.com/sisl/OrbitalGym/blob/main/examples/planners/receding_horizon.py).
 
 ## What this is and isn't
 
@@ -32,7 +32,7 @@ the same.
 ```
 
 `POMDPAdapter` exposes a [POMDPs.jl](https://juliapomdp.github.io/POMDPs.jl/latest/)-shaped
-interface over `OrbitalGameEnv`:
+interface over `OrbitalGymEnv`:
 
 - `states_dim` — flat-state dimensionality. The vector packs
   `StateLayout.flatten` (per-side guard/bandit truth) followed by

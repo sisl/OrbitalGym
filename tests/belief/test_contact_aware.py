@@ -2,7 +2,7 @@ import flax.struct
 import jax
 import jax.numpy as jnp
 
-from orbital_game.belief.contact_aware import ContactAwareBelief
+from orbitalgym.belief.contact_aware import ContactAwareBelief
 
 
 class _StubBelief:

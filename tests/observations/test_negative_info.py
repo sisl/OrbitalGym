@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from orbital_game.observations.negative_info import (
+from orbitalgym.observations.negative_info import (
     Hard,
     NegativeInfoMode,
     Off,
@@ -63,8 +63,8 @@ def test_hard_instances_are_equal():
 
 
 def test_negative_info_types_are_reexported_from_observations_package():
-    """Users should be able to `from orbital_game.observations import Off, Hard, Soft`."""
-    from orbital_game.observations import (
+    """Users should be able to `from orbitalgym.observations import Off, Hard, Soft`."""
+    from orbitalgym.observations import (
         Hard,
         NegativeInfoMode,
         Off,

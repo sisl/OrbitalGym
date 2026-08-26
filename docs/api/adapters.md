@@ -1,17 +1,17 @@
 # Adapters
 
-Framework adapters that wrap `OrbitalGameEnv` for Gymnasium, PettingZoo, and POMDPPlanners-shape consumers.
+Framework adapters that wrap `OrbitalGymEnv` for Gymnasium, PettingZoo, and POMDPPlanners-shape consumers.
 
 ## Gymnasium
 
-::: orbital_game.adapters.gymnasium.adapter.GymnasiumAdapter
+::: orbitalgym.adapters.gymnasium.adapter.GymnasiumAdapter
 
 ## PettingZoo
 
-::: orbital_game.adapters.pettingzoo.adapter.PettingZooAdapter
+::: orbitalgym.adapters.pettingzoo.adapter.PettingZooAdapter
 
 ## POMDPPlanners-shape
 
 (duck-typed protocol, not an external import)
 
-::: orbital_game.adapters.pomdp.adapter.POMDPAdapter
+::: orbitalgym.adapters.pomdp.adapter.POMDPAdapter

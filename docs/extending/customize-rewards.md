@@ -20,9 +20,9 @@ Every `Game` subclass declares its default reward (and termination) via `default
 
 ## The protocol
 
-::: orbital_game.rewards.base.RewardFn
+::: orbitalgym.rewards.base.RewardFn
 
-::: orbital_game.rewards.base.RewardScope
+::: orbitalgym.rewards.base.RewardScope
 
 A `RewardFn` returns a `jax.Array` whose shape depends on `scope`:
 
@@ -37,13 +37,13 @@ zero-sum penalties are natural), the previous and next env states, the
 
 `ZeroReward` is the no-op reward (`NoGame`'s default). It always returns 0; useful as an explicit "I will supply my own reward" placeholder:
 
-::: orbital_game.rewards.reference.ZeroReward
+::: orbitalgym.rewards.reference.ZeroReward
 
 `DistanceToReferenceOrbit` is a reference single-agent reward — negative
 sum of guard distances to the reference origin, zero for the bandit. Useful
 when you want a guard-only signal without LBG event semantics:
 
-::: orbital_game.rewards.reference.DistanceToReferenceOrbit
+::: orbitalgym.rewards.reference.DistanceToReferenceOrbit
 
 `LbgZeroSumReward` is the LBG default — both sides get mirrored dense
 distance shaping plus large terminal events on catch / breach. Reads
@@ -51,7 +51,7 @@ distance shaping plus large terminal events on catch / breach. Reads
 `LadyBanditGuard.default_reward_fn` builder threads those from the game
 knobs):
 
-::: orbital_game.rewards.lbg_zero_sum.LbgZeroSumReward
+::: orbitalgym.rewards.lbg_zero_sum.LbgZeroSumReward
 
 Pursuit-Evasion ships its own zero-sum reward (`PursuitEvasionReward`)
 that reads `cfg.game.capture_distance_m`. Sun-Blocking ships

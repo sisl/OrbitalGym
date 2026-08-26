@@ -1,4 +1,4 @@
-from orbital_game.registry import ActionComponentKey
+from orbitalgym.registry import ActionComponentKey
 
 
 def test_action_component_key_values():

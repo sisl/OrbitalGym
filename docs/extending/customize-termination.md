@@ -23,17 +23,17 @@ Every `Game` subclass declares its default termination via `default_termination_
 
 ## The protocol
 
-::: orbital_game.termination.base.TerminationFn
+::: orbitalgym.termination.base.TerminationFn
 
 ## Bundled implementations
 
 `MaxStepsOnly` is the universal step-cap termination — it ends the episode when `state.step >= params.max_steps`. It reads `max_steps` from the cfg at call time, so it can be constructed without a cfg in scope. `NoGame`, `SunBlocking`, and `ObservationBlocking` use it as their default:
 
-::: orbital_game.termination.reference.MaxStepsOnly
+::: orbitalgym.termination.reference.MaxStepsOnly
 
 `LbgEventTermination` adds the bandit-breach and guard-catch events on top of the step cap; it's `LadyBanditGuard`'s default and reads `breach_radius_m` / `catch_radius_m` from its own fields (which `LadyBanditGuard.default_termination_fn` threads from the game knobs):
 
-::: orbital_game.termination.lbg_events.LbgEventTermination
+::: orbitalgym.termination.lbg_events.LbgEventTermination
 
 `PursuitEvasion` ships `PursuitEvasionTermination` that fires on
 max_steps OR capture (relative distance below `cfg.game.capture_distance_m`).

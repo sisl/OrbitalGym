@@ -7,7 +7,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
 
-from orbital_game.viz.trajectories import plot_rn, plot_rt, plot_rtn_3d, plot_tn
+from orbitalgym.viz.trajectories import plot_rn, plot_rt, plot_rtn_3d, plot_tn
 
 
 def _fake_rtn_trajectory(n_steps: int = 50):

@@ -8,11 +8,11 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 
-from orbital_game.actions.assemble import build_command_class
-from orbital_game.actions.components import Communicate, ImpulsiveManeuver
-from orbital_game.policies import ZeroControl
-from orbital_game.policies.controlled import CompositeActionPolicy
-from orbital_game.registry import Frame
+from orbitalgym.actions.assemble import build_command_class
+from orbitalgym.actions.components import Communicate, ImpulsiveManeuver
+from orbitalgym.policies import ZeroControl
+from orbitalgym.policies.controlled import CompositeActionPolicy
+from orbitalgym.registry import Frame
 from tests.policies._helpers import make_impulsive_maneuver_command_cls
 
 

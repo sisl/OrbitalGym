@@ -6,14 +6,14 @@ import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 
-from orbital_game.actions.assemble import build_command_class
-from orbital_game.actions.components import Communicate, ImpulsiveManeuver
-from orbital_game.adapters._command_flatten import (
+from orbitalgym.actions.assemble import build_command_class
+from orbitalgym.actions.components import Communicate, ImpulsiveManeuver
+from orbitalgym.adapters._command_flatten import (
     command_flat_dim,
     flatten_command,
     unflatten_command,
 )
-from orbital_game.registry import Frame
+from orbitalgym.registry import Frame
 
 
 def _make_impulsive_maneuver_command_cls(n: int):

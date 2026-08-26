@@ -6,12 +6,12 @@ from __future__ import annotations
 def test_every_gallery_class_imports_from_documented_path():
     import jax.numpy as jnp
 
-    from orbital_game.policies import UniformRandomDiscretePolicy, ZeroControl
-    from orbital_game.policies.controlled import (
+    from orbitalgym.policies import UniformRandomDiscretePolicy, ZeroControl
+    from orbitalgym.policies.controlled import (
         CompositeActionPolicy,
         HeuristicWithFallbackPolicy,
     )
-    from orbital_game.policies.heuristic import (
+    from orbitalgym.policies.heuristic import (
         JitteredPolicy,
         LeadInterceptPursuer,
         OrthogonalEvader,

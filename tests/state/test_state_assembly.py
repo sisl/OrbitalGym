@@ -3,8 +3,8 @@
 import jax
 import jax.numpy as jnp
 
-from orbital_game.state.assemble import build_state_class
-from orbital_game.state.components import Mass, RTNState, RTState
+from orbitalgym.state.assemble import build_state_class
+from orbitalgym.state.components import Mass, RTNState, RTState
 
 
 def test_build_single_component_state_class():

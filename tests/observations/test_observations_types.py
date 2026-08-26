@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
-from orbital_game.observations.types import Observation, flatten_observations
+from orbitalgym.observations.types import Observation, flatten_observations
 
 
 def test_observation_construction_with_default_obs_fn_none():

@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from orbital_game.dynamics.attitude import AttitudeParams, rigid_body_attitude_step
+from orbitalgym.dynamics.attitude import AttitudeParams, rigid_body_attitude_step
 
 
 def _identity_quat(n):

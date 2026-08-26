@@ -2,9 +2,9 @@
 
 import jax.numpy as jnp
 
-from orbital_game.env.types import Actions, BySide, Side
-from orbital_game.rewards.base import RewardScope
-from orbital_game.rewards.reference import DistanceToReferenceOrbit
+from orbitalgym.env.types import Actions, BySide, Side
+from orbitalgym.rewards.base import RewardScope
+from orbitalgym.rewards.reference import DistanceToReferenceOrbit
 
 
 class _Guard:

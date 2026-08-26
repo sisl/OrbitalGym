@@ -6,13 +6,13 @@ import jax
 import jax.numpy as jnp
 
 from examples.policies.receding_horizon import RecedingHorizonRollout
-from orbital_game import OrbitalGameEnv, Side, make_pursuit_evasion
-from orbital_game.adapters.pomdp import POMDPAdapter
+from orbitalgym import OrbitalGymEnv, Side, make_pursuit_evasion
+from orbitalgym.adapters.pomdp import POMDPAdapter
 
 
 def test_receding_horizon_beats_random_on_pursuit_evasion():
     cfg = make_pursuit_evasion(seed=0)
-    adapter = POMDPAdapter(OrbitalGameEnv(cfg))
+    adapter = POMDPAdapter(OrbitalGymEnv(cfg))
     planner = RecedingHorizonRollout(
         adapter=adapter,
         controlled_side=Side.BANDIT,

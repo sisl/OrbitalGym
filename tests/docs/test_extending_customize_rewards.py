@@ -14,9 +14,9 @@ def test_customize_rewards_walkthrough():
 
     import jax.numpy as jnp
 
-    from orbital_game import OrbitalGameEnv, Side, SingleAgentView, make_lady_bandit_guard
-    from orbital_game.policies import ZeroControl
-    from orbital_game.rewards.base import RewardScope
+    from orbitalgym import OrbitalGymEnv, Side, SingleAgentView, make_lady_bandit_guard
+    from orbitalgym.policies import ZeroControl
+    from orbitalgym.rewards.base import RewardScope
     # --8<-- [end:imports]
 
     # --8<-- [start:sparse-breach-reward]
@@ -43,7 +43,7 @@ def test_customize_rewards_walkthrough():
     # --8<-- [start:wire-it-up]
     cfg = make_lady_bandit_guard(seed=0, max_horizon_s=200.0)
     cfg = dataclasses.replace(cfg, reward_fn=SparseBreachReward(breach_radius_m=5.0))
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     # --8<-- [end:wire-it-up]
 
     view = SingleAgentView(env)

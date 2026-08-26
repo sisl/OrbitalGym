@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "orbital-game"
+name = "orbitalgym"
 version = "0.1.0"
 description = "JAX-native framework for guard/bandit decision-making in orbital scenarios"
 readme = "README.md"
@@ -57,7 +57,7 @@ extras = [
 ground-stations = []
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/orbital_game"]
+packages = ["src/orbitalgym"]
 
 [tool.ruff]
 line-length = 100
@@ -76,8 +76,8 @@ select = ["E", "F", "I", "N", "B", "UP", "SIM", "PYI"]
 "make_attitude_notebooks.py" = ["E501"]
 
 [tool.pyrefly]
-project-includes = ["src/orbital_game"]
-project-excludes = ["src/orbital_game/viz", "src/orbital_game/logging"]
+project-includes = ["src/orbitalgym"]
+project-excludes = ["src/orbitalgym/viz", "src/orbitalgym/logging"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

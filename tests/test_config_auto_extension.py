@@ -11,7 +11,7 @@ from __future__ import annotations
 
 
 def test_no_extension_when_all_roles_share_frame():
-    from orbital_game.registry import StateComponentKey
+    from orbitalgym.registry import StateComponentKey
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     cfg = _minimal_cfg()
@@ -28,7 +28,7 @@ def test_no_extension_when_all_roles_share_frame():
 
 
 def test_extension_when_truth_eci_policy_rtn():
-    from orbital_game.registry import DynamicsKey, StateComponentKey
+    from orbitalgym.registry import DynamicsKey, StateComponentKey
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     cfg = _minimal_cfg(
@@ -44,7 +44,7 @@ def test_extension_when_truth_eci_policy_rtn():
 
 def test_viz_always_forces_rtn():
     """Even when no role needs RTN, viz does — RTN must be in the extended set."""
-    from orbital_game.registry import DynamicsKey, StateComponentKey
+    from orbitalgym.registry import DynamicsKey, StateComponentKey
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     cfg = _minimal_cfg(

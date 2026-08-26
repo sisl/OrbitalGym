@@ -10,13 +10,13 @@ import dataclasses
 import numpy as np
 import pytest
 
-from orbital_game import OrbitalGameEnv, make_pursuit_evasion
-from orbital_game.adapters.gymnasium import GymnasiumAdapter
-from orbital_game.adapters.pettingzoo import PettingZooAdapter
-from orbital_game.observations.composite import CompositeObservation
-from orbital_game.observations.onboard_gps import OnboardGPSObservation
-from orbital_game.observations.range_limited import RangeLimitedObservation
-from orbital_game.observations.reference import FullObservation
+from orbitalgym import OrbitalGymEnv, make_pursuit_evasion
+from orbitalgym.adapters.gymnasium import GymnasiumAdapter
+from orbitalgym.adapters.pettingzoo import PettingZooAdapter
+from orbitalgym.observations.composite import CompositeObservation
+from orbitalgym.observations.onboard_gps import OnboardGPSObservation
+from orbitalgym.observations.range_limited import RangeLimitedObservation
+from orbitalgym.observations.reference import FullObservation
 
 
 def _make_cfg(obs_fn_factory, *, n_guards=2, n_bandits=3, asymmetric=False):
@@ -27,7 +27,7 @@ def _make_cfg(obs_fn_factory, *, n_guards=2, n_bandits=3, asymmetric=False):
     gets RangeLimitedObservation regardless of the factory.
     """
     cfg = make_pursuit_evasion(n_guards=n_guards, n_bandits=n_bandits, seed=0, max_horizon_s=500.0)
-    env_for_layout = OrbitalGameEnv(cfg)
+    env_for_layout = OrbitalGymEnv(cfg)
     guard_obs_fn = obs_fn_factory(env_for_layout)
     if asymmetric:
         bandit_obs_fn = RangeLimitedObservation(
@@ -69,7 +69,7 @@ def test_gymnasium_adapter_under_channel(channel_name):
     """GymnasiumAdapter exposes a non-degenerate Box observation space and
     completes one reset+step cycle without shape errors under each channel."""
     cfg = _make_cfg_with_obs_fn_factory(CHANNEL_FACTORIES[channel_name])
-    env = GymnasiumAdapter(OrbitalGameEnv(cfg), seed=0)
+    env = GymnasiumAdapter(OrbitalGymEnv(cfg), seed=0)
 
     obs, info = env.reset(seed=0)
     assert obs.shape == env.observation_space.shape, (
@@ -93,7 +93,7 @@ def test_pettingzoo_adapter_under_channel(channel_name):
     space and completes one reset+step cycle without shape errors under each
     channel. With n_guards=2, n_bandits=3 there are 5 agents."""
     cfg = _make_cfg_with_obs_fn_factory(CHANNEL_FACTORIES[channel_name])
-    env = PettingZooAdapter(OrbitalGameEnv(cfg), seed=0)
+    env = PettingZooAdapter(OrbitalGymEnv(cfg), seed=0)
 
     obs_dict, info_dict = env.reset(seed=0)
     expected_agents = ["guard_0", "guard_1", "bandit_0", "bandit_1", "bandit_2"]
@@ -129,7 +129,7 @@ def test_pettingzoo_per_agent_obs_consistent(channel_name):
     distinct rows per observer, so agents see distinct observations.
     """
     cfg = _make_cfg(CHANNEL_FACTORIES[channel_name])
-    env = PettingZooAdapter(OrbitalGameEnv(cfg), seed=0)
+    env = PettingZooAdapter(OrbitalGymEnv(cfg), seed=0)
     obs_dict, _ = env.reset(seed=0)
 
     guard_obs = [obs_dict["guard_0"], obs_dict["guard_1"]]
@@ -158,7 +158,7 @@ def test_pettingzoo_onboard_gps_yields_distinct_per_agent_obs():
     different row — distinct per-agent observations.
     """
     cfg = _make_cfg(CHANNEL_FACTORIES["onboard_gps"])
-    env = PettingZooAdapter(OrbitalGameEnv(cfg), seed=0)
+    env = PettingZooAdapter(OrbitalGymEnv(cfg), seed=0)
     obs_dict, _ = env.reset(seed=0)
 
     g0 = obs_dict["guard_0"]
@@ -173,7 +173,7 @@ def test_pettingzoo_onboard_gps_yields_distinct_per_agent_obs():
 def test_gymnasium_multi_step_rollout_under_channel(channel_name):
     """A 10-step rollout completes with stable obs/action shapes throughout."""
     cfg = _make_cfg(CHANNEL_FACTORIES[channel_name])
-    env = GymnasiumAdapter(OrbitalGameEnv(cfg), seed=0)
+    env = GymnasiumAdapter(OrbitalGymEnv(cfg), seed=0)
     obs_shape = env.observation_space.shape
     action_shape = env.action_space.shape
 
@@ -193,7 +193,7 @@ def test_gymnasium_multi_step_rollout_under_channel(channel_name):
 def test_pettingzoo_multi_step_rollout_under_channel(channel_name):
     """A 10-step PettingZoo rollout keeps all agents' shapes stable."""
     cfg = _make_cfg(CHANNEL_FACTORIES[channel_name])
-    env = PettingZooAdapter(OrbitalGameEnv(cfg), seed=0)
+    env = PettingZooAdapter(OrbitalGymEnv(cfg), seed=0)
     spaces = {a: env.observation_space(a).shape for a in env.possible_agents}
 
     obs_dict, _ = env.reset(seed=0)
@@ -217,7 +217,7 @@ def test_pettingzoo_multi_step_rollout_under_channel(channel_name):
 def test_pettingzoo_minimal_1v1_under_channel(channel_name):
     """1v1 (single agent per side) — the n_side==1 branch that skips slicing."""
     cfg = _make_cfg(CHANNEL_FACTORIES[channel_name], n_guards=1, n_bandits=1)
-    env = PettingZooAdapter(OrbitalGameEnv(cfg), seed=0)
+    env = PettingZooAdapter(OrbitalGymEnv(cfg), seed=0)
     obs_dict, _ = env.reset(seed=0)
 
     assert set(obs_dict.keys()) == {"guard_0", "bandit_0"}
@@ -230,7 +230,7 @@ def test_pettingzoo_minimal_1v1_under_channel(channel_name):
 def test_pettingzoo_asymmetric_obs_channels_per_side():
     """Different observation channels per side → different per-agent obs shapes."""
     cfg = _make_cfg(CHANNEL_FACTORIES["onboard_gps"], asymmetric=True)
-    env = PettingZooAdapter(OrbitalGameEnv(cfg), seed=0)
+    env = PettingZooAdapter(OrbitalGymEnv(cfg), seed=0)
     obs_dict, _ = env.reset(seed=0)
 
     guard_shape = env.observation_space("guard_0").shape

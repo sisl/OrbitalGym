@@ -5,17 +5,17 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from orbital_game.config import ScenarioConfig
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide, Side
-from orbital_game.games import (
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide, Side
+from orbitalgym.games import (
     PursuitEvasion,
     PursuitEvasionReward,
     PursuitEvasionTermination,
     make_pursuit_evasion,
 )
-from orbital_game.games.base import NoGame
-from orbital_game.registry import GameKey, resolve_game
+from orbitalgym.games.base import NoGame
+from orbitalgym.registry import GameKey, resolve_game
 
 
 def test_pursuit_evasion_registered():
@@ -39,7 +39,7 @@ def test_pe_serialize_roundtrip():
 def test_pe_reward_is_zero_sum():
     """Bandit reward = -|r|; guard reward = +|r|. Sum is 0."""
     cfg = make_pursuit_evasion()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
     actions = Actions(
         sides=BySide(
@@ -56,7 +56,7 @@ def test_pe_reward_is_zero_sum():
 def test_pe_termination_triggers_on_capture():
     """If guards and bandits are placed at the same point, capture immediately."""
     cfg = make_pursuit_evasion(capture_distance_m=1000.0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
     # Force the bandit to be co-located with the guard.
     state = state.replace(bandits=state.bandits.replace(rtn=state.guards.rtn))

@@ -4,7 +4,7 @@ Real space-domain operations don't get to plan continuously from a fresh
 belief. Vehicles update their on-board plans only when they pass through
 a ground-station contact window — moments later, that plan executes
 **open-loop** until the next contact, with no replanning in between.
-The `orbital_game.groundstations` and `orbital_game.policies.plan_cache`
+The `orbitalgym.groundstations` and `orbitalgym.policies.plan_cache`
 modules model that operational dynamic explicitly: contact-windowed
 comms, an intentional uplink lag between belief and plan, and per-side
 asymmetry in who has visibility of whom.
@@ -53,7 +53,7 @@ JAX does cheap per-tick predicate evaluation.
 ## Decision layer: `PlanCachePolicy`
 
 The contact-gated policy wrapper lives in
-[`orbital_game.policies.plan_cache`](../api/policies-plan-cache.md).
+[`orbitalgym.policies.plan_cache`](../api/policies-plan-cache.md).
 It wraps any inner `Policy` and converts continuous replanning into
 contact-gated replanning with an explicit lag.
 
@@ -180,9 +180,9 @@ snippets for each.
 - [Modeling comms windows](../how-to/model-comms-windows.md) — runnable
   recipes: single-station network, configuring lag, asymmetric
   knowledge.
-- [`examples/lbg_groundstations_delayed_planning.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/lbg_groundstations_delayed_planning.ipynb) — full
+- [`examples/lbg_groundstations_delayed_planning.ipynb`](https://github.com/sisl/OrbitalGym/blob/main/examples/lbg_groundstations_delayed_planning.ipynb) — full
   2-guard / 1-bandit lag-sweep with rendered animations.
 - [API → groundstations](../api/groundstations.md),
   [API → plan-cache](../api/policies-plan-cache.md),
   [API → belief-sync](../api/belief-sync.md).
-- [Spec](https://github.com/sisl/orbital-game/blob/main/superpowers/specs/2026-05-07-ground-station-comms-design.md) — design rationale and acceptance criteria.
+- [Spec](https://github.com/sisl/OrbitalGym/blob/main/superpowers/specs/2026-05-07-ground-station-comms-design.md) — design rationale and acceptance criteria.

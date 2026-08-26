@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.policies.heuristic import OrthogonalEvader
+from orbitalgym.policies.heuristic import OrthogonalEvader
 from tests.policies._helpers import make_impulsive_maneuver_command_cls
 
 

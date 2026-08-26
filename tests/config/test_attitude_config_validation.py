@@ -1,9 +1,9 @@
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.config import ScenarioConfig
-from orbital_game.dynamics.attitude import AttitudeParams
-from orbital_game.registry import (
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.dynamics.attitude import AttitudeParams
+from orbitalgym.registry import (
     ActionComponentKey,
     AttitudeDynamicsKey,
     StateComponentKey,
@@ -121,8 +121,8 @@ def test_full_attitude_config_validates_and_auto_extends_applied_torque():
 
 def test_attitude_control_torque_max_threads_to_action_component():
     """attitude_control_torque_max on config flows to AttitudeControl(torque_max=...)."""
-    from orbital_game.actions.components import AttitudeControl
-    from orbital_game.env.core import OrbitalGameEnv
+    from orbitalgym.actions.components import AttitudeControl
+    from orbitalgym.env.core import OrbitalGymEnv
 
     cfg = ScenarioConfig(
         **minimal_scenario_kwargs(
@@ -144,7 +144,7 @@ def test_attitude_control_torque_max_threads_to_action_component():
             attitude_control_torque_max=(0.5, 0.5, 0.5),
         )
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     guard_comps = env.guard_action_component_instances
     [att_ctrl] = [c for c in guard_comps if isinstance(c, AttitudeControl)]
     assert att_ctrl.torque_max == (0.5, 0.5, 0.5)

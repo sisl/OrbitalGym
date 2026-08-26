@@ -1,6 +1,6 @@
 # Action components
 
-`OrbitalGameEnv` composes per-side **action components** the same way it
+`OrbitalGymEnv` composes per-side **action components** the same way it
 composes state components. Each action component declares a static
 field schema (`fields()`, `zeros(n)`) plus an instance method
 `apply(...)` that mutates the side state. The env folds the configured
@@ -49,7 +49,7 @@ post-component side state. Action components write control inputs (e.g.
 `applied_dv`, `applied_torque`) onto transient state fields and return; the
 env loop owns the dynamics calls that consume those fields.
 
-`OrbitalGameEnv` exposes the per-side Command class as
+`OrbitalGymEnv` exposes the per-side Command class as
 `env.guard_command_cls` and `env.bandit_command_cls`. Both are
 flax-struct dataclasses (JAX pytrees) with one attribute per field
 contributed by any registered component.
@@ -117,7 +117,7 @@ reward function reads off the guard's command.
 ## Building a Command class directly
 
 You usually don't construct a Command class by hand — the env builds
-one per side from the configured tuple at `OrbitalGameEnv.__init__`
+one per side from the configured tuple at `OrbitalGymEnv.__init__`
 time. But the same `build_command_class` helper is available if you
 need it (for unit tests, custom adapters, or documentation that
 constructs a policy in isolation):
@@ -168,8 +168,8 @@ wired into; `ScenarioConfig.__post_init__` raises if they are absent. To add
 attitude control to a guard-only setup:
 
 ```python
-from orbital_game.registry import ActionComponentKey, StateComponentKey, AttitudeDynamicsKey
-from orbital_game.dynamics.attitude import AttitudeParams
+from orbitalgym.registry import ActionComponentKey, StateComponentKey, AttitudeDynamicsKey
+from orbitalgym.dynamics.attitude import AttitudeParams
 import jax.numpy as jnp
 
 cfg = ScenarioConfig(
@@ -200,13 +200,13 @@ the apply order — the tuple is folded left to right each step.
 
 ## Where it lives
 
-- `src/orbital_game/actions/components.py` — the `ActionComponent`
+- `src/orbitalgym/actions/components.py` — the `ActionComponent`
   protocol plus `ImpulsiveManeuver`, `Communicate`, and `AttitudeControl`.
-- `src/orbital_game/actions/assemble.py` — `build_command_class`, the
+- `src/orbitalgym/actions/assemble.py` — `build_command_class`, the
   per-side Command-class builder. Caches by component-tuple identity
   so `jax.lax.while_loop` carry-pytree-structure equality holds across
   resets.
-- `src/orbital_game/env/core.py` — wires `guard_action_components` /
+- `src/orbitalgym/env/core.py` — wires `guard_action_components` /
   `bandit_action_components` from the config into per-side
   `_action_component_instances` tuples and `guard_command_cls` /
   `bandit_command_cls`.

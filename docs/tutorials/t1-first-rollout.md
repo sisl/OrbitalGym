@@ -1,15 +1,15 @@
 # T1 — First rollout (RT 2D)
 
-Install `orbital-game`, run a planar (2D) HCW rollout with zero control
+Install `orbitalgym`, run a planar (2D) HCW rollout with zero control
 on both sides, and read three pieces of data off the resulting
 `Trajectory`. A companion notebook lives at
-[`examples/workflow_2d_rt.ipynb`](https://github.com/duncaneddy/orbital-game/blob/main/examples/workflow_2d_rt.ipynb).
+[`examples/workflow_2d_rt.ipynb`](https://github.com/sisl/OrbitalGym/blob/main/examples/workflow_2d_rt.ipynb).
 
 ## Install
 
 ```bash
-git clone https://github.com/duncaneddy/orbital-game.git
-cd orbital-game
+git clone https://github.com/sisl/OrbitalGym.git
+cd OrbitalGym
 uv sync --extra dev
 ```
 

@@ -17,9 +17,9 @@ def test_astrojax_orbit_two_body_matches_keplerian():
     matches the standalone KEPLERIAN_ECI dynamics."""
     from astrojax import ForceModelConfig
 
-    from orbital_game.dynamics import astrojax_orbit, keplerian  # noqa: F401
-    from orbital_game.dynamics.astrojax_orbit import AstrojaxOrbitDynamics
-    from orbital_game.registry import DynamicsKey, resolve
+    from orbitalgym.dynamics import astrojax_orbit, keplerian  # noqa: F401
+    from orbitalgym.dynamics.astrojax_orbit import AstrojaxOrbitDynamics
+    from orbitalgym.registry import DynamicsKey, resolve
 
     # `DynamicsKey.KEPLERIAN_ECI` resolves to the typed-instance class; instantiate.
     kep = resolve(DynamicsKey.KEPLERIAN_ECI)()
@@ -33,9 +33,9 @@ def test_astrojax_orbit_two_body_matches_keplerian():
 
 
 def test_astrojax_orbit_metadata():
-    from orbital_game.dynamics import astrojax_orbit  # noqa: F401
-    from orbital_game.dynamics.astrojax_orbit import AstrojaxOrbitDynamics
-    from orbital_game.registry import DynamicsKind, Frame
+    from orbitalgym.dynamics import astrojax_orbit  # noqa: F401
+    from orbitalgym.dynamics.astrojax_orbit import AstrojaxOrbitDynamics
+    from orbitalgym.registry import DynamicsKind, Frame
 
     inst = AstrojaxOrbitDynamics()
     assert inst.frame is Frame.ECI
@@ -77,7 +77,7 @@ def test_astrojax_orbit_5x5_smoke():
     except (AttributeError, FileNotFoundError, ImportError):
         pytest.skip("astrojax 5x5 GravityModel not available")
 
-    from orbital_game.dynamics.astrojax_orbit import AstrojaxOrbitDynamics
+    from orbitalgym.dynamics.astrojax_orbit import AstrojaxOrbitDynamics
 
     config = ForceModelConfig(
         gravity_type="spherical_harmonics",

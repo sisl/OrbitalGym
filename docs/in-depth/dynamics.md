@@ -1,6 +1,6 @@
 # Dynamics
 
-`OrbitalGameEnv` composes per-side **action components** (commands →
+`OrbitalGymEnv` composes per-side **action components** (commands →
 post-component side state) with the configured **dynamics**. The bundled
 `ImpulsiveManeuver` action component reads `command.dv`, converts to the
 truth frame, optionally deducts propellant, and writes the result to
@@ -56,7 +56,7 @@ dynamics: (state, dv, params, dt) → next_state
 - `params` — `VehicleParams` (mass, max-thrust, dry-mass, mean motion).
 - `dt` — scalar timestep in seconds.
 
-`OrbitalGameEnv` exposes the configured dynamics callables as
+`OrbitalGymEnv` exposes the configured dynamics callables as
 `env.truth_dynamics`, `env.policy_dynamics`, and `env.belief_dynamics`.
 You can call them directly:
 
@@ -92,7 +92,7 @@ the `ConicalObservation` model that makes attitude decision-relevant.
 
 ## Composition with the actuator
 
-`OrbitalGameEnv.step` runs the actuator first, then the dynamics:
+`OrbitalGymEnv.step` runs the actuator first, then the dynamics:
 
 ```python
 --8<-- "tests/docs/test_indepth_dynamics.py:actuator-composition"
@@ -143,10 +143,10 @@ helper before constructing any env:
 
 ```python
 import jax.numpy as jnp
-import orbital_game
+import orbitalgym
 
-orbital_game.set_precision(jnp.float32)   # for MPS / GPU throughput
-# ... build ScenarioConfig and OrbitalGameEnv after this ...
+orbitalgym.set_precision(jnp.float32)   # for MPS / GPU throughput
+# ... build ScenarioConfig and OrbitalGymEnv after this ...
 ```
 
 `set_precision` flips both astrojax's internal dtype *and*

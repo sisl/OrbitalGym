@@ -122,7 +122,7 @@ particle-cloud renderer.
 
 ## `belief_rollout`
 
-`orbital_game.rollout.belief_rollout` is the belief-aware sibling of
+`orbitalgym.rollout.belief_rollout` is the belief-aware sibling of
 `rollout`. Instead of passing the flattened observation to each side's
 policy, it threads a per-side `Belief` (initialised by your
 `BeliefInitializer` and updated each tick by your `BeliefUpdater`) and
@@ -132,7 +132,7 @@ protocol; the same `Policy` works for obs-only and belief-aware
 pipelines, and the rollout decides what `agent_view` is.
 
 ```python
-from orbital_game.rollout import belief_rollout
+from orbitalgym.rollout import belief_rollout
 traj, belief_history = belief_rollout(
     env,
     policies,                 # BySide[Policy]
@@ -146,7 +146,7 @@ traj, belief_history = belief_rollout(
 
 `belief_history` is a `BySide` whose leaves are belief leaves with a
 leading time axis — feeds straight into
-`orbital_game.viz.animation.RolloutScene`'s `belief_history` parameter.
+`orbitalgym.viz.animation.RolloutScene`'s `belief_history` parameter.
 The renderer detects the belief type by duck-typing: KF/EKF beliefs
 (with `cov`) draw 2σ ellipses/ellipsoids; particle-filter beliefs (with
 `particles` + `log_weights`) draw a weighted scatter cloud with a

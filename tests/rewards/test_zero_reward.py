@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
-from orbital_game.env.types import Side
-from orbital_game.rewards.base import RewardScope
-from orbital_game.rewards.reference import ZeroReward
+from orbitalgym.env.types import Side
+from orbitalgym.rewards.base import RewardScope
+from orbitalgym.rewards.reference import ZeroReward
 
 
 def test_zero_reward_returns_zero_for_guard():

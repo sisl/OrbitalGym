@@ -4,12 +4,12 @@
 
 ```python
 import jax
-from orbital_game import OrbitalGameEnv, BySide, make_get_off_my_lawn
-from orbital_game.policies import ZeroControl
-from orbital_game.rollout import rollout
+from orbitalgym import OrbitalGymEnv, BySide, make_get_off_my_lawn
+from orbitalgym.policies import ZeroControl
+from orbitalgym.rollout import rollout
 
 cfg = make_get_off_my_lawn()
-env = OrbitalGameEnv(cfg)
+env = OrbitalGymEnv(cfg)
 guard = ZeroControl(n_vehicles=cfg.n_guards, command_cls=env.guard_command_cls)
 bandit = ZeroControl(n_vehicles=cfg.n_bandits, command_cls=env.bandit_command_cls)
 traj = rollout(env, BySide(guard=guard, bandit=bandit),
@@ -57,7 +57,7 @@ Reward and termination read the same `catch_radius_m` and `keep_out_radius_m` of
 ## Builder
 
 ```python
-from orbital_game import make_get_off_my_lawn
+from orbitalgym import make_get_off_my_lawn
 
 cfg = make_get_off_my_lawn(
     r_min_keep_m=100.0,
@@ -74,8 +74,8 @@ cfg = make_get_off_my_lawn(
 To override the reward or termination, pass them directly to `ScenarioConfig`:
 
 ```python
-from orbital_game.config import ScenarioConfig
-from orbital_game.games import GetOffMyLawn, GetOffMyLawnReward
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.games import GetOffMyLawn, GetOffMyLawnReward
 
 cfg = ScenarioConfig(
     ...,
@@ -121,7 +121,7 @@ The four customization axes (reward, termination, IC, observation) all swap by p
 Drop the guard-only chase shaping and pushout bonus so the guard and bandit rewards mirror exactly each step. Useful for self-play training where any non-zero-sum prior introduces solver bias.
 
 ```python
-from orbital_game import make_get_off_my_lawn
+from orbitalgym import make_get_off_my_lawn
 
 cfg = make_get_off_my_lawn(alpha_chase=0.0, r_pushout=0.0)
 ```
@@ -131,7 +131,7 @@ cfg = make_get_off_my_lawn(alpha_chase=0.0, r_pushout=0.0)
 Raise `r_catch` so a single catch event wipes out the cumulative loiter bonus from a long episode. Useful when training a guard whose *only* incentive should be intercepting (or a bandit whose *only* concern is being caught).
 
 ```python
-from orbital_game import make_get_off_my_lawn
+from orbitalgym import make_get_off_my_lawn
 
 cfg = make_get_off_my_lawn(r_catch=10_000.0, r_loiter=1.0)
 ```
@@ -160,7 +160,7 @@ Sensible gallery picks for Get-Off-My-Lawn:
 
 ## Sanity-check notebook
 
-[`examples/games/get_off_my_lawn.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/games/get_off_my_lawn.ipynb) builds the scenario, runs a rollout, renders the trajectory, and plots the reward diagnostic with the keep band and keep-out shell drawn for reference.
+[`examples/games/get_off_my_lawn.ipynb`](https://github.com/sisl/OrbitalGym/blob/main/examples/games/get_off_my_lawn.ipynb) builds the scenario, runs a rollout, renders the trajectory, and plots the reward diagnostic with the keep band and keep-out shell drawn for reference.
 
 ## Where to next
 

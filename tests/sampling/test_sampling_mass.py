@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.sampling.mass import ConstantMass, UniformMass
+from orbitalgym.sampling.mass import ConstantMass, UniformMass
 
 
 def test_constant_mass_fills_all_vehicles_with_same_value():

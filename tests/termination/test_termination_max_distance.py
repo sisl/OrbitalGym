@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
-from orbital_game.termination.max_distance import (
+from orbitalgym.termination.max_distance import (
     AnyOfTermination,
     MaxDistanceTermination,
 )
-from orbital_game.termination.reference import MaxStepsOnly
+from orbitalgym.termination.reference import MaxStepsOnly
 
 
 class _Cfg:

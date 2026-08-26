@@ -9,11 +9,11 @@ def test_indepth_observations_full():
     # --8<-- [start:full-observation]
     import jax
 
-    from orbital_game import OrbitalGameEnv, make_lady_bandit_guard
-    from orbital_game.env.types import Actions, BySide, Side
+    from orbitalgym import OrbitalGymEnv, make_lady_bandit_guard
+    from orbitalgym.env.types import Actions, BySide, Side
 
     cfg = make_lady_bandit_guard(n_guards=1, n_bandits=1, seed=0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     # Both sides expose their observation function as `env.<side>_observation_fn`.
@@ -43,12 +43,12 @@ def test_indepth_observations_range_limited():
     # --8<-- [start:range-limited]
     import jax
 
-    from orbital_game import OrbitalGameEnv, make_lady_bandit_guard
-    from orbital_game.env.types import Actions, BySide, Side
-    from orbital_game.observations import RangeLimitedObservation
+    from orbitalgym import OrbitalGymEnv, make_lady_bandit_guard
+    from orbitalgym.env.types import Actions, BySide, Side
+    from orbitalgym.observations import RangeLimitedObservation
 
     cfg = make_lady_bandit_guard(n_guards=1, n_bandits=1, seed=0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     # Swap in a RangeLimitedObservation channel — distance-gated per-pair

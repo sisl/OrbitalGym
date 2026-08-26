@@ -5,14 +5,14 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from orbital_game.belief.ekf import (
+from orbitalgym.belief.ekf import (
     EKFBelief,
     EKFBeliefUpdater,
     EKFFromTruthInitializer,
     EKFUniformDefaultInitializer,
 )
-from orbital_game.env.types import Side
-from orbital_game.observations.types import Observation
+from orbitalgym.env.types import Side
+from orbitalgym.observations.types import Observation
 
 
 def _make_belief(n_obs=1, n_total=2, d=4, mean_fill=0.0, cov_scale=1.0):
@@ -82,7 +82,7 @@ def test_ekf_with_nonlinear_obs_fn_produces_finite_posdef_cov():
 
 def test_ekf_with_linear_dynamics_and_obs_matches_kf_numerically():
     """EKF reduced to KF when both f and h are linear."""
-    from orbital_game.belief.kf import KFBelief, KFBeliefUpdater
+    from orbitalgym.belief.kf import KFBelief, KFBeliefUpdater
 
     F = jnp.eye(4) + jnp.diag(jnp.array([0.1, 0.0, 0.0, 0.0]))  # noqa: N806
     Q = jnp.eye(4) * 0.01  # noqa: N806

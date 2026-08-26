@@ -11,16 +11,16 @@ from typing import Any
 
 import jax.numpy as jnp
 
-from orbital_game.config import VehicleParamsSpec
-from orbital_game.reference_orbit import ReferenceOrbitState
-from orbital_game.registry import (
+from orbitalgym.config import VehicleParamsSpec
+from orbitalgym.reference_orbit import ReferenceOrbitState
+from orbitalgym.registry import (
     ActionComponentKey,
     DynamicsKey,
     Frame,
     StateComponentKey,
 )
-from orbital_game.sampling.side import RelativeEllipse
-from orbital_game.sampling.spec import ICSpec
+from orbitalgym.sampling.side import RelativeEllipse
+from orbitalgym.sampling.spec import ICSpec
 
 
 def minimal_scenario_kwargs(**overrides: Any) -> dict[str, Any]:

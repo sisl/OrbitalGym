@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
-from orbital_game.termination.reference import MaxStepsOnly
+from orbitalgym.termination.reference import MaxStepsOnly
 
 
 class _Cfg:

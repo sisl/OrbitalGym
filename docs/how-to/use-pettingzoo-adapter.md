@@ -1,17 +1,17 @@
 # Use the PettingZoo adapter
 
-Wrap `OrbitalGameEnv` as a `pettingzoo.ParallelEnv` for multi-agent
+Wrap `OrbitalGymEnv` as a `pettingzoo.ParallelEnv` for multi-agent
 RL training where every vehicle is a separate agent.
 
 ## Recipe
 
 ```python
 import numpy as np
-from orbital_game import OrbitalGameEnv, make_pursuit_evasion
-from orbital_game.adapters.pettingzoo import PettingZooAdapter
+from orbitalgym import OrbitalGymEnv, make_pursuit_evasion
+from orbitalgym.adapters.pettingzoo import PettingZooAdapter
 
 cfg = make_pursuit_evasion()
-env = PettingZooAdapter(OrbitalGameEnv(cfg), seed=0)
+env = PettingZooAdapter(OrbitalGymEnv(cfg), seed=0)
 
 obs_dict, info_dict = env.reset(seed=0)
 total = {agent: 0.0 for agent in env.agents}

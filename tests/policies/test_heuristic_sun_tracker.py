@@ -11,7 +11,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.policies.heuristic import SunTrackerBlocker
+from orbitalgym.policies.heuristic import SunTrackerBlocker
 from tests.policies._helpers import make_impulsive_maneuver_command_cls
 
 

@@ -10,13 +10,13 @@ not single-rollout speedup. Builds on
 For NVIDIA CUDA:
 
 ```bash
-pip install orbital-game[cuda12]   # or [cuda13]
+pip install orbitalgym[cuda12]   # or [cuda13]
 ```
 
 For Apple Silicon Metal (MPS):
 
 ```bash
-pip install orbital-game[mps]
+pip install orbitalgym[mps]
 ```
 
 These extras pull in the matching `jax`-with-device wheel.
@@ -77,9 +77,9 @@ return variance, useful for plotting confidence bands.
 
   ```python
   import jax.numpy as jnp
-  import orbital_game
+  import orbitalgym
 
-  orbital_game.set_precision(jnp.float32)
+  orbitalgym.set_precision(jnp.float32)
   ```
 
   This sets *both* astrojax's internal dtype and JAX's `jax_enable_x64`

@@ -10,14 +10,14 @@ from pathlib import Path
 import jax
 import matplotlib.pyplot as plt
 
-from orbital_game.config import ScenarioConfig
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.single_agent import SingleAgentView
-from orbital_game.logging.writer import save_run
-from orbital_game.policies import ZeroControl
-from orbital_game.rollout import rollout_single_agent
-from orbital_game.viz.summaries import plot_mass_curve, plot_reward_curve
-from orbital_game.viz.trajectories import plot_rtn_3d
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.single_agent import SingleAgentView
+from orbitalgym.logging.writer import save_run
+from orbitalgym.policies import ZeroControl
+from orbitalgym.rollout import rollout_single_agent
+from orbitalgym.viz.summaries import plot_mass_curve, plot_reward_curve
+from orbitalgym.viz.trajectories import plot_rtn_3d
 
 
 def build_config() -> ScenarioConfig:
@@ -28,7 +28,7 @@ def build_config() -> ScenarioConfig:
     orbit (guard at phase 0, bandit at phase pi) with sigma=10 m extent
     jitter. 200 steps at 10 s each.
     """
-    from orbital_game.games import make_lady_bandit_guard
+    from orbitalgym.games import make_lady_bandit_guard
 
     return make_lady_bandit_guard(
         n_guards=1,
@@ -42,7 +42,7 @@ def build_config() -> ScenarioConfig:
 def run(hdf5_path: Path, plots_dir: Path) -> None:
     """Execute the scenario and write HDF5 + PNG outputs."""
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     view = SingleAgentView(env)
 
     # Controlled side's policy (zero-control guard for this reference scenario)

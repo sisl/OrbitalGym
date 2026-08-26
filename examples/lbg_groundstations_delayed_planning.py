@@ -7,7 +7,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.1
 #   kernelspec:
-#     display_name: orbital-game (3.13.1)
+#     display_name: orbitalgym (3.13.1)
 #     language: python
 #     name: python3
 # ---
@@ -55,18 +55,18 @@ import sys
 from pathlib import Path
 
 _here = Path.cwd()
-if (_here / "src" / "orbital_game").is_dir():
+if (_here / "src" / "orbitalgym").is_dir():
     _repo_root = _here
-elif (_here.parent / "src" / "orbital_game").is_dir():
+elif (_here.parent / "src" / "orbitalgym").is_dir():
     _repo_root = _here.parent
 else:
-    raise RuntimeError(f"Could not locate orbital-game repo root from cwd={_here}")
+    raise RuntimeError(f"Could not locate OrbitalGym repo root from cwd={_here}")
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
 # The imports below intentionally follow the sys.path mutation above so that
 # running this notebook from the examples/ directory (without an editable
-# install) still resolves the orbital_game package. Each import carries a
+# install) still resolves the orbitalgym package. Each import carries a
 # per-line ruff suppression for the E-four-zero-two rule that the path-
 # injection idiom necessarily triggers.
 import dataclasses  # noqa: E402
@@ -79,30 +79,30 @@ import jax.numpy as jnp  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-from orbital_game import OrbitalGameEnv, Side  # noqa: E402
-from orbital_game.adapters.pomdp.adapter import POMDPAdapter  # noqa: E402
-from orbital_game.belief.kf import KFBeliefUpdater, KFFromTruthInitializer  # noqa: E402
-from orbital_game.belief.pf import (  # noqa: E402
+from orbitalgym import OrbitalGymEnv, Side  # noqa: E402
+from orbitalgym.adapters.pomdp.adapter import POMDPAdapter  # noqa: E402
+from orbitalgym.belief.kf import KFBeliefUpdater, KFFromTruthInitializer  # noqa: E402
+from orbitalgym.belief.pf import (  # noqa: E402
     ParticleFilterBeliefUpdater,
     ParticleFilterFromTruthInitializer,
 )
-from orbital_game.config import VehicleParamsSpec  # noqa: E402
-from orbital_game.dynamics.hcw import hcw_rt_step, hcw_rtn_stm  # noqa: E402
-from orbital_game.env.types import BySide  # noqa: E402
-from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard  # noqa: E402
-from orbital_game.groundstations import GroundStation, GroundStationNetwork  # noqa: E402
-from orbital_game.groundstations.contacts import precompute_contact_schedule  # noqa: E402
-from orbital_game.observations.range_limited import RangeLimitedObservation  # noqa: E402
-from orbital_game.policies.mcts import BeliefAdaptedMCTSPolicy, MCTSPolicy  # noqa: E402
-from orbital_game.policies.plan_cache import PlanCachePolicy  # noqa: E402
-from orbital_game.reference_orbit import ReferenceOrbitState, mean_motion  # noqa: E402
-from orbital_game.registry import StateComponentKey  # noqa: E402
-from orbital_game.rollout import belief_rollout  # noqa: E402
-from orbital_game.sampling.mass import ConstantMass  # noqa: E402
-from orbital_game.sampling.side import RelativeEllipse  # noqa: E402
-from orbital_game.sampling.spec import ICSpec  # noqa: E402
-from orbital_game.viz import RolloutScene, save_animation  # noqa: E402
-from orbital_game.viz.groundtrack import plot_groundtrack  # noqa: E402
+from orbitalgym.config import VehicleParamsSpec  # noqa: E402
+from orbitalgym.dynamics.hcw import hcw_rt_step, hcw_rtn_stm  # noqa: E402
+from orbitalgym.env.types import BySide  # noqa: E402
+from orbitalgym.games.lady_bandit_guard import make_lady_bandit_guard  # noqa: E402
+from orbitalgym.groundstations import GroundStation, GroundStationNetwork  # noqa: E402
+from orbitalgym.groundstations.contacts import precompute_contact_schedule  # noqa: E402
+from orbitalgym.observations.range_limited import RangeLimitedObservation  # noqa: E402
+from orbitalgym.policies.mcts import BeliefAdaptedMCTSPolicy, MCTSPolicy  # noqa: E402
+from orbitalgym.policies.plan_cache import PlanCachePolicy  # noqa: E402
+from orbitalgym.reference_orbit import ReferenceOrbitState, mean_motion  # noqa: E402
+from orbitalgym.registry import StateComponentKey  # noqa: E402
+from orbitalgym.rollout import belief_rollout  # noqa: E402
+from orbitalgym.sampling.mass import ConstantMass  # noqa: E402
+from orbitalgym.sampling.side import RelativeEllipse  # noqa: E402
+from orbitalgym.sampling.spec import ICSpec  # noqa: E402
+from orbitalgym.viz import RolloutScene, save_animation  # noqa: E402
+from orbitalgym.viz.groundtrack import plot_groundtrack  # noqa: E402
 
 OUTPUT_DIR = _repo_root / "outputs"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -292,7 +292,7 @@ def build_env(n_guards: int = N_GUARDS, n_bandits: int = N_BANDITS):
         guard_ground_station_network=network,
         bandit_ground_station_network=network,
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     layout = env.layout
     obs_fn = RangeLimitedObservation(
         layout=layout,
@@ -306,7 +306,7 @@ def build_env(n_guards: int = N_GUARDS, n_bandits: int = N_BANDITS):
         guard_ground_station_network=network,
         bandit_ground_station_network=network,
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     return env, cfg
 
 
@@ -317,7 +317,7 @@ env, cfg = build_env()
 # MAX_DRIFT_M from the reference origin. Without this, an under-actuated
 # controller can let HCW secular drift carry a satellite tens of km away
 # before max_steps fires — which makes the demo plots unreadable.
-from orbital_game.termination.max_distance import (  # noqa: E402
+from orbitalgym.termination.max_distance import (  # noqa: E402
     AnyOfTermination,
     MaxDistanceTermination,
 )
@@ -329,7 +329,7 @@ cfg = dataclasses.replace(
         (cfg.termination_fn, MaxDistanceTermination(max_distance_m=MAX_DRIFT_M)),
     ),
 )
-env = OrbitalGameEnv(cfg)
+env = OrbitalGymEnv(cfg)
 adapter = POMDPAdapter(env)
 print(
     f"Env: n_guards={cfg.n_guards}, n_bandits={cfg.n_bandits}, dt={cfg.dt}s, "
@@ -366,7 +366,7 @@ layout = env.layout
 d = layout.dynamics_state_dim  # 6 for RTN
 
 # 6x6 closed-form HCW-RTN STM, shared with the env's hcw_rtn_step (single
-# source of truth in orbital_game.dynamics.hcw). This is the plant Jacobian
+# source of truth in orbitalgym.dynamics.hcw). This is the plant Jacobian
 # the KF and the LQR both consume — using the shared helper guarantees that
 # any future change to the dynamics module propagates here automatically.
 stm = hcw_rtn_stm(env.mean_motion, DT)

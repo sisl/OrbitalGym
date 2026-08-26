@@ -5,10 +5,10 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from orbital_game.env.types import Side
-from orbital_game.observations.composite import CompositeObservation
-from orbital_game.observations.onboard_gps import OnboardGPSObservation
-from orbital_game.observations.range_limited import RangeLimitedObservation
+from orbitalgym.env.types import Side
+from orbitalgym.observations.composite import CompositeObservation
+from orbitalgym.observations.onboard_gps import OnboardGPSObservation
+from orbitalgym.observations.range_limited import RangeLimitedObservation
 
 
 class _Layout:

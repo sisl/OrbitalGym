@@ -5,10 +5,10 @@ from __future__ import annotations
 import jax
 
 from examples.reference_scenario import build_config
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import BySide
-from orbital_game.policies import ZeroControl
-from orbital_game.rollout import rollout
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import BySide
+from orbitalgym.policies import ZeroControl
+from orbitalgym.rollout import rollout
 
 
 def _init_none(c, s, k):
@@ -18,7 +18,7 @@ def _init_none(c, s, k):
 
 def test_trajectory_axis_order():
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     g_pol = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
     b_pol = ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=cfg.n_bandits)
 
@@ -46,7 +46,7 @@ def test_trajectory_axis_order():
 def test_trajectory_vmap_seeds():
     """vmap over a batch of seeds adds a leading B axis to every leaf."""
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     g_pol = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
     b_pol = ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=cfg.n_bandits)
 

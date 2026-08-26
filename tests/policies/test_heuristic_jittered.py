@@ -6,8 +6,8 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.policies import ZeroControl
-from orbital_game.policies.heuristic import JitteredPolicy
+from orbitalgym.policies import ZeroControl
+from orbitalgym.policies.heuristic import JitteredPolicy
 from tests.policies._helpers import make_impulsive_maneuver_command_cls
 
 

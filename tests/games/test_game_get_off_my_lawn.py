@@ -6,17 +6,17 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.config import ScenarioConfig
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide, Side
-from orbital_game.games import (
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide, Side
+from orbitalgym.games import (
     GetOffMyLawn,
     GetOffMyLawnReward,
     GetOffMyLawnTermination,
     make_get_off_my_lawn,
 )
-from orbital_game.games.base import NoGame
-from orbital_game.registry import GameKey, resolve_game
+from orbitalgym.games.base import NoGame
+from orbitalgym.registry import GameKey, resolve_game
 
 
 def test_get_off_my_lawn_registered():
@@ -96,7 +96,7 @@ def test_dominant_catch_penalty_overrides_loiter_bonus():
         r_loiter=1.0,
         r_catch=10_000.0,
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     # Co-locate guard and bandit inside the loiter band (HCW R = 300).
     bandit_rtn = jnp.array([[300.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
@@ -157,7 +157,7 @@ def test_reward_loiter_event_fires_in_band():
         catch_radius_m=10.0,
         keep_out_radius_m=1500.0,
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     # Place the bandit cleanly in the middle of the band, guard far away.
     bandit_rtn = jnp.array([[300.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
@@ -194,7 +194,7 @@ def test_reward_uses_hcw_natural_standoff():
         catch_radius_m=10.0,
         keep_out_radius_m=1500.0,
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     # Bandit at along-track 200, radial 0: Euclidean = 200, HCW = 100.
     bandit_rtn = jnp.array([[0.0, 200.0, 0.0, 0.0, 0.0, 0.0]])
@@ -222,7 +222,7 @@ def test_termination_uses_hcw_metric_for_pushout():
         r_max_keep_m=200.0,
         keep_out_radius_m=400.0,
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     # Along-track 1000 m: Euclidean = 1000, HCW = 500 — still > keep_out=400.
     bandit_rtn = jnp.array([[0.0, 1000.0, 0.0, 0.0, 0.0, 0.0]])
@@ -245,7 +245,7 @@ def test_reward_catch_event_dominates():
         catch_radius_m=20.0,
         keep_out_radius_m=1500.0,
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     # Co-locate guard and bandit far from the lady.
     bandit_rtn = jnp.array([[800.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
@@ -273,7 +273,7 @@ def test_termination_triggers_on_pushout():
         r_max_keep_m=200.0,
         keep_out_radius_m=400.0,
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     bandit_rtn = jnp.array([[1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
     state = state.replace(bandits=state.bandits.replace(rtn=bandit_rtn))
@@ -284,7 +284,7 @@ def test_termination_triggers_on_pushout():
 def test_termination_triggers_on_capture():
     """Guard within catch_radius of any bandit → episode ends."""
     cfg = make_get_off_my_lawn(catch_radius_m=100.0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     state = state.replace(bandits=state.bandits.replace(rtn=state.guards.rtn))
     done = cfg.termination_fn(state, cfg, state.t)
@@ -323,7 +323,7 @@ def test_termination_rejects_wrong_game():
 
 
 def test_make_game_dispatcher():
-    from orbital_game.games import make_game
+    from orbitalgym.games import make_game
 
     cfg = make_game(GameKey.GET_OFF_MY_LAWN, r_min_keep_m=75.0, r_max_keep_m=200.0)
     assert isinstance(cfg.game, GetOffMyLawn)

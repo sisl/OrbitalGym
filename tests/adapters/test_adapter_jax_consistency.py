@@ -14,25 +14,25 @@ import jax.numpy as jnp
 import numpy as np
 
 from examples.reference_scenario import build_config
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide
 
 
 def test_gymnasium_adapter_consistency_with_direct_env():
     """GymnasiumAdapter.reset() obs equals env.reset projected to controlled side."""
-    from orbital_game.adapters.gymnasium import GymnasiumAdapter
+    from orbitalgym.adapters.gymnasium import GymnasiumAdapter
 
     cfg = build_config()
 
     # Direct env path: same key, get reset outputs.
-    env_direct = OrbitalGameEnv(cfg)
+    env_direct = OrbitalGymEnv(cfg)
     state_direct, outputs_direct = env_direct.reset(jax.random.PRNGKey(0))
 
     # Adapter path: deterministic seeding via SingleAgentView (which splits
     # the key for opponent obs + env.step internally — but at reset time, the
     # adapter calls view.reset(key) which calls env.reset(key) directly.
     # The reset key is the SAME PRNGKey(0) passed to env_direct → byte-equal obs.
-    env_adapter = OrbitalGameEnv(cfg)
+    env_adapter = OrbitalGymEnv(cfg)
     adapter = GymnasiumAdapter(env_adapter, seed=0)
     obs_adapter, _ = adapter.reset(seed=0)
 
@@ -40,7 +40,7 @@ def test_gymnasium_adapter_consistency_with_direct_env():
     # the env.reset key inside the adapter is jax.random.split(PRNGKey(0))[1],
     # NOT PRNGKey(0). So byte-equality is only expected if we use the same
     # transformation. Replicate the adapter's key handling here:
-    from orbital_game.observations.types import flatten_observations
+    from orbitalgym.observations.types import flatten_observations
 
     expected_rng = jax.random.PRNGKey(0)
     _, expected_k_reset = jax.random.split(expected_rng, 2)
@@ -53,13 +53,13 @@ def test_gymnasium_adapter_consistency_with_direct_env():
 
 def test_pettingzoo_adapter_consistency_with_direct_env():
     """PettingZooAdapter.reset() obs dict equals env.reset per-side outputs."""
-    from orbital_game.adapters.pettingzoo import PettingZooAdapter
+    from orbitalgym.adapters.pettingzoo import PettingZooAdapter
 
     cfg = build_config()
 
-    from orbital_game.observations.types import flatten_observations
+    from orbitalgym.observations.types import flatten_observations
 
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     adapter = PettingZooAdapter(env, seed=0)
     obs_dict, _info = adapter.reset(seed=0)
 
@@ -81,13 +81,13 @@ def test_pettingzoo_adapter_consistency_with_direct_env():
 def test_pomdp_adapter_consistency_with_direct_env():
     """POMDPAdapter.transition produces the same flat state as
     layout.flatten(env.step(...).state)."""
-    from orbital_game.adapters._command_flatten import unflatten_command
-    from orbital_game.adapters.pomdp import POMDPAdapter
+    from orbitalgym.adapters._command_flatten import unflatten_command
+    from orbitalgym.adapters.pomdp import POMDPAdapter
 
     cfg = build_config()
 
     # Same env instance for both paths so layout/state shapes match.
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
 
     # Adapter path.
     adapter = POMDPAdapter(env)

@@ -5,17 +5,17 @@ so reward delta must equal exactly comm_cost."""
 import jax
 import jax.numpy as jnp
 
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide
-from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard
-from orbital_game.observations.comms_leak import CommsLeakObservation
-from orbital_game.observations.composite import CompositeObservation
-from orbital_game.observations.reference import FullObservation
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide
+from orbitalgym.games.lady_bandit_guard import make_lady_bandit_guard
+from orbitalgym.observations.comms_leak import CommsLeakObservation
+from orbitalgym.observations.composite import CompositeObservation
+from orbitalgym.observations.reference import FullObservation
 
 
 def test_lbg_comms_three_step_rollout():
     cfg = make_lady_bandit_guard(with_communication=True, comm_cost=5.0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     key = jax.random.PRNGKey(42)
     state, _ = env.reset(key)
 
@@ -57,7 +57,7 @@ def test_env_step_with_composite_full_plus_commsleak_emits_two_channels():
         ),
     )
 
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     guard_cmd = env.guard_command_cls.zeros(cfg.n_guards).replace(

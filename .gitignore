@@ -154,14 +154,14 @@ ENV/
 env.bak/
 venv.bak/
 # Un-ignore the package's env submodule (case-insensitive filesystems
-# match `env/` and `ENV/` against `src/orbital_game/env/`).
-!src/orbital_game/env/
-!src/orbital_game/env/**
+# match `env/` and `ENV/` against `src/orbitalgym/env/`).
+!src/orbitalgym/env/
+!src/orbitalgym/env/**
 # Re-ignore __pycache__ underneath the un-ignored env submodule
 # (the `**` un-ignore above would otherwise override the global
 # `__pycache__/` rule from line 9 for this one directory).
-src/orbital_game/env/**/__pycache__/
-src/orbital_game/env/__pycache__/
+src/orbitalgym/env/**/__pycache__/
+src/orbitalgym/env/__pycache__/
 
 # Spyder project settings
 .spyderproject

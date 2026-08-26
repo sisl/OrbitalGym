@@ -5,7 +5,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from orbital_game.env.types import (
+from orbitalgym.env.types import (
     Actions,
     BySide,
     Side,

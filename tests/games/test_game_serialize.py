@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
-from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.games import (
+from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+from orbitalgym.games import (
     LadyBanditGuard,
     NoGame,
     ObservationBlocking,
@@ -17,10 +17,10 @@ from orbital_game.games import (
     make_pursuit_evasion,
     make_sun_blocking,
 )
-from orbital_game.reference_orbit import ReferenceOrbitState
-from orbital_game.registry import GameKey, StateComponentKey
-from orbital_game.sampling.side import RelativeEllipse
-from orbital_game.sampling.spec import ICSpec
+from orbitalgym.reference_orbit import ReferenceOrbitState
+from orbitalgym.registry import GameKey, StateComponentKey
+from orbitalgym.sampling.side import RelativeEllipse
+from orbitalgym.sampling.spec import ICSpec
 
 
 def test_lbg_roundtrip():

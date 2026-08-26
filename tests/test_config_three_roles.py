@@ -11,7 +11,7 @@ import pytest
 
 
 def test_policy_dynamics_replaces_planning():
-    from orbital_game.registry import DynamicsKey
+    from orbitalgym.registry import DynamicsKey
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     cfg = _minimal_cfg()
@@ -29,7 +29,7 @@ def test_belief_dynamics_defaults_to_policy():
 
 
 def test_belief_dynamics_explicit_override():
-    from orbital_game.registry import DynamicsKey
+    from orbitalgym.registry import DynamicsKey
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     cfg = _minimal_cfg(belief_dynamics=DynamicsKey.HCW_RTN, policy_dynamics=DynamicsKey.HCW_RTN)

@@ -7,7 +7,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.1
 #   kernelspec:
-#     display_name: orbital-game (3.13.1)
+#     display_name: orbitalgym (3.13.1)
 #     language: python
 #     name: python3
 # ---
@@ -70,12 +70,12 @@ import sys
 from pathlib import Path
 
 _here = Path.cwd()
-if (_here / "src" / "orbital_game").is_dir():
+if (_here / "src" / "orbitalgym").is_dir():
     _repo_root = _here
-elif (_here.parent / "src" / "orbital_game").is_dir():
+elif (_here.parent / "src" / "orbitalgym").is_dir():
     _repo_root = _here.parent
 else:
-    raise RuntimeError(f"Could not locate orbital-game repo root from cwd={_here}")
+    raise RuntimeError(f"Could not locate OrbitalGym repo root from cwd={_here}")
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
@@ -92,36 +92,36 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from matplotlib.patches import Circle  # noqa: E402
 
-from orbital_game import (  # noqa: E402
+from orbitalgym import (  # noqa: E402
     Actions,
     BySide,
-    OrbitalGameEnv,
+    OrbitalGymEnv,
     ScenarioConfig,
     Side,
     VehicleParamsSpec,
 )
-from orbital_game.belief import (  # noqa: E402
+from orbitalgym.belief import (  # noqa: E402
     ParticleFilterBeliefUpdater,
     ParticleFilterRingInitializer,
     PFTeamFusion,
 )
-from orbital_game.dynamics.hcw import hcw_rt_step  # noqa: E402
-from orbital_game.games.lady_bandit_guard import LadyBanditGuard  # noqa: E402
-from orbital_game.observations.negative_info import Hard  # noqa: E402
-from orbital_game.observations.range_limited import RangeLimitedObservation  # noqa: E402
-from orbital_game.policies.zero import ZeroControl  # noqa: E402
-from orbital_game.reference_orbit import (  # noqa: E402
+from orbitalgym.dynamics.hcw import hcw_rt_step  # noqa: E402
+from orbitalgym.games.lady_bandit_guard import LadyBanditGuard  # noqa: E402
+from orbitalgym.observations.negative_info import Hard  # noqa: E402
+from orbitalgym.observations.range_limited import RangeLimitedObservation  # noqa: E402
+from orbitalgym.policies.zero import ZeroControl  # noqa: E402
+from orbitalgym.reference_orbit import (  # noqa: E402
     ReferenceOrbitState,
 )
-from orbital_game.reference_orbit import (  # noqa: E402
+from orbitalgym.reference_orbit import (  # noqa: E402
     mean_motion as ref_mean_motion,
 )
-from orbital_game.registry import DynamicsKey, StateComponentKey  # noqa: E402
-from orbital_game.sampling.mass import ConstantMass  # noqa: E402
-from orbital_game.sampling.side import RelativeEllipse  # noqa: E402
-from orbital_game.sampling.spec import ICSpec  # noqa: E402
-from orbital_game.termination.lbg_events import LbgEventTermination  # noqa: E402
-from orbital_game.termination.max_distance import (  # noqa: E402, E501
+from orbitalgym.registry import DynamicsKey, StateComponentKey  # noqa: E402
+from orbitalgym.sampling.mass import ConstantMass  # noqa: E402
+from orbitalgym.sampling.side import RelativeEllipse  # noqa: E402
+from orbitalgym.sampling.spec import ICSpec  # noqa: E402
+from orbitalgym.termination.lbg_events import LbgEventTermination  # noqa: E402
+from orbitalgym.termination.max_distance import (  # noqa: E402, E501
     AnyOfTermination,
     MaxDistanceTermination,
 )
@@ -312,7 +312,7 @@ def make_cfg(*, guard_obs_fn=None, bandit_obs_fn=None, seed: int = 0):
 
 
 # Build a proto config to read .layout, then attach observation fns.
-proto_layout = OrbitalGameEnv(make_cfg()).layout
+proto_layout = OrbitalGymEnv(make_cfg()).layout
 guard_obs_fn = RangeLimitedObservation(
     layout=proto_layout,
     sensor_range_m=GUARD_SENSOR_RANGE_M,
@@ -324,7 +324,7 @@ bandit_obs_fn = RangeLimitedObservation(
     sigma_range=BANDIT_SIGMA_RANGE,
 )
 cfg = make_cfg(guard_obs_fn=guard_obs_fn, bandit_obs_fn=bandit_obs_fn)
-env = OrbitalGameEnv(cfg)
+env = OrbitalGymEnv(cfg)
 print(f"n_guards={cfg.n_guards}  n_bandits={cfg.n_bandits}")
 print(f"guard sensor: range={GUARD_SENSOR_RANGE_M:.0f} m  sigma={GUARD_SIGMA_RANGE:.1f} m")
 print(f"bandit sensor: range={BANDIT_SENSOR_RANGE_M:.0f} m  sigma={BANDIT_SIGMA_RANGE:.1f} m")
@@ -563,7 +563,7 @@ bandit_policy = LQRGoToLadyWithAvoidance.build(
 # Drop-in replacements:
 #
 # - **`MCTSPolicy.from_env(env, ...)`** — single-agent MCTS over the
-#   guard's belief mean. See `orbital_game.policies.mcts`.
+#   guard's belief mean. See `orbitalgym.policies.mcts`.
 # - **`PlanCachePolicy`** — wraps an inner planner so the cached
 #   command is only refreshed at contact-window boundaries (used in
 #   `lbg_groundstations_delayed_planning.ipynb`).
@@ -658,7 +658,7 @@ bandit_pf_init = ParticleFilterRingInitializer(
 # have wired up). For example:
 #
 # ```python
-# from orbital_game.rewards.lbg_zero_sum import LbgZeroSumReward
+# from orbitalgym.rewards.lbg_zero_sum import LbgZeroSumReward
 # my_reward = LbgZeroSumReward(alpha=1e-2, r_catch=2000.0, r_breach=2000.0,
 #                              catch_radius_m=CATCH_RADIUS_M,
 #                              breach_radius_m=BREACH_RADIUS_M)
@@ -915,7 +915,7 @@ plt.show()
 # `BySide(guard=PFTeamFusion(), bandit=...)` and let the rollout fire
 # fusion every tick using the per-side ground-station contact mask.
 # This is how the production-side code uses it; see
-# `belief_rollout` in `orbital_game.rollout`.
+# `belief_rollout` in `orbitalgym.rollout`.
 
 # %%
 fuser = PFTeamFusion()
@@ -1077,8 +1077,8 @@ print(f"#fusion events: {len(fusion_events)} (out of {n_steps} ticks)")
 # the bandit-side PF updater).
 
 # %%
-from orbital_game.env.types import SideTrajectory, Trajectory  # noqa: E402
-from orbital_game.viz.animation import RolloutScene, save_animation  # noqa: E402
+from orbitalgym.env.types import SideTrajectory, Trajectory  # noqa: E402
+from orbitalgym.viz.animation import RolloutScene, save_animation  # noqa: E402
 
 states_for_traj = states_over_time[:-1]
 guard_beliefs_for_traj = guard_beliefs_over_time[:-1]
@@ -1198,7 +1198,7 @@ CLOSE_TO_LADY_RADIUS_M = BREACH_RADIUS_M * 5.0  # 5x breach radius — "near-bre
 def run_one_episode(seed: int):
     """Run a single rollout with the given seed; return per-episode stats."""
     cfg_seed = make_cfg(guard_obs_fn=guard_obs_fn, bandit_obs_fn=bandit_obs_fn, seed=seed)
-    env_seed = OrbitalGameEnv(cfg_seed)
+    env_seed = OrbitalGymEnv(cfg_seed)
     bandit_policy_seed = LQRGoToLadyWithAvoidance.build(
         mean_motion=N_MOTION,
         dt=cfg_seed.dt,

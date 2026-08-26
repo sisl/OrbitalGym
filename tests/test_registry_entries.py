@@ -1,4 +1,4 @@
-from orbital_game.registry import (
+from orbitalgym.registry import (
     ActionComponentKey,
     AttitudeDynamicsKey,
     ObservationFnKey,

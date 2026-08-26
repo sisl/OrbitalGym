@@ -3,15 +3,15 @@
 import jax
 import jax.numpy as jnp
 
-from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import BySide, SideTrajectory, Trajectory
-from orbital_game.reference_orbit import ReferenceOrbitState
-from orbital_game.registry import StateComponentKey
-from orbital_game.rollout import episode_mask, rollout
-from orbital_game.sampling.mass import ConstantMass
-from orbital_game.sampling.side import RelativeEllipse
-from orbital_game.sampling.spec import ICSpec
+from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import BySide, SideTrajectory, Trajectory
+from orbitalgym.reference_orbit import ReferenceOrbitState
+from orbitalgym.registry import StateComponentKey
+from orbitalgym.rollout import episode_mask, rollout
+from orbitalgym.sampling.mass import ConstantMass
+from orbitalgym.sampling.side import RelativeEllipse
+from orbitalgym.sampling.spec import ICSpec
 
 
 def _make_cfg(max_horizon_s: float = 2000.0) -> ScenarioConfig:
@@ -44,11 +44,11 @@ def _make_cfg(max_horizon_s: float = 2000.0) -> ScenarioConfig:
     )
 
 
-def _make_env(max_horizon_s: float = 2000.0) -> OrbitalGameEnv:
-    return OrbitalGameEnv(_make_cfg(max_horizon_s=max_horizon_s))
+def _make_env(max_horizon_s: float = 2000.0) -> OrbitalGymEnv:
+    return OrbitalGymEnv(_make_cfg(max_horizon_s=max_horizon_s))
 
 
-def _zero_policies(env: OrbitalGameEnv) -> BySide:
+def _zero_policies(env: OrbitalGymEnv) -> BySide:
     n_guards = env.config.n_guards
     n_bandits = env.config.n_bandits
     guard_command_cls = env.guard_command_cls

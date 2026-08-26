@@ -5,7 +5,7 @@ guard's next-step position and thrusts toward it, then A/B-compare it
 against `ZeroControl` on closest-approach distance averaged over 10
 seeds. Builds on [T2 — Build an RTN scenario](t2-rtn-scenario.md);
 reference implementation at
-[`examples/policies/lead_intercept.py`](https://github.com/duncaneddy/orbital-game/blob/main/examples/policies/lead_intercept.py).
+[`examples/policies/lead_intercept.py`](https://github.com/sisl/OrbitalGym/blob/main/examples/policies/lead_intercept.py).
 
 ## Why ZeroControl is the wrong baseline
 

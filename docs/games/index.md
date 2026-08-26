@@ -1,6 +1,6 @@
 # Game guides
 
-Five games ship with `orbital-game`. Each has a typed `Game` subtype attached to `cfg.game`, a matching reward and termination, and a `make_<game>(...)` builder that wires everything up.
+Five games ship with `orbitalgym`. Each has a typed `Game` subtype attached to `cfg.game`, a matching reward and termination, and a `make_<game>(...)` builder that wires everything up.
 
 | Game | Page | Summary |
 |---|---|---|
@@ -23,7 +23,7 @@ cfg = make_pursuit_evasion(
 A registry-keyed dispatch is also available for code that needs to choose a game by enum:
 
 ```python
-from orbital_game import make_game, GameKey
+from orbitalgym import make_game, GameKey
 cfg = make_game(GameKey.OBSERVATION_BLOCKING, target_lat_deg=37.4, target_lon_deg=-122.2)
 ```
 

@@ -3,8 +3,8 @@
 import jax
 import jax.numpy as jnp
 
-from orbital_game.actions.assemble import build_command_class
-from orbital_game.actions.components import Communicate
+from orbitalgym.actions.assemble import build_command_class
+from orbitalgym.actions.components import Communicate
 
 
 def test_communicate_zeros_has_active_field():

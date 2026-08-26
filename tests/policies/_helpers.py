@@ -5,9 +5,9 @@ Builds Command pytree classes for tests that don't have an env handy.
 
 from __future__ import annotations
 
-from orbital_game.actions.assemble import build_command_class
-from orbital_game.actions.components import ImpulsiveManeuver
-from orbital_game.registry import Frame
+from orbitalgym.actions.assemble import build_command_class
+from orbitalgym.actions.components import ImpulsiveManeuver
+from orbitalgym.registry import Frame
 
 
 def make_impulsive_maneuver_command_cls(n_vehicles: int, name: str = "TestCmd"):

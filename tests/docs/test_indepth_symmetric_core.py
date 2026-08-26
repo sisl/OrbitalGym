@@ -10,7 +10,7 @@ def test_indepth_symmetric_core():
     import jax
     import jax.numpy as jnp
 
-    from orbital_game import BySide, Side
+    from orbitalgym import BySide, Side
 
     bs = BySide(guard=42.0, bandit=-1.0)
     assert bs.get(Side.GUARD) == 42.0
@@ -25,12 +25,12 @@ def test_indepth_symmetric_core():
     # --8<-- [end:byside-pytree]
 
     # --8<-- [start:rollout-shapes]
-    from orbital_game import OrbitalGameEnv, SingleAgentView, make_pursuit_evasion
-    from orbital_game.policies import ZeroControl
-    from orbital_game.rollout import rollout_single_agent
+    from orbitalgym import OrbitalGymEnv, SingleAgentView, make_pursuit_evasion
+    from orbitalgym.policies import ZeroControl
+    from orbitalgym.rollout import rollout_single_agent
 
     cfg = make_pursuit_evasion(n_guards=2, n_bandits=1, seed=0, max_horizon_s=1000.0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     view = SingleAgentView(env)
     guard_policy = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
     traj = rollout_single_agent(
@@ -61,7 +61,7 @@ def test_indepth_symmetric_core():
     # --8<-- [end:indexing-recipes]
 
     # --8<-- [start:episode-mask]
-    from orbital_game.rollout import episode_mask
+    from orbitalgym.rollout import episode_mask
 
     valid = episode_mask(traj)  # (T,) bool, latched
     valid_rewards = side_reward_t[valid]  # only steps before termination

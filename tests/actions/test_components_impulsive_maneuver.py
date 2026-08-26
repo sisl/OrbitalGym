@@ -10,10 +10,10 @@ import flax
 import jax
 import jax.numpy as jnp
 
-from orbital_game.actions.components import ImpulsiveManeuver
-from orbital_game.registry import Frame
-from orbital_game.state.assemble import build_state_class
-from orbital_game.state.components import AppliedDV, Mass, RTNState
+from orbitalgym.actions.components import ImpulsiveManeuver
+from orbitalgym.registry import Frame
+from orbitalgym.state.assemble import build_state_class
+from orbitalgym.state.components import AppliedDV, Mass, RTNState
 
 
 @flax.struct.dataclass

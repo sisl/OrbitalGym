@@ -10,11 +10,11 @@ def test_indepth_belief_kf_shape():
     import jax
     import jax.numpy as jnp
 
-    from orbital_game import OrbitalGameEnv, Side, make_pursuit_evasion
-    from orbital_game.belief.kf import KFFromTruthInitializer
+    from orbitalgym import OrbitalGymEnv, Side, make_pursuit_evasion
+    from orbitalgym.belief.kf import KFFromTruthInitializer
 
     cfg = make_pursuit_evasion(n_guards=1, n_bandits=2, seed=0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     d = env.layout.dynamics_state_dim
@@ -48,10 +48,10 @@ def test_indepth_belief_pf_shape():
     import jax
     import jax.numpy as jnp
 
-    from orbital_game import OrbitalGameEnv, Side, make_lady_bandit_guard
-    from orbital_game.belief.pf import ParticleFilterRingInitializer
-    from orbital_game.reference_orbit import mean_motion as ref_mean_motion
-    from orbital_game.registry import DynamicsKey, StateComponentKey
+    from orbitalgym import OrbitalGymEnv, Side, make_lady_bandit_guard
+    from orbitalgym.belief.pf import ParticleFilterRingInitializer
+    from orbitalgym.reference_orbit import mean_motion as ref_mean_motion
+    from orbitalgym.registry import DynamicsKey, StateComponentKey
 
     # RT-plane LBG ring scenario — the canonical PF use case.
     cfg = make_lady_bandit_guard(
@@ -64,7 +64,7 @@ def test_indepth_belief_pf_shape():
         dt=10.0,
         max_horizon_s=200.0,
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     K = 128  # noqa: N806  # standard PF notation for particle count

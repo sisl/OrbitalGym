@@ -9,11 +9,11 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
 
-from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard  # noqa: E402
-from orbital_game.games.observation_blocking import make_observation_blocking  # noqa: E402
-from orbital_game.games.pursuit_evasion import make_pursuit_evasion  # noqa: E402
-from orbital_game.games.sun_blocking import make_sun_blocking  # noqa: E402
-from orbital_game.viz.reward_diagnostics import (  # noqa: E402
+from orbitalgym.games.lady_bandit_guard import make_lady_bandit_guard  # noqa: E402
+from orbitalgym.games.observation_blocking import make_observation_blocking  # noqa: E402
+from orbitalgym.games.pursuit_evasion import make_pursuit_evasion  # noqa: E402
+from orbitalgym.games.sun_blocking import make_sun_blocking  # noqa: E402
+from orbitalgym.viz.reward_diagnostics import (  # noqa: E402
     plot_lady_bandit_guard_position_sweep,
     plot_observation_blocking_position_sweep,
     plot_pursuit_evasion_position_sweep,
@@ -75,8 +75,8 @@ def test_sb_sweep_peak_at_d_target_along_sun_axis():
     import astrojax
     import jax
 
-    from orbital_game.games._frames import reference_orbit_eci_at_t, rtn_basis
-    from orbital_game.games.sun_blocking import _epoch_from_mjd, sun_blocking_kernel
+    from orbitalgym.games._frames import reference_orbit_eci_at_t, rtn_basis
+    from orbitalgym.games.sun_blocking import _epoch_from_mjd, sun_blocking_kernel
 
     ref_pos, ref_vel = reference_orbit_eci_at_t(cfg.reference_orbit, cfg.epoch_mjd_utc, 0.0)
     rot = rtn_basis(ref_pos, ref_vel)

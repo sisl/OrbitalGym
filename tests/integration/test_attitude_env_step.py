@@ -5,11 +5,11 @@ applied_torque => omega ramps."""
 import jax
 import jax.numpy as jnp
 
-from orbital_game.config import ScenarioConfig
-from orbital_game.dynamics.attitude import AttitudeParams
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide
-from orbital_game.registry import (
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.dynamics.attitude import AttitudeParams
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide
+from orbitalgym.registry import (
     AttitudeDynamicsKey,
     DynamicsKey,
     Frame,
@@ -57,7 +57,7 @@ def _identity_actions(env, cfg):
 
 def test_zero_omega_zero_torque_keeps_attitude():
     cfg = ScenarioConfig(**_attitude_kwargs())
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     pre_quat = state.guards.quat
@@ -70,7 +70,7 @@ def test_zero_omega_zero_torque_keeps_attitude():
 
 def test_nonzero_initial_omega_advances_quaternion():
     cfg = ScenarioConfig(**_attitude_kwargs())
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     state = state.replace(

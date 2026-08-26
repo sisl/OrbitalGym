@@ -26,7 +26,7 @@ class LeadInterceptPursuer:
         max_dv_mps: Magnitude of the impulse command, m/s.
         dt: Step size in seconds (used for one-step HCW propagation).
 
-    Env-populated knobs (filled by OrbitalGameEnv at construction):
+    Env-populated knobs (filled by OrbitalGymEnv at construction):
         n_vehicles: number of vehicles on this side
         command_cls: per-side Command pytree class
     """

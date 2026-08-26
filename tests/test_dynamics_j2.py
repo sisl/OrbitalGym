@@ -2,8 +2,8 @@ import jax.numpy as jnp
 
 
 def test_j2_eci_metadata():
-    from orbital_game.dynamics import j2  # noqa
-    from orbital_game.registry import DynamicsKey, DynamicsKind, Frame, resolve
+    from orbitalgym.dynamics import j2  # noqa
+    from orbitalgym.registry import DynamicsKey, DynamicsKind, Frame, resolve
 
     fn = resolve(DynamicsKey.J2_ECI)
     assert fn.frame is Frame.ECI
@@ -13,8 +13,8 @@ def test_j2_eci_metadata():
 def test_j2_secular_node_precession_sign():
     """For a prograde, non-equatorial circular orbit, J2 drives RAAN westward
     (Ω̇ < 0). After several orbits, the orbit's RAAN should be < 0."""
-    from orbital_game.dynamics import j2  # noqa
-    from orbital_game.registry import DynamicsKey, resolve
+    from orbitalgym.dynamics import j2  # noqa
+    from orbitalgym.registry import DynamicsKey, resolve
 
     fn = resolve(DynamicsKey.J2_ECI)
     mu = 3.986004418e14

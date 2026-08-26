@@ -14,8 +14,8 @@ def test_customize_termination_walkthrough():
 
     import jax.numpy as jnp
 
-    from orbital_game import OrbitalGameEnv, SingleAgentView, make_lady_bandit_guard
-    from orbital_game.termination.reference import MaxStepsOnly
+    from orbitalgym import OrbitalGymEnv, SingleAgentView, make_lady_bandit_guard
+    from orbitalgym.termination.reference import MaxStepsOnly
     # --8<-- [end:imports]
 
     # --8<-- [start:max-steps-only]
@@ -44,7 +44,7 @@ def test_customize_termination_walkthrough():
         cfg,
         termination_fn=AndComposite(MaxStepsOnly(), MaxStepsOnly()),
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     # --8<-- [end:wire-it-up]
 
     view = SingleAgentView(env)

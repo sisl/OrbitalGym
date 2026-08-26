@@ -11,21 +11,21 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.patches import Wedge
 
-from orbital_game.config import ScenarioConfig
-from orbital_game.dynamics.attitude import AttitudeParams
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import BySide
-from orbital_game.observations.conical import ConicalObservation
-from orbital_game.policies.zero import ZeroControl
-from orbital_game.registry import (
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.dynamics.attitude import AttitudeParams
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import BySide
+from orbitalgym.observations.conical import ConicalObservation
+from orbitalgym.policies.zero import ZeroControl
+from orbitalgym.registry import (
     ActionComponentKey,
     AttitudeDynamicsKey,
     DynamicsKey,
     Frame,
     StateComponentKey,
 )
-from orbital_game.rollout import rollout
-from orbital_game.viz.animation import RolloutScene, render_frame
+from orbitalgym.rollout import rollout
+from orbitalgym.viz.animation import RolloutScene, render_frame
 from tests.helpers.minimal_scenario import minimal_scenario_kwargs
 
 
@@ -73,7 +73,7 @@ def test_show_sensor_cones_renders_one_wedge_per_sensor_per_guard(rng_float64):
             omega_max=jnp.full(3, jnp.float32(0.5)),
         ),
     )
-    layout = OrbitalGameEnv(ScenarioConfig(**cfg_kwargs)).layout
+    layout = OrbitalGymEnv(ScenarioConfig(**cfg_kwargs)).layout
 
     obs_fn = ConicalObservation(
         layout=layout,
@@ -87,7 +87,7 @@ def test_show_sensor_cones_renders_one_wedge_per_sensor_per_guard(rng_float64):
             "guard_observation_fn": obs_fn,
         }
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
 
     policies = BySide(
         guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards),

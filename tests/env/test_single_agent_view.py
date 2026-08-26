@@ -5,15 +5,15 @@ from __future__ import annotations
 import jax
 
 from examples.reference_scenario import build_config
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.single_agent import SingleAgentView
-from orbital_game.env.types import Side
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.single_agent import SingleAgentView
+from orbitalgym.env.types import Side
 
 
 def test_single_agent_view_default_controlled_side():
     """When cfg has no controlled_side, defaults to Side.GUARD."""
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     view = SingleAgentView(env)
     assert view.controlled_side is Side.GUARD
     assert view.opponent_side is Side.BANDIT
@@ -21,7 +21,7 @@ def test_single_agent_view_default_controlled_side():
 
 def test_single_agent_view_reset_returns_controlled_obs():
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     view = SingleAgentView(env)
     state, obs, ps = view.reset(jax.random.PRNGKey(0))
     # FullObservation is PER_SIDE → flat 1D obs vector.
@@ -30,7 +30,7 @@ def test_single_agent_view_reset_returns_controlled_obs():
 
 def test_single_agent_view_step_runs_scripted_opponent():
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     view = SingleAgentView(env)
     state, obs, opp_ps = view.reset(jax.random.PRNGKey(0))
     controlled_action = env.guard_command_cls.zeros(cfg.n_guards)
@@ -43,10 +43,10 @@ def test_single_agent_view_step_runs_scripted_opponent():
 
 def test_single_agent_view_consistency_with_symmetric_step():
     """SingleAgentView's outputs match symmetric env.step projected to controlled side."""
-    from orbital_game.env.types import Actions, BySide
+    from orbitalgym.env.types import Actions, BySide
 
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     view = SingleAgentView(env)
     key = jax.random.PRNGKey(123)
     state_a, obs_a, _ps_a = view.reset(key)

@@ -9,10 +9,10 @@ def test_t1_first_rollout_rt2d():
     # --8<-- [start:imports]
     import jax
 
-    from orbital_game import OrbitalGameEnv, SingleAgentView, make_lady_bandit_guard
-    from orbital_game.policies import ZeroControl
-    from orbital_game.registry import DynamicsKey, StateComponentKey
-    from orbital_game.rollout import rollout_single_agent
+    from orbitalgym import OrbitalGymEnv, SingleAgentView, make_lady_bandit_guard
+    from orbitalgym.policies import ZeroControl
+    from orbitalgym.registry import DynamicsKey, StateComponentKey
+    from orbitalgym.rollout import rollout_single_agent
     # --8<-- [end:imports]
 
     # --8<-- [start:build-config]
@@ -29,7 +29,7 @@ def test_t1_first_rollout_rt2d():
     # --8<-- [end:build-config]
 
     # --8<-- [start:run-rollout]
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     view = SingleAgentView(env)
 
     guard_policy = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)

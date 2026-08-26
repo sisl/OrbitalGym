@@ -20,19 +20,19 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import pytest  # noqa: E402
 
-from orbital_game.belief import (  # noqa: E402
+from orbitalgym.belief import (  # noqa: E402
     EKFBeliefUpdater,
     EKFUniformDefaultInitializer,
 )
-from orbital_game.dynamics.hcw import hcw_rtn_step  # noqa: E402
-from orbital_game.env.core import OrbitalGameEnv  # noqa: E402
-from orbital_game.env.types import BySide, Side  # noqa: E402
-from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard  # noqa: E402
-from orbital_game.observations.range_limited import RangeLimitedObservation  # noqa: E402
-from orbital_game.policies import ZeroControl  # noqa: E402
-from orbital_game.reference_orbit import mean_motion as ref_mean_motion  # noqa: E402
-from orbital_game.rollout import belief_rollout, rollout  # noqa: E402
-from orbital_game.viz.animation import (  # noqa: E402
+from orbitalgym.dynamics.hcw import hcw_rtn_step  # noqa: E402
+from orbitalgym.env.core import OrbitalGymEnv  # noqa: E402
+from orbitalgym.env.types import BySide, Side  # noqa: E402
+from orbitalgym.games.lady_bandit_guard import make_lady_bandit_guard  # noqa: E402
+from orbitalgym.observations.range_limited import RangeLimitedObservation  # noqa: E402
+from orbitalgym.policies import ZeroControl  # noqa: E402
+from orbitalgym.reference_orbit import mean_motion as ref_mean_motion  # noqa: E402
+from orbitalgym.rollout import belief_rollout, rollout  # noqa: E402
+from orbitalgym.viz.animation import (  # noqa: E402
     RolloutScene,
     render_frame,
     save_animation,
@@ -46,7 +46,7 @@ def _zero_init(c, s, k):
 @pytest.fixture
 def basic_cfg_and_traj(key):
     cfg = make_lady_bandit_guard(n_guards=1, n_bandits=1, dt=10.0, max_horizon_s=200.0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     policies = BySide(
         guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
         bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),
@@ -59,7 +59,7 @@ def basic_cfg_and_traj(key):
 @pytest.fixture
 def range_limited_cfg_traj_belief(key):
     proto = make_lady_bandit_guard(n_guards=1, n_bandits=1, dt=10.0, max_horizon_s=200.0)
-    layout = OrbitalGameEnv(proto).layout
+    layout = OrbitalGymEnv(proto).layout
     obs_g = RangeLimitedObservation(layout=layout, sensor_range_m=2000.0, sigma_range=1.0)
     obs_b = RangeLimitedObservation(layout=layout, sensor_range_m=2000.0, sigma_range=1.0)
     cfg = make_lady_bandit_guard(
@@ -70,7 +70,7 @@ def range_limited_cfg_traj_belief(key):
         guard_observation_fn=obs_g,
         bandit_observation_fn=obs_b,
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
 
     n_motion = float(ref_mean_motion(cfg.reference_orbit))
     hcw_params = SimpleNamespace(mean_motion=n_motion)
@@ -247,7 +247,7 @@ def test_render_frame_2d_smoke(basic_cfg_and_traj):
     )
     fig = plt.figure()
     ax = fig.add_subplot(111)  # plain 2D axes — no projection="3d"
-    from orbital_game.viz.animation import render_frame
+    from orbitalgym.viz.animation import render_frame
 
     for f in (0, scene.n_frames - 1):
         render_frame(scene, ax, f)
@@ -270,7 +270,7 @@ def test_render_frame_2d_with_belief(range_limited_cfg_traj_belief):
     )
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    from orbital_game.viz.animation import render_frame
+    from orbitalgym.viz.animation import render_frame
 
     render_frame(scene, ax, scene.n_frames - 1)
     plt.close(fig)
@@ -293,12 +293,12 @@ def range_limited_pf_cfg_traj_belief(key):
     + ``ParticleFilterBeliefUpdater`` so the belief carries ``particles``
     and ``log_weights`` rather than ``mean`` / ``cov``.
     """
-    from orbital_game.belief.pf import (
+    from orbitalgym.belief.pf import (
         ParticleFilterBeliefUpdater,
         ParticleFilterRingInitializer,
     )
-    from orbital_game.dynamics.hcw import hcw_rt_step
-    from orbital_game.registry import DynamicsKey, StateComponentKey
+    from orbitalgym.dynamics.hcw import hcw_rt_step
+    from orbitalgym.registry import DynamicsKey, StateComponentKey
 
     rt_kwargs = {
         "guard_components": (StateComponentKey.RT,),
@@ -309,7 +309,7 @@ def range_limited_pf_cfg_traj_belief(key):
     proto = make_lady_bandit_guard(
         n_guards=1, n_bandits=1, dt=10.0, max_horizon_s=200.0, **rt_kwargs
     )
-    layout = OrbitalGameEnv(proto).layout
+    layout = OrbitalGymEnv(proto).layout
     obs_g = RangeLimitedObservation(layout=layout, sensor_range_m=2000.0, sigma_range=1.0)
     obs_b = RangeLimitedObservation(layout=layout, sensor_range_m=2000.0, sigma_range=1.0)
     cfg = make_lady_bandit_guard(
@@ -321,7 +321,7 @@ def range_limited_pf_cfg_traj_belief(key):
         bandit_observation_fn=obs_b,
         **rt_kwargs,
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
 
     n_motion = float(ref_mean_motion(cfg.reference_orbit))
     hcw_params = SimpleNamespace(mean_motion=n_motion)
@@ -369,7 +369,7 @@ def test_render_frame_2d_with_pf_belief(range_limited_pf_cfg_traj_belief):
     )
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    from orbital_game.viz.animation import render_frame
+    from orbitalgym.viz.animation import render_frame
 
     for f in (0, scene.n_frames // 2, scene.n_frames - 1):
         render_frame(scene, ax, f)
@@ -394,7 +394,7 @@ def test_pf_subsampling_caps_drawn_count(range_limited_pf_cfg_traj_belief):
     )
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    from orbital_game.viz.animation import render_frame
+    from orbitalgym.viz.animation import render_frame
 
     render_frame(scene, ax, 0)
     plt.close(fig)
@@ -402,7 +402,7 @@ def test_pf_subsampling_caps_drawn_count(range_limited_pf_cfg_traj_belief):
 
 def test_pf_belief_dispatcher_picks_pf_path():
     """Duck-typing: a belief with `particles`/`log_weights` is detected as PF."""
-    from orbital_game.viz.animation import _is_particle_filter_belief
+    from orbitalgym.viz.animation import _is_particle_filter_belief
 
     pf_like = SimpleNamespace(particles=jnp.zeros((1, 2, 4, 4)), log_weights=jnp.zeros((1, 2, 4)))
     gauss_like = SimpleNamespace(mean=jnp.zeros((1, 2, 4)), cov=jnp.zeros((1, 2, 4, 4)))

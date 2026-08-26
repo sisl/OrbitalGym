@@ -4,7 +4,7 @@ from typing import ClassVar
 import jax
 import jax.numpy as jnp
 
-from orbital_game.actions.components import ActionComponent
+from orbitalgym.actions.components import ActionComponent
 
 
 class _DummyComp:

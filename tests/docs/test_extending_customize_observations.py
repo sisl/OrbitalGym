@@ -15,8 +15,8 @@ def test_customize_observations_walkthrough():
 
     import jax.numpy as jnp
 
-    from orbital_game import OrbitalGameEnv, SingleAgentView, make_pursuit_evasion
-    from orbital_game.observations.types import Observation
+    from orbitalgym import OrbitalGymEnv, SingleAgentView, make_pursuit_evasion
+    from orbitalgym.observations.types import Observation
     # --8<-- [end:imports]
 
     # --8<-- [start:position-only-channel]
@@ -33,7 +33,7 @@ def test_customize_observations_walkthrough():
 
         def __call__(self, env_state, actions, side, params, key, t):
             del actions, params, key, t
-            from orbital_game.belief._common import _truth_arrays_for_side
+            from orbitalgym.belief._common import _truth_arrays_for_side
 
             own_truth, opp_truth = _truth_arrays_for_side(env_state, side.value)
             n_self = own_truth.shape[0]
@@ -59,7 +59,7 @@ def test_customize_observations_walkthrough():
         guard_observation_fn=PositionOnlyObservation(layout=cfg.layout),
         bandit_observation_fn=PositionOnlyObservation(layout=cfg.layout),
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     # --8<-- [end:wire-it-up]
 
     view = SingleAgentView(env)

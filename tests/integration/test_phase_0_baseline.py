@@ -17,10 +17,10 @@ import numpy as np
 import pytest
 
 from examples.reference_scenario import build_config
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import BySide
-from orbital_game.policies import ZeroControl
-from orbital_game.rollout import rollout
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import BySide
+from orbitalgym.policies import ZeroControl
+from orbitalgym.rollout import rollout
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "phase_0_baseline.npz"
 
@@ -33,7 +33,7 @@ def baseline():
 @pytest.fixture(scope="module")
 def fresh_traj():
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
 
     guard_policy = ZeroControl(n_vehicles=cfg.n_guards, command_cls=env.guard_command_cls)
     bandit_policy = ZeroControl(n_vehicles=cfg.n_bandits, command_cls=env.bandit_command_cls)

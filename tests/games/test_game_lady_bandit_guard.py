@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from orbital_game.config import ScenarioConfig
-from orbital_game.games import LadyBanditGuard, make_lady_bandit_guard
-from orbital_game.games.base import NoGame
-from orbital_game.registry import GameKey, resolve_game
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.games import LadyBanditGuard, make_lady_bandit_guard
+from orbitalgym.games.base import NoGame
+from orbitalgym.registry import GameKey, resolve_game
 
 
 def test_lady_bandit_guard_registered():

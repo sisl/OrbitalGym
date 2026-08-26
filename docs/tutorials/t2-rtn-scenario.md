@@ -3,7 +3,7 @@
 Build a 2-guard / 1-bandit Pursuit-Evasion scenario in 3D RTN, run a
 multi-agent rollout, and render trajectory and reward plots. Builds on
 [T1 — First rollout (RT 2D)](t1-first-rollout.md); a companion notebook
-lives at [`examples/workflow_3d_rtn.ipynb`](https://github.com/duncaneddy/orbital-game/blob/main/examples/workflow_3d_rtn.ipynb).
+lives at [`examples/workflow_3d_rtn.ipynb`](https://github.com/sisl/OrbitalGym/blob/main/examples/workflow_3d_rtn.ipynb).
 
 ## Imports
 

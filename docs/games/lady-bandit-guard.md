@@ -4,12 +4,12 @@
 
 ```python
 import jax
-from orbital_game import OrbitalGameEnv, SingleAgentView, make_lady_bandit_guard
-from orbital_game.policies import ZeroControl
-from orbital_game.rollout import rollout_single_agent
+from orbitalgym import OrbitalGymEnv, SingleAgentView, make_lady_bandit_guard
+from orbitalgym.policies import ZeroControl
+from orbitalgym.rollout import rollout_single_agent
 
 cfg = make_lady_bandit_guard()
-env = OrbitalGameEnv(cfg)
+env = OrbitalGymEnv(cfg)
 view = SingleAgentView(env)
 guard = ZeroControl(n_vehicles=cfg.n_guards, command_cls=env.guard_command_cls)
 traj = rollout_single_agent(view, guard, lambda c, s, k: None,
@@ -42,7 +42,7 @@ The guard defends the lady — a virtual point at the reference-orbit origin (th
 ## Builder
 
 ```python
-from orbital_game import make_lady_bandit_guard
+from orbitalgym import make_lady_bandit_guard
 
 cfg = make_lady_bandit_guard(
     breach_radius_m=5.0,
@@ -55,8 +55,8 @@ cfg = make_lady_bandit_guard(
 `LadyBanditGuard` owns both knobs and provides the matching reward + termination via `default_reward_fn` / `default_termination_fn`. `ScenarioConfig.__post_init__` calls those automatically — the builder never sets `reward_fn` or `termination_fn` explicitly. To override either, pass it as a constructor kwarg on `ScenarioConfig` directly:
 
 ```python
-from orbital_game.config import ScenarioConfig
-from orbital_game.games import LadyBanditGuard
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.games import LadyBanditGuard
 from my_project.rewards import MyCustomReward
 
 cfg = ScenarioConfig(
@@ -133,7 +133,7 @@ Sensible gallery picks for Lady-Bandit-Guard:
 
 ## Sanity-check notebook
 
-[`examples/games/lady_bandit_guard.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/games/lady_bandit_guard.ipynb) is a full walkthrough that builds an LBG scenario, runs a rollout, and renders the rollout diagnostic plus the 2D guard-position reward surface.
+[`examples/games/lady_bandit_guard.ipynb`](https://github.com/sisl/OrbitalGym/blob/main/examples/games/lady_bandit_guard.ipynb) is a full walkthrough that builds an LBG scenario, runs a rollout, and renders the rollout diagnostic plus the 2D guard-position reward surface.
 
 ## Where to next
 
@@ -150,7 +150,7 @@ plan open-loop. This models real space-domain operational constraints
 where vehicles can't update from belief continuously.
 
 The example notebook
-[`examples/lbg_groundstations_delayed_planning.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/lbg_groundstations_delayed_planning.ipynb)
+[`examples/lbg_groundstations_delayed_planning.ipynb`](https://github.com/sisl/OrbitalGym/blob/main/examples/lbg_groundstations_delayed_planning.ipynb)
 demonstrates a 2-guard / 1-bandit scenario where the bandit's planning
 is gated by a 2-station network (Alaska + Australia) with a 1-contact
 upload lag. A lag sweep over `replan_contacts_lag ∈ {0, 1, 2, 3}` shows
