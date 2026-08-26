@@ -3,15 +3,15 @@
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.reference_orbit import ReferenceOrbitState
-from orbital_game.registry import (
+from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+from orbitalgym.reference_orbit import ReferenceOrbitState
+from orbitalgym.registry import (
     DynamicsKey,
     StateComponentKey,
 )
-from orbital_game.sampling.mass import ConstantMass
-from orbital_game.sampling.side import RelativeEllipse
-from orbital_game.sampling.spec import ICSpec
+from orbitalgym.sampling.mass import ConstantMass
+from orbitalgym.sampling.side import RelativeEllipse
+from orbitalgym.sampling.spec import ICSpec
 
 
 def make_config(**overrides):
@@ -122,9 +122,9 @@ def test_default_typed_components_are_instances():
     With NoGame as the default game, reward/termination flow from
     NoGame.default_*_fn — ZeroReward + MaxStepsOnly.
     """
-    from orbital_game.observations.reference import FullObservation
-    from orbital_game.rewards.reference import ZeroReward
-    from orbital_game.termination.reference import MaxStepsOnly
+    from orbitalgym.observations.reference import FullObservation
+    from orbitalgym.rewards.reference import ZeroReward
+    from orbitalgym.termination.reference import MaxStepsOnly
 
     cfg = make_config()
     assert isinstance(cfg.guard_observation_fn, FullObservation)
@@ -134,7 +134,7 @@ def test_default_typed_components_are_instances():
 
 
 def test_default_scripted_policies_are_zero_control():
-    from orbital_game.policies import ZeroControl
+    from orbitalgym.policies import ZeroControl
 
     cfg = make_config()
     assert isinstance(cfg.guard_policy, ZeroControl)
@@ -142,7 +142,7 @@ def test_default_scripted_policies_are_zero_control():
 
 
 def test_default_controlled_side_is_guard():
-    from orbital_game.env.types import Side
+    from orbitalgym.env.types import Side
 
     cfg = make_config()
     assert cfg.controlled_side is Side.GUARD

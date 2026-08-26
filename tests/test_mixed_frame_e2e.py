@@ -17,11 +17,11 @@ def test_keplerian_truth_hcw_policy_relative_trajectory_close_to_pure_hcw():
     """Run the same scenario with two truth models. Relative motion of an unperturbed
     deputy under Keplerian truth (with the reference also Keplerian) should match
     HCW-truth to within HCW linearization tolerance over a fraction of an orbit."""
-    from orbital_game.env.core import OrbitalGameEnv
-    from orbital_game.env.types import Actions, BySide
-    from orbital_game.registry import DynamicsKey, StateComponentKey
-    from orbital_game.sampling.side import RelativeEllipse
-    from orbital_game.sampling.spec import ICSpec
+    from orbitalgym.env.core import OrbitalGymEnv
+    from orbitalgym.env.types import Actions, BySide
+    from orbitalgym.registry import DynamicsKey, StateComponentKey
+    from orbitalgym.sampling.side import RelativeEllipse
+    from orbitalgym.sampling.spec import ICSpec
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     # Non-trivial bounded relative orbit: deterministic per-vehicle phase so
@@ -59,7 +59,7 @@ def test_keplerian_truth_hcw_policy_relative_trajectory_close_to_pure_hcw():
     )
 
     def _final_rtn(cfg):
-        env = OrbitalGameEnv(cfg)
+        env = OrbitalGymEnv(cfg)
         actions = Actions(
             sides=BySide(
                 guard=env.guard_command_cls.zeros(1),
@@ -94,12 +94,12 @@ def test_j2_truth_drifts_relative_to_keplerian_truth():
     import jax
     import jax.numpy as jnp
 
-    from orbital_game.env.core import OrbitalGameEnv
-    from orbital_game.env.types import Actions, BySide
-    from orbital_game.reference_orbit import ReferenceOrbitState
-    from orbital_game.registry import DynamicsKey, StateComponentKey
-    from orbital_game.sampling.side import RelativeEllipse
-    from orbital_game.sampling.spec import ICSpec
+    from orbitalgym.env.core import OrbitalGymEnv
+    from orbitalgym.env.types import Actions, BySide
+    from orbitalgym.reference_orbit import ReferenceOrbitState
+    from orbitalgym.registry import DynamicsKey, StateComponentKey
+    from orbitalgym.sampling.side import RelativeEllipse
+    from orbitalgym.sampling.spec import ICSpec
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     # Inclined LEO reference orbit so J2 has a meaningful secular signature.
@@ -136,7 +136,7 @@ def test_j2_truth_drifts_relative_to_keplerian_truth():
     )
 
     def _final_along_track(cfg):
-        env = OrbitalGameEnv(cfg)
+        env = OrbitalGymEnv(cfg)
         actions = Actions(
             sides=BySide(
                 guard=env.guard_command_cls.zeros(1),

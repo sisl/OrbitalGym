@@ -60,7 +60,7 @@ class Power:
 ### 2. Register it with the side-state assembler
 
 Side-state classes are built dynamically via `build_state_class` (see
-`orbital_game.state.assemble`). Register `Power` so the assembler
+`orbitalgym.state.assemble`). Register `Power` so the assembler
 knows how to allocate space for it in the flat layout.
 
 ### 3. Sampler hook
@@ -103,7 +103,7 @@ Add them to `guard_components` or `bandit_components` together (they must
 appear as a pair; having one without the other raises in `__post_init__`):
 
 ```python
-from orbital_game.registry import StateComponentKey
+from orbitalgym.registry import StateComponentKey
 
 guard_components=(
     StateComponentKey.RTN,

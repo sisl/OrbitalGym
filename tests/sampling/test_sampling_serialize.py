@@ -8,8 +8,8 @@ from enum import StrEnum
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.registry import register
-from orbital_game.sampling.serialize import (
+from orbitalgym.registry import register
+from orbitalgym.sampling.serialize import (
     serializable_from_primitive,
     serializable_to_primitive,
 )

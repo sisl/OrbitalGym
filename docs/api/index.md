@@ -4,7 +4,7 @@ Auto-generated from in-code docstrings via mkdocstrings.
 
 | Section | Modules |
 |---|---|
-| [Core](core.md) | `OrbitalGameEnv`, `EnvState`, `SingleAgentView`, `ScenarioConfig`, `rollout`, `Trajectory` plumbing |
+| [Core](core.md) | `OrbitalGymEnv`, `EnvState`, `SingleAgentView`, `ScenarioConfig`, `rollout`, `Trajectory` plumbing |
 | [Types](types.md) | `Side`, `BySide`, `Actions`, `SideOutput`, `StepOutput`, `SideTrajectory`, `Trajectory` |
 | [Games](games.md) | `Game`, `NoGame`, `LadyBanditGuard`, `PursuitEvasion`, `SunBlocking`, `ObservationBlocking` + builders |
 | [Adapters](adapters.md) | `GymnasiumAdapter`, `PettingZooAdapter`, `POMDPAdapter` |

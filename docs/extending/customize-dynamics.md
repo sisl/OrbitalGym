@@ -68,7 +68,7 @@ JSON round-trips; typed instances raise `NotImplementedError` on
 import jax
 import jax.numpy as jnp
 
-from orbital_game.registry import (
+from orbitalgym.registry import (
     DynamicsKey,
     DynamicsKind,
     Frame,
@@ -98,7 +98,7 @@ the validator finds them.
 ```python
 import jax.numpy as jnp
 
-from orbital_game.registry import DynamicsKind, Frame
+from orbitalgym.registry import DynamicsKind, Frame
 
 
 def my_hcw_rtn(state, dv, params, dt):
@@ -117,7 +117,7 @@ Then wire it onto the cfg:
 ```python
 import dataclasses
 
-from orbital_game import make_lady_bandit_guard
+from orbitalgym import make_lady_bandit_guard
 
 cfg = make_lady_bandit_guard(n_guards=1, n_bandits=1)
 cfg = dataclasses.replace(cfg, truth_dynamics=my_hcw_rtn, policy_dynamics=my_hcw_rtn)
@@ -139,7 +139,7 @@ attach `frame=Frame.ECI`, `kind=DynamicsKind.ABSOLUTE`:
 import jax
 import jax.numpy as jnp
 
-from orbital_game.registry import DynamicsKind, Frame
+from orbitalgym.registry import DynamicsKind, Frame
 
 
 def my_eci_step(state, dv, params, dt):
@@ -166,7 +166,7 @@ The 5×5 spherical-harmonics worked example:
 ```python
 from astrojax import ForceModelConfig, GravityModel
 
-from orbital_game.dynamics.astrojax_orbit import AstrojaxOrbitDynamics
+from orbitalgym.dynamics.astrojax_orbit import AstrojaxOrbitDynamics
 
 gm = GravityModel.from_type("JGM3")
 gm.set_max_degree_order(5, 5)
@@ -203,9 +203,9 @@ import dataclasses
 
 from astrojax import ForceModelConfig, GravityModel
 
-from orbital_game import make_lady_bandit_guard
-from orbital_game.dynamics.astrojax_orbit import AstrojaxOrbitDynamics
-from orbital_game.registry import DynamicsKey, StateComponentKey
+from orbitalgym import make_lady_bandit_guard
+from orbitalgym.dynamics.astrojax_orbit import AstrojaxOrbitDynamics
+from orbitalgym.registry import DynamicsKey, StateComponentKey
 
 gm = GravityModel.from_type("JGM3")
 gm.set_max_degree_order(5, 5)

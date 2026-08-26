@@ -16,14 +16,14 @@ def test_t3_active_pursuer_walkthrough():
 
     import jax
 
-    from orbital_game import (
-        OrbitalGameEnv,
+    from orbitalgym import (
+        OrbitalGymEnv,
         SingleAgentView,
         make_pursuit_evasion,
     )
-    from orbital_game.policies import ZeroControl
-    from orbital_game.policies.heuristic import LeadInterceptPursuer
-    from orbital_game.rollout import rollout_single_agent
+    from orbitalgym.policies import ZeroControl
+    from orbitalgym.policies.heuristic import LeadInterceptPursuer
+    from orbitalgym.rollout import rollout_single_agent
     # --8<-- [end:imports]
 
     # --8<-- [start:wire-it-up]
@@ -32,7 +32,7 @@ def test_t3_active_pursuer_walkthrough():
         cfg,
         bandit_policy=LeadInterceptPursuer(max_dv_mps=0.05, dt=cfg.dt),
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     view = SingleAgentView(env)
     guard_policy = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
 
@@ -63,19 +63,19 @@ def test_t3_ab_comparison_vmap():
     Lives outside snippet regions because the comparison relies on imports
     the tutorial doesn't repeat.
     """
-    from orbital_game import (
-        OrbitalGameEnv,
+    from orbitalgym import (
+        OrbitalGymEnv,
         SingleAgentView,
         make_pursuit_evasion,
     )
-    from orbital_game.policies import ZeroControl
-    from orbital_game.policies.heuristic import LeadInterceptPursuer
-    from orbital_game.rollout import rollout_single_agent
+    from orbitalgym.policies import ZeroControl
+    from orbitalgym.policies.heuristic import LeadInterceptPursuer
+    from orbitalgym.rollout import rollout_single_agent
 
     def closest_approach(seed, bandit_policy):
         cfg = make_pursuit_evasion(seed=int(seed), max_horizon_s=2000.0)
         cfg = dataclasses.replace(cfg, bandit_policy=bandit_policy)
-        env = OrbitalGameEnv(cfg)
+        env = OrbitalGymEnv(cfg)
         view = SingleAgentView(env)
         guard = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
         traj = rollout_single_agent(

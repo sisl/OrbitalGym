@@ -3,16 +3,16 @@
 import jax
 import jax.numpy as jnp
 
-from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.logging.reader import load_run
-from orbital_game.logging.writer import save_run
-from orbital_game.reference_orbit import ReferenceOrbitState
-from orbital_game.registry import StateComponentKey
-from orbital_game.rollout import rollout
-from orbital_game.sampling.mass import ConstantMass
-from orbital_game.sampling.side import RelativeEllipse
-from orbital_game.sampling.spec import ICSpec
+from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.logging.reader import load_run
+from orbitalgym.logging.writer import save_run
+from orbitalgym.reference_orbit import ReferenceOrbitState
+from orbitalgym.registry import StateComponentKey
+from orbitalgym.rollout import rollout
+from orbitalgym.sampling.mass import ConstantMass
+from orbitalgym.sampling.side import RelativeEllipse
+from orbitalgym.sampling.spec import ICSpec
 
 
 def _make_cfg() -> ScenarioConfig:
@@ -47,10 +47,10 @@ def _make_cfg() -> ScenarioConfig:
 
 def test_hdf5_save_load_roundtrip(tmp_path):
     """Save a rollout + config to HDF5, load it back, and verify key fields match."""
-    from orbital_game.env.types import BySide
+    from orbitalgym.env.types import BySide
 
     cfg = _make_cfg()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     guard_cmd_cls = env.guard_command_cls
     bandit_cmd_cls = env.bandit_command_cls
     traj = rollout(

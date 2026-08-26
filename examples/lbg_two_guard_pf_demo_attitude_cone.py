@@ -7,7 +7,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.1
 #   kernelspec:
-#     display_name: orbital-game (3.13.1)
+#     display_name: orbitalgym (3.13.1)
 #     language: python
 #     name: python3
 # ---
@@ -61,12 +61,12 @@ import sys
 from pathlib import Path
 
 _here = Path.cwd()
-if (_here / "src" / "orbital_game").is_dir():
+if (_here / "src" / "orbitalgym").is_dir():
     _repo_root = _here
-elif (_here.parent / "src" / "orbital_game").is_dir():
+elif (_here.parent / "src" / "orbitalgym").is_dir():
     _repo_root = _here.parent
 else:
-    raise RuntimeError(f"Could not locate orbital-game repo root from cwd={_here}")
+    raise RuntimeError(f"Could not locate OrbitalGym repo root from cwd={_here}")
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
@@ -82,44 +82,44 @@ import jax.numpy as jnp  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-from orbital_game import (  # noqa: E402
+from orbitalgym import (  # noqa: E402
     Actions,
     BySide,
-    OrbitalGameEnv,
+    OrbitalGymEnv,
     ScenarioConfig,
     Side,
     VehicleParamsSpec,
 )
-from orbital_game.belief import (  # noqa: E402
+from orbitalgym.belief import (  # noqa: E402
     ParticleFilterBeliefUpdater,
     ParticleFilterRingInitializer,
     PFTeamFusion,
 )
-from orbital_game.dynamics.attitude import AttitudeParams  # noqa: E402
-from orbital_game.dynamics.hcw import hcw_rt_step  # noqa: E402
-from orbital_game.games.lady_bandit_guard import LadyBanditGuard  # noqa: E402
-from orbital_game.observations.conical import ConicalObservation  # noqa: E402
-from orbital_game.observations.negative_info import Hard  # noqa: E402
-from orbital_game.policies.zero import ZeroControl  # noqa: E402
-from orbital_game.reference_orbit import (  # noqa: E402
+from orbitalgym.dynamics.attitude import AttitudeParams  # noqa: E402
+from orbitalgym.dynamics.hcw import hcw_rt_step  # noqa: E402
+from orbitalgym.games.lady_bandit_guard import LadyBanditGuard  # noqa: E402
+from orbitalgym.observations.conical import ConicalObservation  # noqa: E402
+from orbitalgym.observations.negative_info import Hard  # noqa: E402
+from orbitalgym.policies.zero import ZeroControl  # noqa: E402
+from orbitalgym.reference_orbit import (  # noqa: E402
     ReferenceOrbitState,
 )
-from orbital_game.reference_orbit import (  # noqa: E402
+from orbitalgym.reference_orbit import (  # noqa: E402
     mean_motion as ref_mean_motion,
 )
-from orbital_game.registry import (  # noqa: E402
+from orbitalgym.registry import (  # noqa: E402
     ActionComponentKey,
     AttitudeDynamicsKey,
     DynamicsKey,
     Frame,
     StateComponentKey,
 )
-from orbital_game.sampling.attitude import FixedAttitude  # noqa: E402
-from orbital_game.sampling.mass import ConstantMass  # noqa: E402
-from orbital_game.sampling.side import RelativeEllipse  # noqa: E402
-from orbital_game.sampling.spec import ICSpec  # noqa: E402
-from orbital_game.termination.lbg_events import LbgEventTermination  # noqa: E402
-from orbital_game.termination.max_distance import (  # noqa: E402, E501
+from orbitalgym.sampling.attitude import FixedAttitude  # noqa: E402
+from orbitalgym.sampling.mass import ConstantMass  # noqa: E402
+from orbitalgym.sampling.side import RelativeEllipse  # noqa: E402
+from orbitalgym.sampling.spec import ICSpec  # noqa: E402
+from orbitalgym.termination.lbg_events import LbgEventTermination  # noqa: E402
+from orbitalgym.termination.max_distance import (  # noqa: E402, E501
     AnyOfTermination,
     MaxDistanceTermination,
 )
@@ -211,7 +211,7 @@ guard_attitude_params = AttitudeParams(
 # at the same rate; their headings diverge over time because they sit
 # at different ring phases (random per run). To randomize the initial
 # orientation per guard, swap to `UniformAttitude()` from
-# `orbital_game.sampling.attitude`.
+# `orbitalgym.sampling.attitude`.
 guard_attitude_sampler = FixedAttitude(
     quat_wxyz=(1.0, 0.0, 0.0, 0.0),
     omega_rad_s=(0.0, 0.0, float(jnp.deg2rad(GUARD_INITIAL_SPIN_DPS))),
@@ -383,7 +383,7 @@ def make_cfg(*, guard_obs_fn=None, bandit_obs_fn=None, seed: int = 0):
 
 
 # Build a proto config to read .layout, then attach observation fns.
-proto_layout = OrbitalGameEnv(make_cfg()).layout
+proto_layout = OrbitalGymEnv(make_cfg()).layout
 
 guard_obs_fn = ConicalObservation(
     layout=proto_layout,
@@ -398,7 +398,7 @@ bandit_obs_fn = ConicalObservation(
     sigma=BANDIT_SIGMA_FULLSTATE,
 )
 cfg = make_cfg(guard_obs_fn=guard_obs_fn, bandit_obs_fn=bandit_obs_fn)
-env = OrbitalGameEnv(cfg)
+env = OrbitalGymEnv(cfg)
 print(f"guard command fields: {list(env.guard_command_cls.zeros(1).__dataclass_fields__.keys())}")
 print(f"bandit command fields: {list(env.bandit_command_cls.zeros(1).__dataclass_fields__.keys())}")
 print(
@@ -862,8 +862,8 @@ print(f"#fusion events: {len(fusion_events)} (out of {n_steps} ticks)")
 # `ZeroControl` here, so this is currently a no-op).
 
 # %%
-from orbital_game.env.types import SideTrajectory, Trajectory  # noqa: E402
-from orbital_game.viz.animation import RolloutScene, save_animation  # noqa: E402
+from orbitalgym.env.types import SideTrajectory, Trajectory  # noqa: E402
+from orbitalgym.viz.animation import RolloutScene, save_animation  # noqa: E402
 
 states_for_traj = states_over_time[:-1]
 guard_beliefs_for_traj = guard_beliefs_over_time[:-1]
@@ -965,7 +965,7 @@ CLOSE_TO_LADY_RADIUS_M = BREACH_RADIUS_M * 5.0
 
 def run_one_episode(seed: int):
     cfg_seed = make_cfg(guard_obs_fn=guard_obs_fn, bandit_obs_fn=bandit_obs_fn, seed=seed)
-    env_seed = OrbitalGameEnv(cfg_seed)
+    env_seed = OrbitalGymEnv(cfg_seed)
     bandit_policy_seed = LQRGoToLadyWithAvoidance.build(
         mean_motion=N_MOTION,
         dt=cfg_seed.dt,

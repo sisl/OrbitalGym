@@ -6,9 +6,9 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.belief.contact_aware import ContactAwareBelief
-from orbital_game.groundstations import ContactSchedule
-from orbital_game.policies.plan_cache import PlanCachePolicy
+from orbitalgym.belief.contact_aware import ContactAwareBelief
+from orbitalgym.groundstations import ContactSchedule
+from orbitalgym.policies.plan_cache import PlanCachePolicy
 
 
 # Minimal stand-in command class — mirrors what build_command_class produces.

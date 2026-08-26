@@ -13,7 +13,7 @@ Composes existing primitives to produce a scenario where:
 
 The bandit and guard policies are wired separately by the caller — see
 `examples/policies/lqr_bandit.py` for a JAX-native LQR bandit and
-`orbital_game.policies.mcts.MCTSPolicy` for the guard.
+`orbitalgym.policies.mcts.MCTSPolicy` for the guard.
 """
 
 from __future__ import annotations
@@ -22,13 +22,13 @@ from dataclasses import dataclass
 
 import jax.numpy as jnp
 
-from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.games.lady_bandit_guard import LadyBanditGuard
-from orbital_game.reference_orbit import ReferenceOrbitState
-from orbital_game.registry import DynamicsKey, StateComponentKey
-from orbital_game.sampling.mass import ConstantMass
-from orbital_game.sampling.side import RelativeEllipse
-from orbital_game.sampling.spec import ICSpec
+from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+from orbitalgym.games.lady_bandit_guard import LadyBanditGuard
+from orbitalgym.reference_orbit import ReferenceOrbitState
+from orbitalgym.registry import DynamicsKey, StateComponentKey
+from orbitalgym.sampling.mass import ConstantMass
+from orbitalgym.sampling.side import RelativeEllipse
+from orbitalgym.sampling.spec import ICSpec
 
 # ---- Cold-gas thruster preset --------------------------------------------------
 

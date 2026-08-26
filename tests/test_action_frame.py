@@ -8,7 +8,7 @@ import numpy as np
 
 
 def test_action_frame_default_is_rtn():
-    from orbital_game.registry import Frame
+    from orbitalgym.registry import Frame
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     cfg = _minimal_cfg()
@@ -17,10 +17,10 @@ def test_action_frame_default_is_rtn():
 
 def test_action_in_rtn_with_eci_truth_rotates_correctly():
     """Policy emits RTN-frame Δv; truth is ECI; Δv reaches ECI as a rotated vector."""
-    from orbital_game.env.core import OrbitalGameEnv
-    from orbital_game.env.types import Actions, BySide
-    from orbital_game.frames.conversions import convert_action
-    from orbital_game.registry import DynamicsKey, Frame, StateComponentKey
+    from orbitalgym.env.core import OrbitalGymEnv
+    from orbitalgym.env.types import Actions, BySide
+    from orbitalgym.frames.conversions import convert_action
+    from orbitalgym.registry import DynamicsKey, Frame, StateComponentKey
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     cfg = _minimal_cfg(
@@ -31,7 +31,7 @@ def test_action_in_rtn_with_eci_truth_rotates_correctly():
         action_frame=Frame.RTN,
         dt=1.0,
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     # 1 m/s radial impulse in RTN.
@@ -57,7 +57,7 @@ def test_action_in_rtn_with_eci_truth_rotates_correctly():
 
 
 def test_action_frame_defaults_to_truth_frame_eci():
-    from orbital_game.registry import DynamicsKey, Frame, StateComponentKey
+    from orbitalgym.registry import DynamicsKey, Frame, StateComponentKey
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     cfg = _minimal_cfg(
@@ -71,7 +71,7 @@ def test_action_frame_defaults_to_truth_frame_eci():
 def test_explicit_action_frame_rtn_with_rt_truth_rejected():
     import pytest
 
-    from orbital_game.registry import DynamicsKey, Frame, StateComponentKey
+    from orbitalgym.registry import DynamicsKey, Frame, StateComponentKey
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     with pytest.raises(ValueError, match="lossy"):

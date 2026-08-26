@@ -5,14 +5,14 @@ the implementation that existed at Phase 2.5 / Task 2.6)."""
 import jax
 import jax.numpy as jnp
 
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide
-from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide
+from orbitalgym.games.lady_bandit_guard import make_lady_bandit_guard
 
 
 def test_step_with_impulsive_maneuver_component_matches_legacy():
     cfg = make_lady_bandit_guard()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     key = jax.random.PRNGKey(0)
     state, _ = env.reset(key)
 

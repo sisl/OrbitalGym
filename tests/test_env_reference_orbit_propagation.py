@@ -3,7 +3,7 @@ import jax.numpy as jnp
 
 
 def _zero_actions(env):
-    from orbital_game.env.types import Actions, BySide
+    from orbitalgym.env.types import Actions, BySide
 
     return Actions(
         sides=BySide(
@@ -18,11 +18,11 @@ def test_reference_orbit_advances_under_keplerian():
 
     Position must change between steps.
     """
-    from orbital_game.env.core import OrbitalGameEnv
+    from orbitalgym.env.core import OrbitalGymEnv
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     cfg = _minimal_cfg(dt=60.0, max_horizon_s=600.0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     initial_pos = state.reference_orbit.position_eci
     actions = _zero_actions(env)
@@ -36,11 +36,11 @@ def test_reference_orbit_advances_under_keplerian():
 
 def test_hcw_state_finite_after_propagation():
     """HCW relative state must remain finite (no NaN) when the reference orbit propagates."""
-    from orbital_game.env.core import OrbitalGameEnv
+    from orbitalgym.env.core import OrbitalGymEnv
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     cfg = _minimal_cfg()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(42))
     actions = _zero_actions(env)
     out = env.step(jax.random.PRNGKey(1), state, actions)

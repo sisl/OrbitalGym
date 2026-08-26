@@ -4,12 +4,12 @@
 
 ```python
 import jax
-from orbital_game import OrbitalGameEnv, BySide, make_observation_blocking
-from orbital_game.policies import ZeroControl
-from orbital_game.rollout import rollout
+from orbitalgym import OrbitalGymEnv, BySide, make_observation_blocking
+from orbitalgym.policies import ZeroControl
+from orbitalgym.rollout import rollout
 
 cfg = make_observation_blocking()
-env = OrbitalGameEnv(cfg)
+env = OrbitalGymEnv(cfg)
 guard = ZeroControl(n_vehicles=cfg.n_guards, command_cls=env.guard_command_cls)
 bandit = ZeroControl(n_vehicles=cfg.n_bandits, command_cls=env.bandit_command_cls)
 traj = rollout(env, BySide(guard=guard, bandit=bandit),
@@ -36,7 +36,7 @@ The game is zero-sum and bounded `[-1, +1]`. The visibility gate applies to *bot
 
 The Earth target's ECEF position is precomputed once in `Game.__post_init__` from `(target_lat_deg, target_lon_deg, target_alt_m)` via `astrojax.position_geodetic_to_ecef`. Per step, ECEF is rotated to ECI via GMST (`astrojax.zero_eop()` — no EOP corrections), vehicle RTN is converted to ECI via the same frame helper as Sun-Blocking, and the elevation angle is computed between geocentric "up" at the target and the target-to-observer direction.
 
-The pure formula is exposed as `orbital_game.games.observation_blocking.observation_blocking_kernel(...)` and the visibility gate as `target_visible_from_guard(...)`. Both are used directly by the position-sweep diagnostic.
+The pure formula is exposed as `orbitalgym.games.observation_blocking.observation_blocking_kernel(...)` and the visibility gate as `target_visible_from_guard(...)`. Both are used directly by the position-sweep diagnostic.
 
 ## Termination
 
@@ -45,7 +45,7 @@ The pure formula is exposed as `orbital_game.games.observation_blocking.observat
 ## Builder
 
 ```python
-from orbital_game import make_observation_blocking
+from orbitalgym import make_observation_blocking
 
 cfg = make_observation_blocking(
     target_lat_deg=51.5,        # London
@@ -126,7 +126,7 @@ Sensible gallery picks for Observation-Blocking:
 
 ## Sanity-check notebook
 
-[`examples/games/observation_blocking.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/games/observation_blocking.ipynb) is a full walkthrough that builds an OB scenario, runs a rollout, plots the rollout-time diagnostic (with shaded invisible windows), and renders the 2D position-sweep surface.
+[`examples/games/observation_blocking.ipynb`](https://github.com/sisl/OrbitalGym/blob/main/examples/games/observation_blocking.ipynb) is a full walkthrough that builds an OB scenario, runs a rollout, plots the rollout-time diagnostic (with shaded invisible windows), and renders the 2D position-sweep surface.
 
 ## Where to next
 

@@ -3,7 +3,7 @@ must be paired with `ActionComponentKey.COMMUNICATE` in `guard_action_components
 
 Without this preflight, missing wiring surfaces as a late AttributeError deep
 in the env step / observation call (often inside a jit trace), which is hard
-to diagnose. The preflight raises a clear ValueError at `OrbitalGameEnv.__init__`
+to diagnose. The preflight raises a clear ValueError at `OrbitalGymEnv.__init__`
 time naming the offending field.
 """
 
@@ -12,17 +12,17 @@ from __future__ import annotations
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.observations.comms_leak import CommsLeakObservation
-from orbital_game.observations.composite import CompositeObservation
-from orbital_game.observations.reference import FullObservation
-from orbital_game.reference_orbit import ReferenceOrbitState
-from orbital_game.registry import ActionComponentKey, StateComponentKey
-from orbital_game.rewards.lbg_with_comms import LbgWithCommsReward
-from orbital_game.sampling.mass import ConstantMass
-from orbital_game.sampling.side import RelativeEllipse
-from orbital_game.sampling.spec import ICSpec
+from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.observations.comms_leak import CommsLeakObservation
+from orbitalgym.observations.composite import CompositeObservation
+from orbitalgym.observations.reference import FullObservation
+from orbitalgym.reference_orbit import ReferenceOrbitState
+from orbitalgym.registry import ActionComponentKey, StateComponentKey
+from orbitalgym.rewards.lbg_with_comms import LbgWithCommsReward
+from orbitalgym.sampling.mass import ConstantMass
+from orbitalgym.sampling.side import RelativeEllipse
+from orbitalgym.sampling.spec import ICSpec
 
 
 def _base_cfg(**overrides):
@@ -74,7 +74,7 @@ def test_comms_leak_observation_without_communicate_raises():
         guard_action_components=(ActionComponentKey.IMPULSIVE_MANEUVER,),
     )
     with pytest.raises(ValueError, match="COMMUNICATE"):
-        OrbitalGameEnv(cfg)
+        OrbitalGymEnv(cfg)
 
 
 def test_lbg_with_comms_reward_without_communicate_raises():
@@ -83,7 +83,7 @@ def test_lbg_with_comms_reward_without_communicate_raises():
         guard_action_components=(ActionComponentKey.IMPULSIVE_MANEUVER,),
     )
     with pytest.raises(ValueError, match="COMMUNICATE"):
-        OrbitalGameEnv(cfg)
+        OrbitalGymEnv(cfg)
 
 
 def test_comms_leak_observation_with_communicate_succeeds():
@@ -94,6 +94,6 @@ def test_comms_leak_observation_with_communicate_succeeds():
             ActionComponentKey.COMMUNICATE,
         ),
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     # If we got here, the preflight passed.
     assert env is not None

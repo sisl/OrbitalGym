@@ -11,7 +11,7 @@ test:
 
 # Run tests with coverage
 test-cov:
-    uv run pytest --cov=orbital_game --cov-report=term-missing
+    uv run pytest --cov=orbitalgym --cov-report=term-missing
 
 # Format code
 fmt:

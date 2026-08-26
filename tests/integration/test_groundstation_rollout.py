@@ -10,9 +10,9 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from orbital_game.belief.sync import KFTeamFusion
-from orbital_game.env.types import BySide
-from orbital_game.groundstations import (
+from orbitalgym.belief.sync import KFTeamFusion
+from orbitalgym.env.types import BySide
+from orbitalgym.groundstations import (
     ContactSchedule,
     GroundStation,
     GroundStationNetwork,
@@ -40,7 +40,7 @@ def _network() -> GroundStationNetwork:
 
 def test_belief_rollout_accepts_network_kwargs(make_minimal_lbg_env_with_kf):
     """Smoke test: belief_rollout accepts the new kwargs without raising."""
-    from orbital_game.rollout import belief_rollout
+    from orbitalgym.rollout import belief_rollout
 
     env, init_belief_fns, update_belief_fns, init_ps_fns, policies = make_minimal_lbg_env_with_kf()
 
@@ -61,7 +61,7 @@ def test_belief_rollout_accepts_network_kwargs(make_minimal_lbg_env_with_kf):
 
 def test_belief_rollout_default_kwargs_unchanged(make_minimal_lbg_env_with_kf):
     """Existing callers don't pass the new kwargs — must work unchanged."""
-    from orbital_game.rollout import belief_rollout
+    from orbitalgym.rollout import belief_rollout
 
     env, init_belief_fns, update_belief_fns, init_ps_fns, policies = make_minimal_lbg_env_with_kf()
 
@@ -82,7 +82,7 @@ def test_belief_rollout_applies_team_fusion(make_minimal_lbg_env_with_kf):
         n_guards=2,
     )
 
-    from orbital_game.rollout import belief_rollout
+    from orbitalgym.rollout import belief_rollout
 
     sync_fns = BySide(guard=KFTeamFusion(), bandit=None)
     traj, beliefs = belief_rollout(

@@ -3,7 +3,7 @@
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.state.components import (
+from orbitalgym.state.components import (
     AppliedDV,
     AppliedTorque,
     Attitude,
@@ -66,7 +66,7 @@ def test_component_names_unique():
 
 
 def test_eci_state_zeros():
-    from orbital_game.state.components import ECIState
+    from orbitalgym.state.components import ECIState
 
     z = ECIState.zeros(3)
     assert z["eci"].shape == (3, 6)
@@ -74,14 +74,14 @@ def test_eci_state_zeros():
 
 
 def test_eci_state_component_key():
-    from orbital_game.registry import StateComponentKey
+    from orbitalgym.registry import StateComponentKey
 
     assert StateComponentKey.ECI.value == "eci"
 
 
 def test_eci_state_assemble():
-    from orbital_game.state.assemble import build_state_class
-    from orbital_game.state.components import ECIState
+    from orbitalgym.state.assemble import build_state_class
+    from orbitalgym.state.components import ECIState
 
     cls = build_state_class([ECIState], n_vehicles=2, class_name="EciOnly")
     inst = cls.zeros(2)

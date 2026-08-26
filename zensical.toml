@@ -1,4 +1,4 @@
-# Zensical configuration for orbital-game's user-facing documentation.
+# Zensical configuration for OrbitalGym's user-facing documentation.
 #
 # Build:    uv run zensical build
 # Serve:    uv run zensical serve
@@ -9,10 +9,10 @@
 
 [project]
 
-site_name = "orbital-game"
+site_name = "OrbitalGym"
 site_description = "JAX-native framework for guard/bandit decision-making in orbital scenarios"
 site_author = "Duncan Eddy"
-site_url = "https://github.com/duncaneddy/orbital-game"
+site_url = "https://github.com/sisl/OrbitalGym"
 
 docs_dir = "docs"
 

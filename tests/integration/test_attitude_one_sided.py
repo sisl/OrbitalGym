@@ -8,11 +8,11 @@ the bandit side lacks the attitude fields.
 import jax
 import jax.numpy as jnp
 
-from orbital_game.config import ScenarioConfig
-from orbital_game.dynamics.attitude import AttitudeParams
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide
-from orbital_game.registry import (
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.dynamics.attitude import AttitudeParams
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide
+from orbitalgym.registry import (
     AttitudeDynamicsKey,
     DynamicsKey,
     Frame,
@@ -55,7 +55,7 @@ def _identity_actions(env, cfg):
 def test_one_sided_attitude_no_crash():
     """env.step must not raise when only the guard has attitude state."""
     cfg = ScenarioConfig(**_one_sided_attitude_kwargs())
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     # Inject a nonzero omega so the guard's quaternion will actually advance.

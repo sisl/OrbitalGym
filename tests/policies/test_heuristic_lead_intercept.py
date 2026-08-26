@@ -9,10 +9,10 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game import OrbitalGameEnv, SingleAgentView, make_pursuit_evasion
-from orbital_game.policies import ZeroControl
-from orbital_game.policies.heuristic import LeadInterceptPursuer
-from orbital_game.rollout import rollout_single_agent
+from orbitalgym import OrbitalGymEnv, SingleAgentView, make_pursuit_evasion
+from orbitalgym.policies import ZeroControl
+from orbitalgym.policies.heuristic import LeadInterceptPursuer
+from orbitalgym.rollout import rollout_single_agent
 from tests.policies._helpers import make_impulsive_maneuver_command_cls
 
 
@@ -36,7 +36,7 @@ def test_lead_intercept_emits_unit_thrust_along_predicted_line():
 def test_lead_intercept_runs_in_pe_rollout():
     cfg = make_pursuit_evasion(seed=0, max_horizon_s=200.0)
     cfg = dataclasses.replace(cfg, bandit_policy=LeadInterceptPursuer(max_dv_mps=0.05, dt=cfg.dt))
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     view = SingleAgentView(env)
     guard = ZeroControl(n_vehicles=cfg.n_guards, command_cls=env.guard_command_cls)
     traj = rollout_single_agent(

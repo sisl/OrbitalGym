@@ -11,8 +11,8 @@ import numpy as np
 
 def test_keplerian_eci_circular_orbit_returns_to_origin():
     """A particle on a circular orbit returns to its starting state after one period."""
-    from orbital_game.dynamics import keplerian  # noqa: F401 — register side effect
-    from orbital_game.registry import DynamicsKey, DynamicsKind, Frame, resolve
+    from orbitalgym.dynamics import keplerian  # noqa: F401 — register side effect
+    from orbitalgym.registry import DynamicsKey, DynamicsKind, Frame, resolve
 
     # `DynamicsKey.KEPLERIAN_ECI` now resolves to the typed-instance class
     # `KeplerianEciDynamics`; we instantiate with defaults to get a callable.
@@ -39,8 +39,8 @@ def test_keplerian_eci_circular_orbit_returns_to_origin():
 
 def test_keplerian_eci_applies_dv_at_step_start():
     """With dt=0 the RK4 step is the identity, so the only change is the start-of-interval Δv."""
-    from orbital_game.dynamics import keplerian  # noqa: F401
-    from orbital_game.registry import DynamicsKey, resolve
+    from orbitalgym.dynamics import keplerian  # noqa: F401
+    from orbitalgym.registry import DynamicsKey, resolve
 
     # `DynamicsKey.KEPLERIAN_ECI` now resolves to the typed-instance class
     # `KeplerianEciDynamics`; we instantiate with defaults to get a callable.

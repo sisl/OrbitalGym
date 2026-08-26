@@ -7,7 +7,7 @@ instead with one `dataclasses.replace`:
 
 ```python
 import dataclasses
-from orbital_game import Side, make_lady_bandit_guard
+from orbitalgym import Side, make_lady_bandit_guard
 
 cfg = make_lady_bandit_guard()
 cfg = dataclasses.replace(cfg, controlled_side=Side.BANDIT)

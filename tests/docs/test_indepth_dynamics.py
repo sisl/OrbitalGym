@@ -10,10 +10,10 @@ def test_indepth_dynamics_hcw_rtn_step():
     import jax
     import jax.numpy as jnp
 
-    from orbital_game import OrbitalGameEnv, make_lady_bandit_guard
+    from orbitalgym import OrbitalGymEnv, make_lady_bandit_guard
 
     cfg = make_lady_bandit_guard(n_guards=1, n_bandits=1, seed=0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     # `env.truth_dynamics` is the bound dynamics callable. It takes the raw
@@ -41,10 +41,10 @@ def test_indepth_dynamics_actuator_composition():
     # --8<-- [start:actuator-composition]
     import jax
 
-    from orbital_game import Actions, BySide, OrbitalGameEnv, make_lady_bandit_guard
+    from orbitalgym import Actions, BySide, OrbitalGymEnv, make_lady_bandit_guard
 
     cfg = make_lady_bandit_guard(n_guards=1, n_bandits=1, seed=0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     # `env.step` runs the actuator (action → applied Δv) and then the

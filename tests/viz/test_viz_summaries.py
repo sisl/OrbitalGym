@@ -8,7 +8,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import pytest  # noqa: E402
 
-from orbital_game.viz.summaries import plot_mass_curve, plot_reward_curve
+from orbitalgym.viz.summaries import plot_mass_curve, plot_reward_curve
 
 
 def test_plot_reward_curve_single_trajectory():

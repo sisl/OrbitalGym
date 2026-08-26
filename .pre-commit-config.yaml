@@ -1,4 +1,4 @@
-# Pre-commit hooks for orbital-game.
+# Pre-commit hooks for OrbitalGym.
 #
 # Install once after `uv sync --extra dev`:
 #     uv run pre-commit install
@@ -25,7 +25,7 @@ repos:
 
       - id: pyrefly
         name: pyrefly (whole-project type check)
-        entry: uv run pyrefly check src/orbital_game
+        entry: uv run pyrefly check src/orbitalgym
         language: system
         pass_filenames: false
         require_serial: true

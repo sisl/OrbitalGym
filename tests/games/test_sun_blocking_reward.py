@@ -5,7 +5,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from orbital_game.games.sun_blocking import sun_blocking_kernel
+from orbitalgym.games.sun_blocking import sun_blocking_kernel
 
 
 def test_kernel_peak_at_collinear_in_front():

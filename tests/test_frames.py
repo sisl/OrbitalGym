@@ -10,7 +10,7 @@ def _circular_leo_ref():
 
 
 def test_eci_to_rtn_roundtrip_zero_relative():
-    from orbital_game.frames.conversions import eci_to_rtn, rtn_to_eci
+    from orbitalgym.frames.conversions import eci_to_rtn, rtn_to_eci
 
     ref = _circular_leo_ref()
     deputy_eci = ref[None, :]  # (1, 6)
@@ -22,7 +22,7 @@ def test_eci_to_rtn_roundtrip_zero_relative():
 
 
 def test_eci_to_rtn_roundtrip_nonzero():
-    from orbital_game.frames.conversions import eci_to_rtn, rtn_to_eci
+    from orbitalgym.frames.conversions import eci_to_rtn, rtn_to_eci
 
     ref = _circular_leo_ref()
     rtn = jnp.array([[100.0, -50.0, 25.0, 0.5, 0.1, -0.2]])  # (1, 6)
@@ -32,7 +32,7 @@ def test_eci_to_rtn_roundtrip_nonzero():
 
 
 def test_eci_to_rtn_vmap_over_vehicles():
-    from orbital_game.frames.conversions import eci_to_rtn
+    from orbitalgym.frames.conversions import eci_to_rtn
 
     ref = _circular_leo_ref()
     deputies_eci = jnp.tile(ref, (4, 1)) + jnp.array(
@@ -44,8 +44,8 @@ def test_eci_to_rtn_vmap_over_vehicles():
 
 
 def test_convert_action_rtn_to_eci_to_rtn_identity():
-    from orbital_game.frames.conversions import convert_action
-    from orbital_game.registry import Frame
+    from orbitalgym.frames.conversions import convert_action
+    from orbitalgym.registry import Frame
 
     ref = _circular_leo_ref()
     dv_rtn = jnp.array([[0.1, 0.0, 0.0], [0.0, 0.2, 0.0], [0.0, 0.0, 0.3]])
@@ -55,8 +55,8 @@ def test_convert_action_rtn_to_eci_to_rtn_identity():
 
 
 def test_convert_action_rt_to_rtn_pads_zero():
-    from orbital_game.frames.conversions import convert_action
-    from orbital_game.registry import Frame
+    from orbitalgym.frames.conversions import convert_action
+    from orbitalgym.registry import Frame
 
     ref = _circular_leo_ref()
     dv_rt = jnp.array([[0.1, 0.2], [-0.3, 0.4]])

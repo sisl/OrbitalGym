@@ -14,11 +14,11 @@ def _minimal_cfg(**overrides):
     """
     import jax.numpy as jnp
 
-    from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-    from orbital_game.reference_orbit import ReferenceOrbitState
-    from orbital_game.registry import StateComponentKey
-    from orbital_game.sampling.side import RelativeEllipse
-    from orbital_game.sampling.spec import ICSpec
+    from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+    from orbitalgym.reference_orbit import ReferenceOrbitState
+    from orbitalgym.registry import StateComponentKey
+    from orbitalgym.sampling.side import RelativeEllipse
+    from orbitalgym.sampling.spec import ICSpec
 
     ref = ReferenceOrbitState(
         position_eci=jnp.array([6878137.0, 0.0, 0.0]),
@@ -53,7 +53,7 @@ def test_reference_orbit_dynamics_default_for_relative_truth():
     """Truth=HCW_RTN (relative) -> reference defaults to a KeplerianEciDynamics
     instance that carries the scenario's epoch (so different scenarios get
     different reference-epoch instances rather than sharing module state)."""
-    from orbital_game.dynamics.keplerian import KeplerianEciDynamics
+    from orbitalgym.dynamics.keplerian import KeplerianEciDynamics
 
     cfg = _minimal_cfg()
     assert isinstance(cfg.reference_orbit_dynamics_resolved, KeplerianEciDynamics)
@@ -62,7 +62,7 @@ def test_reference_orbit_dynamics_default_for_relative_truth():
 
 def test_reference_orbit_dynamics_default_for_absolute_truth():
     """Truth=KEPLERIAN_ECI (absolute) -> reference defaults to KEPLERIAN_ECI (= truth)."""
-    from orbital_game.registry import DynamicsKey, StateComponentKey
+    from orbitalgym.registry import DynamicsKey, StateComponentKey
 
     cfg = _minimal_cfg(
         truth_dynamics=DynamicsKey.KEPLERIAN_ECI,
@@ -75,7 +75,7 @@ def test_reference_orbit_dynamics_default_for_absolute_truth():
 
 def test_reference_orbit_dynamics_explicit_relative_rejected():
     """Explicitly setting reference to a relative-kind dynamics is an error."""
-    from orbital_game.registry import DynamicsKey
+    from orbitalgym.registry import DynamicsKey
 
     with pytest.raises(ValueError, match="reference_orbit_dynamics.*ABSOLUTE"):
         _minimal_cfg(reference_orbit_dynamics=DynamicsKey.HCW_RTN)

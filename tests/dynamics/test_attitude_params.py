@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 
-from orbital_game.dynamics.attitude import AttitudeParams
+from orbitalgym.dynamics.attitude import AttitudeParams
 
 
 def test_attitude_params_construction():

@@ -3,12 +3,12 @@ to (IMPULSIVE_MANEUVER,) for backward parity."""
 
 import jax.numpy as jnp
 
-from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.reference_orbit import ReferenceOrbitState
-from orbital_game.registry import ActionComponentKey, StateComponentKey
-from orbital_game.sampling.mass import ConstantMass
-from orbital_game.sampling.side import RelativeEllipse
-from orbital_game.sampling.spec import ICSpec
+from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+from orbitalgym.reference_orbit import ReferenceOrbitState
+from orbitalgym.registry import ActionComponentKey, StateComponentKey
+from orbitalgym.sampling.mass import ConstantMass
+from orbitalgym.sampling.side import RelativeEllipse
+from orbitalgym.sampling.spec import ICSpec
 
 
 def _base_kwargs():

@@ -13,13 +13,13 @@ def test_t5_vmap_over_seeds():
     import jax
     import jax.numpy as jnp
 
-    from orbital_game import (
-        OrbitalGameEnv,
+    from orbitalgym import (
+        OrbitalGymEnv,
         SingleAgentView,
         make_pursuit_evasion,
     )
-    from orbital_game.policies import ZeroControl
-    from orbital_game.rollout import rollout_single_agent
+    from orbitalgym.policies import ZeroControl
+    from orbitalgym.rollout import rollout_single_agent
     # --8<-- [end:imports]
 
     # --8<-- [start:devices]
@@ -27,7 +27,7 @@ def test_t5_vmap_over_seeds():
     # --8<-- [end:devices]
 
     cfg = make_pursuit_evasion(seed=0, max_horizon_s=1000.0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     view = SingleAgentView(env)
     guard_policy = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
 

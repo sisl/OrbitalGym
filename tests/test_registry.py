@@ -4,8 +4,8 @@ from enum import StrEnum
 
 import pytest
 
-from orbital_game import registry as _registry
-from orbital_game.registry import (
+from orbitalgym import registry as _registry
+from orbitalgym.registry import (
     BeliefInitializerKey,
     BeliefUpdaterKey,
     DynamicsKey,

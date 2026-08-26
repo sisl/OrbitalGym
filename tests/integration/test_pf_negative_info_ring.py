@@ -26,13 +26,13 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from orbital_game.belief.pf import (
+from orbitalgym.belief.pf import (
     ParticleFilterBelief,
     ParticleFilterBeliefUpdater,
 )
-from orbital_game.env.types import Side
-from orbital_game.observations.negative_info import Hard, Off, Soft
-from orbital_game.observations.types import Observation
+from orbitalgym.env.types import Side
+from orbitalgym.observations.negative_info import Hard, Off, Soft
+from orbitalgym.observations.types import Observation
 
 
 def _identity_dynamics(x, u, dt):

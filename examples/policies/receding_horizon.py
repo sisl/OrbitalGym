@@ -19,8 +19,8 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 
-from orbital_game import Side
-from orbital_game.adapters.pomdp import POMDPAdapter
+from orbitalgym import Side
+from orbitalgym.adapters.pomdp import POMDPAdapter
 
 
 @dataclass(frozen=True)

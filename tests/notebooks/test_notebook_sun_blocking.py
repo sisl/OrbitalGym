@@ -12,13 +12,13 @@ import jax  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 
-from orbital_game import OrbitalGameEnv, rollout  # noqa: E402
-from orbital_game.env.types import BySide  # noqa: E402
-from orbital_game.games import make_sun_blocking  # noqa: E402
-from orbital_game.policies import ZeroControl  # noqa: E402
-from orbital_game.sampling.side import RelativeEllipse  # noqa: E402
-from orbital_game.sampling.spec import ICSpec  # noqa: E402
-from orbital_game.viz import (  # noqa: E402
+from orbitalgym import OrbitalGymEnv, rollout  # noqa: E402
+from orbitalgym.env.types import BySide  # noqa: E402
+from orbitalgym.games import make_sun_blocking  # noqa: E402
+from orbitalgym.policies import ZeroControl  # noqa: E402
+from orbitalgym.sampling.side import RelativeEllipse  # noqa: E402
+from orbitalgym.sampling.spec import ICSpec  # noqa: E402
+from orbitalgym.viz import (  # noqa: E402
     plot_reward_diagnostic,
     plot_reward_position_sweep,
 )
@@ -55,7 +55,7 @@ def test_sb_notebook_core_path():
             max_attempts=100,
         ),
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     policies = BySide(
         guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards),
         bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=cfg.n_bandits),

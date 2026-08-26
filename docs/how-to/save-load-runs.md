@@ -10,18 +10,18 @@ from pathlib import Path
 
 import jax
 
-from orbital_game import (
-    OrbitalGameEnv,
+from orbitalgym import (
+    OrbitalGymEnv,
     SingleAgentView,
     load_run,
     make_lady_bandit_guard,
     save_run,
 )
-from orbital_game.policies import ZeroControl
-from orbital_game.rollout import rollout_single_agent
+from orbitalgym.policies import ZeroControl
+from orbitalgym.rollout import rollout_single_agent
 
 cfg = make_lady_bandit_guard()
-env = OrbitalGameEnv(cfg)
+env = OrbitalGymEnv(cfg)
 view = SingleAgentView(env)
 policy = ZeroControl(n_vehicles=cfg.n_guards, command_cls=env.guard_command_cls)
 traj = rollout_single_agent(view, policy, lambda c, s, k: None,

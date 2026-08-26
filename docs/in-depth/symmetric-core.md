@@ -1,6 +1,6 @@
 # Symmetric core & data shapes
 
-The `OrbitalGameEnv` core is **symmetric**: the same step function and
+The `OrbitalGymEnv` core is **symmetric**: the same step function and
 the same data shapes work whether you're learning the guard, learning
 the bandit, training both simultaneously, or planning over beliefs.
 This page is the spine of the documentation — every other in-depth
@@ -10,7 +10,7 @@ described here.
 ## Sides
 
 ```python
-from orbital_game import Side
+from orbitalgym import Side
 Side.GUARD       # "guard"
 Side.BANDIT      # "bandit"
 Side.GUARD.opposite()   # Side.BANDIT

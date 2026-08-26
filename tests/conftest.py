@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for orbital-game tests.
+"""Shared pytest fixtures for OrbitalGym tests.
 
 The package now defaults to float32 (so MPS users don't trip on float64
 device-puts). Tests still want orbit-grade precision and explicit
@@ -21,7 +21,7 @@ import jax  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 import pytest  # noqa: E402
 
-import orbital_game  # noqa: E402
+import orbitalgym  # noqa: E402
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -31,10 +31,10 @@ def _enable_x64_for_tests():
     The package import sets float32 as the default for backend portability;
     tests assert ``dtype == jnp.float64`` and exercise astrojax KOE/ECI
     conversions where the float32 precision floor (~7 m) would cause flaky
-    failures. Flip via ``orbital_game.set_precision`` so astrojax's internal
+    failures. Flip via ``orbitalgym.set_precision`` so astrojax's internal
     dtype stays in sync with ``jax_enable_x64``.
     """
-    orbital_game.set_precision(jnp.float64)
+    orbitalgym.set_precision(jnp.float64)
     yield
 
 
@@ -66,7 +66,7 @@ def make_minimal_lbg_config():
     """Returns a callable that builds a minimal LBG ScenarioConfig with kwargs forwarded."""
 
     def _make(**kwargs):
-        from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard
+        from orbitalgym.games.lady_bandit_guard import make_lady_bandit_guard
 
         return make_lady_bandit_guard(**kwargs)
 
@@ -85,14 +85,14 @@ def make_minimal_lbg_env_with_kf():
     def _make(**kwargs):
         import dataclasses
 
-        from orbital_game.belief.kf import KFBeliefUpdater, KFFromTruthInitializer
-        from orbital_game.env.core import OrbitalGameEnv
-        from orbital_game.env.types import BySide
-        from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard
-        from orbital_game.policies.zero import ZeroControl
+        from orbitalgym.belief.kf import KFBeliefUpdater, KFFromTruthInitializer
+        from orbitalgym.env.core import OrbitalGymEnv
+        from orbitalgym.env.types import BySide
+        from orbitalgym.games.lady_bandit_guard import make_lady_bandit_guard
+        from orbitalgym.policies.zero import ZeroControl
 
         cfg = make_lady_bandit_guard(**kwargs)
-        env = OrbitalGameEnv(cfg)
+        env = OrbitalGymEnv(cfg)
         layout = env.layout
         d = layout.dynamics_state_dim
 

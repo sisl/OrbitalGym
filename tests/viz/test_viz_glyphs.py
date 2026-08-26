@@ -18,7 +18,7 @@ from matplotlib.patches import Wedge  # noqa: E402
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # noqa: E402
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection as _Poly3DCollection  # noqa: E402
 
-from orbital_game.viz.glyphs import (  # noqa: E402
+from orbitalgym.viz.glyphs import (  # noqa: E402
     draw_belief_ellipse_2d,
     draw_belief_ellipsoid,
     draw_body_axes,

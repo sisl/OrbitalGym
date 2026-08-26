@@ -1,4 +1,4 @@
-# orbital-game
+# OrbitalGym
 
 A JAX-native framework for two-side decision-making in orbital
 scenarios. Same symmetric core drives single-agent (Gymnasium-shaped),

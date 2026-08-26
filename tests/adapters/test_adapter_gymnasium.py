@@ -5,14 +5,14 @@ from __future__ import annotations
 import numpy as np
 
 from examples.reference_scenario import build_config
-from orbital_game.env.core import OrbitalGameEnv
+from orbitalgym.env.core import OrbitalGymEnv
 
 
 def _make_adapter():
-    from orbital_game.adapters.gymnasium import GymnasiumAdapter
+    from orbitalgym.adapters.gymnasium import GymnasiumAdapter
 
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     return GymnasiumAdapter(env, seed=0)
 
 

@@ -7,8 +7,8 @@ consume.
 
 from __future__ import annotations
 
-from orbital_game.config import ScenarioConfig
-from orbital_game.registry import (
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.registry import (
     DynamicsKey,
     Frame,
     StateComponentKey,

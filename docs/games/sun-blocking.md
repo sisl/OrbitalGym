@@ -4,12 +4,12 @@
 
 ```python
 import jax
-from orbital_game import OrbitalGameEnv, BySide, make_sun_blocking
-from orbital_game.policies import ZeroControl
-from orbital_game.rollout import rollout
+from orbitalgym import OrbitalGymEnv, BySide, make_sun_blocking
+from orbitalgym.policies import ZeroControl
+from orbitalgym.rollout import rollout
 
 cfg = make_sun_blocking()
-env = OrbitalGameEnv(cfg)
+env = OrbitalGymEnv(cfg)
 guard = ZeroControl(n_vehicles=cfg.n_guards, command_cls=env.guard_command_cls)
 bandit = ZeroControl(n_vehicles=cfg.n_bandits, command_cls=env.bandit_command_cls)
 traj = rollout(env, BySide(guard=guard, bandit=bandit),
@@ -36,7 +36,7 @@ with vertex at the bandit. Three regimes:
 
 The game is zero-sum and bounded `[-1, +1]`. There is no separate angular σ — the dot product is its own peak-shape.
 
-The reward looks up Sun ECI position via `astrojax.sun_position(epoch)` and converts vehicle RTN positions to ECI via the shared frame helper in `games/_frames.py`. The pure formula is exposed as `orbital_game.games.sun_blocking.sun_blocking_kernel(...)` and is used directly by the position-sweep diagnostic.
+The reward looks up Sun ECI position via `astrojax.sun_position(epoch)` and converts vehicle RTN positions to ECI via the shared frame helper in `games/_frames.py`. The pure formula is exposed as `orbitalgym.games.sun_blocking.sun_blocking_kernel(...)` and is used directly by the position-sweep diagnostic.
 
 ## Termination
 
@@ -45,7 +45,7 @@ The reward looks up Sun ECI position via `astrojax.sun_position(epoch)` and conv
 ## Builder
 
 ```python
-from orbital_game import make_sun_blocking
+from orbitalgym import make_sun_blocking
 
 cfg = make_sun_blocking(
     target_viewing_distance_m=500.0,
@@ -121,7 +121,7 @@ Sensible gallery picks for Sun-Blocking:
 
 ## Sanity-check notebook
 
-[`examples/games/sun_blocking.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/games/sun_blocking.ipynb) is a full walkthrough that builds a SB scenario, runs a rollout, plots the rollout-time diagnostic, and renders the 2D position-sweep surface — the latter is the canonical reward-shape verification, and it should match the [KSP-DG SB1](https://github.com/mit-ll/spacegym-kspdg/blob/main/src/kspdg/sb1/sb1_base.py) reference shape.
+[`examples/games/sun_blocking.ipynb`](https://github.com/sisl/OrbitalGym/blob/main/examples/games/sun_blocking.ipynb) is a full walkthrough that builds a SB scenario, runs a rollout, plots the rollout-time diagnostic, and renders the 2D position-sweep surface — the latter is the canonical reward-shape verification, and it should match the [KSP-DG SB1](https://github.com/mit-ll/spacegym-kspdg/blob/main/src/kspdg/sb1/sb1_base.py) reference shape.
 
 ## Where to next
 

@@ -19,12 +19,12 @@ side(s) you need:
 
 ```python
 import dataclasses
-from orbital_game import OrbitalGameEnv, make_pursuit_evasion
-from orbital_game.observations.range_limited import RangeLimitedObservation
+from orbitalgym import OrbitalGymEnv, make_pursuit_evasion
+from orbitalgym.observations.range_limited import RangeLimitedObservation
 
 cfg = make_pursuit_evasion()
 # RangeLimited needs the layout to know N_self / N_target / state dim:
-env_for_layout = OrbitalGameEnv(cfg)
+env_for_layout = OrbitalGymEnv(cfg)
 rl = RangeLimitedObservation(
     layout=env_for_layout.layout,
     sensor_range_m=2000.0,
@@ -37,14 +37,14 @@ cfg = dataclasses.replace(
 )
 ```
 
-The next `OrbitalGameEnv(cfg)` rebuilds with the new observation
+The next `OrbitalGymEnv(cfg)` rebuilds with the new observation
 function.
 
 ## Composing channels
 
 ```python
-from orbital_game.observations.composite import CompositeObservation
-from orbital_game.observations.onboard_gps import OnboardGPSObservation
+from orbitalgym.observations.composite import CompositeObservation
+from orbitalgym.observations.onboard_gps import OnboardGPSObservation
 
 composite = CompositeObservation(constituents=(
     OnboardGPSObservation(layout=env_for_layout.layout, sigma_gps=2.0),

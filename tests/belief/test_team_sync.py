@@ -1,15 +1,15 @@
 import jax.numpy as jnp
 
-from orbital_game.belief.ekf import EKFBelief
-from orbital_game.belief.kf import KFBelief
-from orbital_game.belief.pf import ParticleFilterBelief
-from orbital_game.belief.sync import (
+from orbitalgym.belief.ekf import EKFBelief
+from orbitalgym.belief.kf import KFBelief
+from orbitalgym.belief.pf import ParticleFilterBelief
+from orbitalgym.belief.sync import (
     BeliefSyncFn,
     EKFTeamFusion,
     KFTeamFusion,
     PFTeamFusion,
 )
-from orbital_game.registry import BeliefSyncKey, resolve
+from orbitalgym.registry import BeliefSyncKey, resolve
 
 
 class _IdentitySync:

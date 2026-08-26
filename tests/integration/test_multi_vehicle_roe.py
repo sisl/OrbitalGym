@@ -6,12 +6,12 @@ import jax
 import jax.numpy as jnp
 
 from examples.multi_vehicle_roe import build_config
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import BySide
-from orbital_game.rollout import rollout
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import BySide
+from orbitalgym.rollout import rollout
 
 
-def _make_policies(env: OrbitalGameEnv) -> tuple[BySide, BySide]:
+def _make_policies(env: OrbitalGymEnv) -> tuple[BySide, BySide]:
     guard_cmd_cls = env.guard_command_cls
     bandit_cmd_cls = env.bandit_command_cls
     n_guards = env.config.n_guards
@@ -37,7 +37,7 @@ def _make_policies(env: OrbitalGameEnv) -> tuple[BySide, BySide]:
 
 def test_multi_vehicle_roe_runs_under_vmap():
     cfg = build_config()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     policies, init_fns = _make_policies(env)
 
     keys = jax.random.split(jax.random.PRNGKey(0), 8)

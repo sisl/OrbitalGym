@@ -5,10 +5,10 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.config import ScenarioConfig
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide
-from orbital_game.registry import (
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide
+from orbitalgym.registry import (
     DynamicsKey,
     Frame,
     StateComponentKey,
@@ -34,7 +34,7 @@ def test_propagation_runs_without_impulsive_maneuver(dyn_key, frame, truth_field
             bandit_action_components=(),
         )
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     pre_truth = getattr(state.guards, truth_field)
 

@@ -2,7 +2,7 @@
 
 import inspect
 
-from orbital_game.observations.base import ObservationFn
+from orbitalgym.observations.base import ObservationFn
 
 
 def test_observation_fn_signature_has_actions():

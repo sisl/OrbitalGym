@@ -2,29 +2,29 @@
 
 Top-level environment, configuration, and rollout primitives.
 
-## `OrbitalGameEnv`
+## `OrbitalGymEnv`
 
-::: orbital_game.env.core.OrbitalGameEnv
+::: orbitalgym.env.core.OrbitalGymEnv
 
 ## `EnvState`
 
-::: orbital_game.env.core.EnvState
+::: orbitalgym.env.core.EnvState
 
 ## `SingleAgentView`
 
-::: orbital_game.env.single_agent.SingleAgentView
+::: orbitalgym.env.single_agent.SingleAgentView
 
 ## `ScenarioConfig`
 
-::: orbital_game.config.ScenarioConfig
+::: orbitalgym.config.ScenarioConfig
 
 ## `VehicleParamsSpec`
 
-::: orbital_game.config.VehicleParamsSpec
+::: orbitalgym.config.VehicleParamsSpec
 
 ## `ReferenceOrbitState`
 
-::: orbital_game.reference_orbit.ReferenceOrbitState
+::: orbitalgym.reference_orbit.ReferenceOrbitState
 
 The canonical representation is Cartesian ECI (`position_eci`, `velocity_eci`).
 You can construct it either directly with those arrays, or from classical
@@ -34,7 +34,7 @@ constructor delegates to `astrojax.state_koe_to_eci` and validates that
 `semi_major_axis_m > 0` and `0 ≤ eccentricity < 1`.
 
 ```python
-from orbital_game.reference_orbit import ReferenceOrbitState
+from orbitalgym.reference_orbit import ReferenceOrbitState
 
 # Cartesian (canonical):
 ref_cart = ReferenceOrbitState(
@@ -59,20 +59,20 @@ Two drivers: `rollout` is obs-only (`agent_view = obs`); `belief_rollout`
 threads per-side beliefs (`agent_view = belief`). Both compile to a
 single `lax.scan`-based JIT region.
 
-::: orbital_game.rollout.rollout
+::: orbitalgym.rollout.rollout
 
-::: orbital_game.rollout.rollout_single_agent
+::: orbitalgym.rollout.rollout_single_agent
 
-::: orbital_game.rollout.belief_rollout
+::: orbitalgym.rollout.belief_rollout
 
-::: orbital_game.rollout.episode_mask
+::: orbitalgym.rollout.episode_mask
 
 ## Precision
 
-::: orbital_game.set_precision
+::: orbitalgym.set_precision
 
 ## Logging
 
-::: orbital_game.logging.writer.save_run
+::: orbitalgym.logging.writer.save_run
 
-::: orbital_game.logging.reader.load_run
+::: orbitalgym.logging.reader.load_run

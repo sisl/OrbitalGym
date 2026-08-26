@@ -24,15 +24,15 @@ from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
 
-from orbital_game.belief.ekf import EKFBeliefUpdater, EKFFromTruthInitializer
-from orbital_game.config import ScenarioConfig
-from orbital_game.dynamics.attitude import AttitudeParams
-from orbital_game.dynamics.hcw import hcw_rt_step
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide, Side
-from orbital_game.observations.conical import ConicalObservation
-from orbital_game.reference_orbit import mean_motion as ref_mean_motion
-from orbital_game.registry import (
+from orbitalgym.belief.ekf import EKFBeliefUpdater, EKFFromTruthInitializer
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.dynamics.attitude import AttitudeParams
+from orbitalgym.dynamics.hcw import hcw_rt_step
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide, Side
+from orbitalgym.observations.conical import ConicalObservation
+from orbitalgym.reference_orbit import mean_motion as ref_mean_motion
+from orbitalgym.registry import (
     ActionComponentKey,
     AttitudeDynamicsKey,
     DynamicsKey,
@@ -97,7 +97,7 @@ def _make_env_with_cone():
             "guard_observation_fn": obs_fn,
         }
     )
-    env = OrbitalGameEnv(cfg_with_cone)
+    env = OrbitalGymEnv(cfg_with_cone)
     return env, obs_fn
 
 

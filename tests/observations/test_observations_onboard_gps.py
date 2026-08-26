@@ -5,9 +5,9 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from orbital_game.env.types import Side
-from orbital_game.observations.onboard_gps import OnboardGPSObservation
-from orbital_game.observations.types import Observation
+from orbitalgym.env.types import Side
+from orbitalgym.observations.onboard_gps import OnboardGPSObservation
+from orbitalgym.observations.types import Observation
 
 
 class _Layout:

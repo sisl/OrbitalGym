@@ -21,10 +21,10 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from orbital_game import OrbitalGameEnv, Side, make_lady_bandit_guard
-from orbital_game.adapters.pomdp import POMDPAdapter
-from orbital_game.policies.mcts import MCTSPolicy
-from orbital_game.policies.uniform_random import UniformRandomDiscretePolicy
+from orbitalgym import OrbitalGymEnv, Side, make_lady_bandit_guard
+from orbitalgym.adapters.pomdp import POMDPAdapter
+from orbitalgym.policies.mcts import MCTSPolicy
+from orbitalgym.policies.uniform_random import UniformRandomDiscretePolicy
 
 
 def _grid(n_dirs: int = 8, dv_max: float = 1.0) -> jnp.ndarray:
@@ -43,7 +43,7 @@ class _OracleBelief:
 
 def _build():
     cfg = make_lady_bandit_guard(seed=0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     adapter = POMDPAdapter(env)
     grid = _grid()
     opp = UniformRandomDiscretePolicy(
@@ -123,7 +123,7 @@ def test_mcts_policy_action_within_action_grid():
 def test_mcts_policy_both_sides():
     """Both sides may run MCTSPolicy (each with its own opponent_model)."""
     cfg = make_lady_bandit_guard(seed=0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     adapter = POMDPAdapter(env)
     grid = _grid()
 
@@ -195,7 +195,7 @@ def test_mcts_policy_search_budget_changes_action_distribution():
 def _build_multi(n_guards: int = 2, n_bandits: int = 1):
     """Builder mirroring _build but with arbitrary fleet sizes."""
     cfg = make_lady_bandit_guard(seed=0, n_guards=n_guards, n_bandits=n_bandits)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     adapter = POMDPAdapter(env)
     state, _ = env.reset(jax.random.PRNGKey(0))
     return env, adapter, state, cfg
@@ -396,8 +396,8 @@ def test_belief_adapted_mcts_consumes_belief_mean_smoke():
     belief-driven and oracle-flat paths agree when the belief mean equals
     truth (the adapter's round-trip is consistent).
     """
-    from orbital_game.belief import KFFromTruthInitializer
-    from orbital_game.policies.mcts import BeliefAdaptedMCTSPolicy
+    from orbitalgym.belief import KFFromTruthInitializer
+    from orbitalgym.policies.mcts import BeliefAdaptedMCTSPolicy
 
     env, adapter, mcts, state, cfg = _build()
 
@@ -423,7 +423,7 @@ def test_belief_adapted_mcts_consumes_belief_mean_smoke():
 
 def test_belief_adapted_mcts_passes_through_flat_array():
     """Forwarding a flat jax.Array bypasses the belief-flatten path."""
-    from orbital_game.policies.mcts import BeliefAdaptedMCTSPolicy
+    from orbitalgym.policies.mcts import BeliefAdaptedMCTSPolicy
 
     env, adapter, mcts, state, cfg = _build()
     s_flat = adapter.pack(state)
@@ -436,9 +436,9 @@ def test_belief_adapted_mcts_passes_through_flat_array():
 def test_belief_adapted_mcts_unwraps_contact_aware_belief():
     """ContactAwareBelief.inner.mean is the belief-shaped tensor; the wrapper
     must peel off the ContactAware shell and use the inner mean."""
-    from orbital_game.belief import KFFromTruthInitializer
-    from orbital_game.belief.contact_aware import ContactAwareBelief
-    from orbital_game.policies.mcts import BeliefAdaptedMCTSPolicy
+    from orbitalgym.belief import KFFromTruthInitializer
+    from orbitalgym.belief.contact_aware import ContactAwareBelief
+    from orbitalgym.policies.mcts import BeliefAdaptedMCTSPolicy
 
     env, adapter, mcts, state, cfg = _build()
     layout = env.layout
@@ -461,7 +461,7 @@ def test_belief_adapted_mcts_unwraps_contact_aware_belief():
 
 def _all_contact_schedule(t_horizon: float = 1e9, pad_to: int = 4):
     """ContactSchedule that says: in contact for the entire horizon."""
-    from orbital_game.groundstations.network import ContactSchedule
+    from orbitalgym.groundstations.network import ContactSchedule
 
     rows = [(0.0, t_horizon)] + [(-1.0, -1.0)] * (pad_to - 1)
     station_ix = [0] + [-1] * (pad_to - 1)
@@ -474,7 +474,7 @@ def _all_contact_schedule(t_horizon: float = 1e9, pad_to: int = 4):
 
 def _no_contact_schedule(pad_to: int = 4):
     """ContactSchedule with zero valid windows."""
-    from orbital_game.groundstations.network import ContactSchedule
+    from orbitalgym.groundstations.network import ContactSchedule
 
     rows = [(-1.0, -1.0)] * pad_to
     station_ix = [-1] * pad_to

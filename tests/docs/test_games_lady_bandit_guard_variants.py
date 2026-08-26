@@ -9,8 +9,8 @@ def test_lady_bandit_guard_variants():
     # --8<-- [start:variant-jittered-bandit]
     import dataclasses
 
-    from orbital_game import make_lady_bandit_guard
-    from orbital_game.policies.heuristic import JitteredPolicy, LeadInterceptPursuer
+    from orbitalgym import make_lady_bandit_guard
+    from orbitalgym.policies.heuristic import JitteredPolicy, LeadInterceptPursuer
 
     cfg = make_lady_bandit_guard(seed=0, max_horizon_s=2000.0)
     base = LeadInterceptPursuer(max_dv_mps=0.05, dt=cfg.dt)
@@ -20,8 +20,8 @@ def test_lady_bandit_guard_variants():
     # --8<-- [start:variant-tighter-ic]
     import jax.numpy as jnp
 
-    from orbital_game.sampling.side import RelativeEllipse
-    from orbital_game.sampling.spec import ICSpec
+    from orbitalgym.sampling.side import RelativeEllipse
+    from orbitalgym.sampling.spec import ICSpec
 
     tight_ic = ICSpec(
         guard_sampler=RelativeEllipse(

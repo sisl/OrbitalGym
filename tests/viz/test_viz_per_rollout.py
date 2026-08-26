@@ -7,13 +7,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import pytest  # noqa: E402
 
-from orbital_game.env.core import OrbitalGameEnv  # noqa: E402
-from orbital_game.env.types import BySide  # noqa: E402
-from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard  # noqa: E402
-from orbital_game.games.pursuit_evasion import make_pursuit_evasion  # noqa: E402
-from orbital_game.policies import ZeroControl  # noqa: E402
-from orbital_game.rollout import rollout  # noqa: E402
-from orbital_game.viz.per_rollout import (  # noqa: E402
+from orbitalgym.env.core import OrbitalGymEnv  # noqa: E402
+from orbitalgym.env.types import BySide  # noqa: E402
+from orbitalgym.games.lady_bandit_guard import make_lady_bandit_guard  # noqa: E402
+from orbitalgym.games.pursuit_evasion import make_pursuit_evasion  # noqa: E402
+from orbitalgym.policies import ZeroControl  # noqa: E402
+from orbitalgym.rollout import rollout  # noqa: E402
+from orbitalgym.viz.per_rollout import (  # noqa: E402
     plot_rollout_3d,
     plot_rollout_mass,
     plot_rollout_panels,
@@ -24,7 +24,7 @@ from orbital_game.viz.per_rollout import (  # noqa: E402
 @pytest.fixture
 def lbg_traj_2g_2b(key):
     cfg = make_lady_bandit_guard(n_guards=2, n_bandits=2, dt=10.0, max_horizon_s=200.0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     policies = BySide(
         guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=2),
         bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=2),
@@ -36,7 +36,7 @@ def lbg_traj_2g_2b(key):
 @pytest.fixture
 def pe_traj_no_mass(key):
     cfg = make_pursuit_evasion(dt=10.0, max_horizon_s=200.0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     policies = BySide(
         guard=ZeroControl(command_cls=env.guard_command_cls, n_vehicles=1),
         bandit=ZeroControl(command_cls=env.bandit_command_cls, n_vehicles=1),

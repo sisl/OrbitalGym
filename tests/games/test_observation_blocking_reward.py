@@ -5,7 +5,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from orbital_game.games.observation_blocking import (
+from orbitalgym.games.observation_blocking import (
     observation_blocking_kernel,
     target_visible_from_guard,
 )

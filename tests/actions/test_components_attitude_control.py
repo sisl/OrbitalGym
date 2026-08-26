@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 
-from orbital_game.actions.components import AttitudeControl
+from orbitalgym.actions.components import AttitudeControl
 
 
 def test_fields_rotation_dim_1():

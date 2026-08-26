@@ -1,4 +1,4 @@
-"""Tests for ``orbital_game.rollout.belief_rollout``.
+"""Tests for ``orbitalgym.rollout.belief_rollout``.
 
 The function:
 
@@ -20,14 +20,14 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.belief.kf import KFBeliefUpdater, KFFromTruthInitializer
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import BySide
-from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard
-from orbital_game.observations.range_limited import RangeLimitedObservation
-from orbital_game.policies.zero import ZeroControl
-from orbital_game.registry import ActionComponentKey
-from orbital_game.rollout import belief_rollout
+from orbitalgym.belief.kf import KFBeliefUpdater, KFFromTruthInitializer
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import BySide
+from orbitalgym.games.lady_bandit_guard import make_lady_bandit_guard
+from orbitalgym.observations.range_limited import RangeLimitedObservation
+from orbitalgym.policies.zero import ZeroControl
+from orbitalgym.registry import ActionComponentKey
+from orbitalgym.rollout import belief_rollout
 
 
 class _LayoutAdapter:
@@ -42,7 +42,7 @@ def _replace_obs_fn(cfg, obs_fn):
 
 
 def _make_env(cfg):
-    return OrbitalGameEnv(cfg)
+    return OrbitalGymEnv(cfg)
 
 
 def _zero_init(_cfg, _state, _key):

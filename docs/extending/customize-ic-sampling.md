@@ -6,23 +6,23 @@ sets `EnvState.ic_valid=False` if `max_attempts` is exhausted.
 
 ## The protocol
 
-::: orbital_game.sampling.spec.ICSpec
+::: orbitalgym.sampling.spec.ICSpec
 
-::: orbital_game.sampling.spec.SideSampler
+::: orbitalgym.sampling.spec.SideSampler
 
-::: orbital_game.sampling.spec.Validator
+::: orbitalgym.sampling.spec.Validator
 
 ## The bundled samplers
 
-::: orbital_game.sampling.side.RelativeKeplerian
+::: orbitalgym.sampling.side.RelativeKeplerian
 
-::: orbital_game.sampling.side.RelativeEllipse
+::: orbitalgym.sampling.side.RelativeEllipse
 
 ## The bundled validators
 
-::: orbital_game.sampling.validators.MinSeparation
+::: orbitalgym.sampling.validators.MinSeparation
 
-::: orbital_game.sampling.validators.MaxRange
+::: orbitalgym.sampling.validators.MaxRange
 
 ## Worked example: tighter Gaussian for evaluation
 
@@ -58,7 +58,7 @@ and body rates at episode reset. When `attitude_sampler=None` (the default),
 initial attitude comes from `Attitude.zeros()` — identity quaternion
 `(1, 0, 0, 0)` and zero body rates.
 
-Five samplers ship in `orbital_game.sampling.attitude`:
+Five samplers ship in `orbitalgym.sampling.attitude`:
 
 - **`IdentityAttitude()`** — identity quaternion `(1, 0, 0, 0)`, zero rates.
   The default when no sampler is configured. Use this explicitly if you want
@@ -81,8 +81,8 @@ Plug them into `RelativeKeplerian` or `RelativeEllipse` via the
 `attitude_sampler` field:
 
 ```python
-from orbital_game.sampling.attitude import FixedAttitude, UniformAttitude
-from orbital_game.sampling.side import RelativeKeplerian
+from orbitalgym.sampling.attitude import FixedAttitude, UniformAttitude
+from orbitalgym.sampling.side import RelativeKeplerian
 
 # Guards start with a known slow spin (0.1 deg/s about body-z)
 guard_sampler = RelativeKeplerian(
@@ -110,20 +110,20 @@ Guards with a known initial slow spin, bandits tumbling randomly:
 ```python
 import math
 import jax.numpy as jnp
-from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.dynamics.attitude import AttitudeParams
-from orbital_game.observations.conical import ConicalObservation
-from orbital_game.registry import (
+from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+from orbitalgym.dynamics.attitude import AttitudeParams
+from orbitalgym.observations.conical import ConicalObservation
+from orbitalgym.registry import (
     ActionComponentKey,
     AttitudeDynamicsKey,
     DynamicsKey,
     StateComponentKey,
 )
-from orbital_game.sampling.attitude import FixedAttitude, UniformAttitudeAndRates
-from orbital_game.sampling.mass import ConstantMass
-from orbital_game.sampling.side import RelativeKeplerian
-from orbital_game.sampling.spec import ICSpec
-from orbital_game.sampling.validators import MinSeparation
+from orbitalgym.sampling.attitude import FixedAttitude, UniformAttitudeAndRates
+from orbitalgym.sampling.mass import ConstantMass
+from orbitalgym.sampling.side import RelativeKeplerian
+from orbitalgym.sampling.spec import ICSpec
+from orbitalgym.sampling.validators import MinSeparation
 
 guard_sampler = RelativeKeplerian(
     sigma_delta_mean_anomaly_rad=0.1,

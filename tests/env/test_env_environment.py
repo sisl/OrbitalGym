@@ -1,16 +1,16 @@
-"""Tests for env/core.py — OrbitalGameEnv reset/step determinism + shape contract."""
+"""Tests for env/core.py — OrbitalGymEnv reset/step determinism + shape contract."""
 
 import jax
 import jax.numpy as jnp
 
-from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide
-from orbital_game.reference_orbit import ReferenceOrbitState
-from orbital_game.registry import DynamicsKey, StateComponentKey
-from orbital_game.sampling.mass import ConstantMass
-from orbital_game.sampling.side import RelativeEllipse
-from orbital_game.sampling.spec import ICSpec
+from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide
+from orbitalgym.reference_orbit import ReferenceOrbitState
+from orbitalgym.registry import DynamicsKey, StateComponentKey
+from orbitalgym.sampling.mass import ConstantMass
+from orbitalgym.sampling.side import RelativeEllipse
+from orbitalgym.sampling.spec import ICSpec
 
 
 def _make_cfg() -> ScenarioConfig:
@@ -43,7 +43,7 @@ def _make_cfg() -> ScenarioConfig:
     )
 
 
-def _make_actions(env: OrbitalGameEnv, guard_dv: jnp.ndarray) -> Actions:
+def _make_actions(env: OrbitalGymEnv, guard_dv: jnp.ndarray) -> Actions:
     cfg = env.config
     guard_cmd = env.guard_command_cls.zeros(cfg.n_guards).replace(dv=guard_dv)
     bandit_cmd = env.bandit_command_cls.zeros(cfg.n_bandits)
@@ -51,9 +51,9 @@ def _make_actions(env: OrbitalGameEnv, guard_dv: jnp.ndarray) -> Actions:
 
 
 def test_env_reset_is_deterministic_under_same_key():
-    from orbital_game.observations.types import flatten_observations
+    from orbitalgym.observations.types import flatten_observations
 
-    env = OrbitalGameEnv(_make_cfg())
+    env = OrbitalGymEnv(_make_cfg())
     key = jax.random.PRNGKey(42)
     s_a, outputs_a = env.reset(key)
     s_b, outputs_b = env.reset(key)
@@ -66,7 +66,7 @@ def test_env_reset_is_deterministic_under_same_key():
 
 def test_env_step_is_deterministic_under_same_key():
     cfg = _make_cfg()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     key = jax.random.PRNGKey(42)
     s0, _ = env.reset(key)
     actions = _make_actions(env, jnp.zeros((1, 3)))
@@ -79,7 +79,7 @@ def test_env_step_is_deterministic_under_same_key():
 
 def test_env_step_increments_step_counter_and_time():
     cfg = _make_cfg()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     key = jax.random.PRNGKey(0)
     s0, _ = env.reset(key)
     assert int(s0.step) == 0
@@ -120,7 +120,7 @@ def test_env_runs_end_to_end_with_rt_2d_dynamics():
         truth_dynamics=DynamicsKey.HCW_RT,
         policy_dynamics=DynamicsKey.HCW_RT,
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     s0, outputs0 = env.reset(jax.random.PRNGKey(0))
     assert s0.guards.rt.shape == (1, 4)
     assert s0.bandits.rt.shape == (1, 4)

@@ -4,12 +4,12 @@
 
 ```python
 import jax
-from orbital_game import OrbitalGameEnv, BySide, make_pursuit_evasion
-from orbital_game.policies import ZeroControl
-from orbital_game.rollout import rollout
+from orbitalgym import OrbitalGymEnv, BySide, make_pursuit_evasion
+from orbitalgym.policies import ZeroControl
+from orbitalgym.rollout import rollout
 
 cfg = make_pursuit_evasion()
-env = OrbitalGameEnv(cfg)
+env = OrbitalGymEnv(cfg)
 guard = ZeroControl(n_vehicles=cfg.n_guards, command_cls=env.guard_command_cls)
 bandit = ZeroControl(n_vehicles=cfg.n_bandits, command_cls=env.bandit_command_cls)
 traj = rollout(env, BySide(guard=guard, bandit=bandit),
@@ -34,7 +34,7 @@ Either `max_steps` exhaustion, or **capture** when the relative distance drops b
 ## Builder
 
 ```python
-from orbital_game import make_pursuit_evasion
+from orbitalgym import make_pursuit_evasion
 
 cfg = make_pursuit_evasion(
     capture_distance_m=10.0,
@@ -107,7 +107,7 @@ Sensible gallery picks for Pursuit-Evasion:
 
 ## Sanity-check notebook
 
-[`examples/games/pursuit_evasion.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/games/pursuit_evasion.ipynb) is a full walkthrough that builds a PE scenario, runs a rollout, and renders the rollout diagnostic plus the 2D guard-position reward surface.
+[`examples/games/pursuit_evasion.ipynb`](https://github.com/sisl/OrbitalGym/blob/main/examples/games/pursuit_evasion.ipynb) is a full walkthrough that builds a PE scenario, runs a rollout, and renders the rollout diagnostic plus the 2D guard-position reward surface.
 
 ## Where to next
 

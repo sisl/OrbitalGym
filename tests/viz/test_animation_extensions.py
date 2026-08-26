@@ -14,8 +14,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from orbital_game.env.types import BySide, SideTrajectory, Trajectory
-from orbital_game.viz.animation import RolloutScene, render_frame
+from orbitalgym.env.types import BySide, SideTrajectory, Trajectory
+from orbitalgym.viz.animation import RolloutScene, render_frame
 
 
 @flax.struct.dataclass
@@ -63,10 +63,10 @@ def _build_synthetic_trajectory(T: int = 10, n_g: int = 1, n_b: int = 1):  # noq
     # ---- side trajectories ----
     # Need an action with `dv` field — the scene reads it. Build the minimal
     # Command class via build_command_class to satisfy the validator (which
-    # checks for ImpulsiveManeuver in _orbital_game_action_components).
-    from orbital_game.actions.assemble import build_command_class
-    from orbital_game.actions.components import ImpulsiveManeuver
-    from orbital_game.registry import Frame
+    # checks for ImpulsiveManeuver in _orbitalgym_action_components).
+    from orbitalgym.actions.assemble import build_command_class
+    from orbitalgym.actions.components import ImpulsiveManeuver
+    from orbitalgym.registry import Frame
 
     impulsive = ImpulsiveManeuver(action_frame=Frame.RT, truth_frame=Frame.RT, track_mass=False)
     GuardCmd = build_command_class((impulsive,), n_g, "GuardCmd")  # noqa: N806 - dynamic class

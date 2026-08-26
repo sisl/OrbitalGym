@@ -11,9 +11,9 @@ This page is the practical "how to write one" track.
 
 ## The protocol
 
-::: orbital_game.observations.base.ObservationFn
+::: orbitalgym.observations.base.ObservationFn
 
-::: orbital_game.observations.types.Observation
+::: orbitalgym.observations.types.Observation
 
 ## The four bundled channels as a vocabulary
 

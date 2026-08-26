@@ -13,14 +13,14 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.belief.kf import (
+from orbitalgym.belief.kf import (
     KFBelief,
     KFBeliefUpdater,
     KFFromTruthInitializer,
     KFUniformDefaultInitializer,
 )
-from orbital_game.env.types import Side
-from orbital_game.observations.types import Observation
+from orbitalgym.env.types import Side
+from orbitalgym.observations.types import Observation
 
 
 def _make_belief(n_obs=1, n_total=2, d=4, mean_fill=0.0, cov_scale=1.0):

@@ -19,7 +19,7 @@ channel carries `(obs, visible, obs_matrix, obs_noise[, obs_fn])`:
 - `obs_noise` (`R`) — measurement covariance `(m, m)`.
 - `obs_fn` — optional nonlinear measurement function (EKF only).
 
-Each side has its own observation function; `OrbitalGameEnv` exposes
+Each side has its own observation function; `OrbitalGymEnv` exposes
 them as `env.guard_observation_fn` and `env.bandit_observation_fn`.
 You can also call any channel directly as a plain callable — useful
 for unit tests and for swapping in alternative sensor models.
@@ -84,7 +84,7 @@ belief updates.
 
 ```python
 import jax.numpy as jnp
-from orbital_game.observations.conical import ConicalObservation
+from orbitalgym.observations.conical import ConicalObservation
 
 boresights = jnp.array([
     [ 1.0,  0.0, 0.0],   # +R body axis
@@ -150,7 +150,7 @@ independent across channels.
 
 ## How adapters consume observations
 
-Two helpers in `orbital_game.observations.types` collapse the per-pair
+Two helpers in `orbitalgym.observations.types` collapse the per-pair
 tensors into the flat shapes that adapters publish:
 
 - `flatten_observations(channels)` returns a single 1-D vector for the

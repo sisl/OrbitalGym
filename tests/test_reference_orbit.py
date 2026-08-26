@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.reference_orbit import MU_EARTH, ReferenceOrbitState
+from orbitalgym.reference_orbit import MU_EARTH, ReferenceOrbitState
 
 
 def test_reference_orbit_state_construction_has_expected_fields():

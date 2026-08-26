@@ -4,13 +4,13 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.groundstations import ContactSchedule
-from orbital_game.groundstations.contacts import (
+from orbitalgym.groundstations import ContactSchedule
+from orbitalgym.groundstations.contacts import (
     in_contact_now,
     precompute_contact_schedule,
 )
-from orbital_game.groundstations.network import GroundStation
-from orbital_game.reference_orbit import ReferenceOrbitState
+from orbitalgym.groundstations.network import GroundStation
+from orbitalgym.reference_orbit import ReferenceOrbitState
 
 
 def _schedule(*windows, station_ix=None, pad_to=8):
@@ -106,7 +106,7 @@ def test_precompute_aggregates_and_sorts_windows():
         return [(100.0, 300.0), (1500.0, 1700.0)]
 
     with patch(
-        "orbital_game.groundstations.contacts._brahe_find_accesses",
+        "orbitalgym.groundstations.contacts._brahe_find_accesses",
         side_effect=fake_accesses,
     ):
         sch = precompute_contact_schedule(
@@ -135,7 +135,7 @@ def test_precompute_raises_when_pad_too_small():
 
     with (
         patch(
-            "orbital_game.groundstations.contacts._brahe_find_accesses",
+            "orbitalgym.groundstations.contacts._brahe_find_accesses",
             side_effect=fake_accesses,
         ),
         pytest.raises(ValueError, match="exceeds pad_to"),
@@ -150,7 +150,7 @@ def test_precompute_raises_when_pad_too_small():
 
 
 def test_brahe_shim_returns_sorted_seconds():
-    from orbital_game.groundstations.contacts import _brahe_find_accesses
+    from orbitalgym.groundstations.contacts import _brahe_find_accesses
 
     # Reference: 500km circular, polar (97.8°) orbit — guaranteed coverage of Svalbard.
     R_E = 6378137.0  # noqa: N806 - Earth radius (physics convention)

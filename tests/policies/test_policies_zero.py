@@ -5,14 +5,14 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard
-from orbital_game.policies.zero import ZeroControl
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.games.lady_bandit_guard import make_lady_bandit_guard
+from orbitalgym.policies.zero import ZeroControl
 
 
 def test_zero_control_emits_command_pytree():
     cfg = make_lady_bandit_guard()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     policy = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
     cmd, ps = policy(None, jnp.zeros((1, 12)), jax.random.PRNGKey(0), jnp.asarray(0.0))
     assert hasattr(cmd, "dv")

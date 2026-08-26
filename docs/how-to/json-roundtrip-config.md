@@ -6,8 +6,8 @@ JSON.
 ## Recipe
 
 ```python
-from orbital_game import make_pursuit_evasion
-from orbital_game.config import ScenarioConfig
+from orbitalgym import make_pursuit_evasion
+from orbitalgym.config import ScenarioConfig
 
 cfg = make_pursuit_evasion(capture_distance_m=20.0, seed=0)
 text = cfg.to_json()             # str

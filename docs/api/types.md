@@ -4,28 +4,28 @@ The data shapes used by the symmetric core. Axis convention: `BATCH → TIME →
 
 ## `Side`
 
-::: orbital_game.env.types.Side
+::: orbitalgym.env.types.Side
 
 ## `BySide`
 
-::: orbital_game.env.types.BySide
+::: orbitalgym.env.types.BySide
 
 ## `Actions`
 
-::: orbital_game.env.types.Actions
+::: orbitalgym.env.types.Actions
 
 ## `SideOutput`
 
-::: orbital_game.env.types.SideOutput
+::: orbitalgym.env.types.SideOutput
 
 ## `StepOutput`
 
-::: orbital_game.env.types.StepOutput
+::: orbitalgym.env.types.StepOutput
 
 ## `SideTrajectory`
 
-::: orbital_game.env.types.SideTrajectory
+::: orbitalgym.env.types.SideTrajectory
 
 ## `Trajectory`
 
-::: orbital_game.env.types.Trajectory
+::: orbitalgym.env.types.Trajectory

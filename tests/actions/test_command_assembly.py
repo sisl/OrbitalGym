@@ -1,9 +1,9 @@
 import jax
 import jax.numpy as jnp
 
-from orbital_game.actions.assemble import build_command_class
-from orbital_game.actions.components import ImpulsiveManeuver
-from orbital_game.registry import Frame
+from orbitalgym.actions.assemble import build_command_class
+from orbitalgym.actions.components import ImpulsiveManeuver
+from orbitalgym.registry import Frame
 
 
 def _maneuver():

@@ -1,8 +1,8 @@
 import jax
 import jax.numpy as jnp
 
-from orbital_game.env.types import Side
-from orbital_game.observations.conical import ConicalObservation
+from orbitalgym.env.types import Side
+from orbitalgym.observations.conical import ConicalObservation
 
 
 def _layout_rtn(n_self=1, n_tgt=1):

@@ -3,7 +3,7 @@
 import jax
 import jax.numpy as jnp
 
-from orbital_game.policies import ZeroControl
+from orbitalgym.policies import ZeroControl
 from tests.policies._helpers import make_impulsive_maneuver_command_cls
 
 

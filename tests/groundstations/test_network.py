@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.groundstations import ContactSchedule, GroundStation, GroundStationNetwork
+from orbitalgym.groundstations import ContactSchedule, GroundStation, GroundStationNetwork
 
 
 def test_ground_station_construction():

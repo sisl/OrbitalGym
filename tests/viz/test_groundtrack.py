@@ -5,12 +5,12 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from orbital_game.groundstations import (
+from orbitalgym.groundstations import (
     ContactSchedule,
     GroundStation,
     GroundStationNetwork,
 )
-from orbital_game.viz.groundtrack import _split_antimeridian, plot_groundtrack
+from orbitalgym.viz.groundtrack import _split_antimeridian, plot_groundtrack
 
 
 def _network():
@@ -139,12 +139,12 @@ def test_compound_figure_smoke(tmp_path):
     import flax.struct
     import jax
 
-    from orbital_game.actions.assemble import build_command_class
-    from orbital_game.actions.components import ImpulsiveManeuver
-    from orbital_game.env.types import BySide, SideTrajectory, Trajectory
-    from orbital_game.registry import Frame
-    from orbital_game.viz.animation import RolloutScene
-    from orbital_game.viz.groundstation_compound import make_compound_figure
+    from orbitalgym.actions.assemble import build_command_class
+    from orbitalgym.actions.components import ImpulsiveManeuver
+    from orbitalgym.env.types import BySide, SideTrajectory, Trajectory
+    from orbitalgym.registry import Frame
+    from orbitalgym.viz.animation import RolloutScene
+    from orbitalgym.viz.groundstation_compound import make_compound_figure
 
     @flax.struct.dataclass
     class _G:

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import jax
 
-from orbital_game.config import ScenarioConfig
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide, Side
-from orbital_game.games import SunBlocking, SunBlockingReward, make_sun_blocking
-from orbital_game.games.base import NoGame
-from orbital_game.registry import GameKey, resolve_game
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide, Side
+from orbitalgym.games import SunBlocking, SunBlockingReward, make_sun_blocking
+from orbitalgym.games.base import NoGame
+from orbitalgym.registry import GameKey, resolve_game
 
 
 def test_sun_blocking_registered():
@@ -35,7 +35,7 @@ def test_sb_serialize_roundtrip():
 def test_sb_reward_zero_sum():
     """Guard and bandit rewards sum to 0."""
     cfg = make_sun_blocking()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
     actions = Actions(
         sides=BySide(
@@ -52,7 +52,7 @@ def test_sb_reward_zero_sum():
 def test_sb_reward_in_signed_unit_range():
     """KSP-DG SB1 form ⇒ bandit reward in [-1, 1]."""
     cfg = make_sun_blocking()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
     actions = Actions(
         sides=BySide(

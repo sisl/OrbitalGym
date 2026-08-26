@@ -5,10 +5,10 @@ from __future__ import annotations
 import pytest
 
 from examples.reference_scenario import build_config
-from orbital_game.config import ScenarioConfig
-from orbital_game.games.base import Game, NoGame
-from orbital_game.games.lady_bandit_guard import LadyBanditGuard
-from orbital_game.registry import GameKey, resolve_game, resolve_game_class_to_key
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.games.base import Game, NoGame
+from orbitalgym.games.lady_bandit_guard import LadyBanditGuard
+from orbitalgym.registry import GameKey, resolve_game, resolve_game_class_to_key
 
 
 def test_reference_scenario_game_is_lbg():
@@ -47,14 +47,14 @@ def test_game_default_termination_fn_raises():
 
 
 def test_no_game_default_reward_fn_is_zero_reward():
-    from orbital_game.rewards.reference import ZeroReward
+    from orbitalgym.rewards.reference import ZeroReward
 
     fn = NoGame().default_reward_fn()
     assert isinstance(fn, ZeroReward)
 
 
 def test_no_game_default_termination_fn_is_max_steps_only():
-    from orbital_game.termination.reference import MaxStepsOnly
+    from orbitalgym.termination.reference import MaxStepsOnly
 
     fn = NoGame().default_termination_fn()
     assert isinstance(fn, MaxStepsOnly)

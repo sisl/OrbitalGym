@@ -13,11 +13,11 @@ import dataclasses
 import jax
 import jax.numpy as jnp
 
-from orbital_game.belief.kf import KFBeliefUpdater, KFFromTruthInitializer
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide, Side
-from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard
-from orbital_game.observations.range_limited import RangeLimitedObservation
+from orbitalgym.belief.kf import KFBeliefUpdater, KFFromTruthInitializer
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide, Side
+from orbitalgym.games.lady_bandit_guard import make_lady_bandit_guard
+from orbitalgym.observations.range_limited import RangeLimitedObservation
 
 
 class _LayoutAdapter:
@@ -38,7 +38,7 @@ def test_three_bandits_two_in_range_one_out_belief_propagates_correctly():
 
     cfg = make_lady_bandit_guard(n_guards=n_guards, n_bandits=n_bandits)
     cfg = dataclasses.replace(cfg, guard_observation_fn=obs_fn)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _outs = env.reset(jax.random.PRNGKey(0))
 
     # Manually overwrite bandit positions to known distances.

@@ -10,10 +10,10 @@ def test_indepth_state_layout():
     import jax
     import jax.numpy as jnp
 
-    from orbital_game import OrbitalGameEnv, make_lady_bandit_guard
+    from orbitalgym import OrbitalGymEnv, make_lady_bandit_guard
 
     cfg = make_lady_bandit_guard(n_guards=1, n_bandits=1, seed=0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     # state.guards.rtn has shape (N_g, 6) — one row per guard, six columns:

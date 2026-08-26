@@ -34,13 +34,13 @@ simulation, unlike Python-loop UCB1 patterns that came before.
 
 ```python
 import jax, jax.numpy as jnp, numpy as np
-from orbital_game import OrbitalGameEnv, Side, make_lady_bandit_guard
-from orbital_game.adapters.pomdp import POMDPAdapter
-from orbital_game.policies.mcts import MCTSPolicy
-from orbital_game.policies.uniform_random import UniformRandomDiscretePolicy
+from orbitalgym import OrbitalGymEnv, Side, make_lady_bandit_guard
+from orbitalgym.adapters.pomdp import POMDPAdapter
+from orbitalgym.policies.mcts import MCTSPolicy
+from orbitalgym.policies.uniform_random import UniformRandomDiscretePolicy
 
 cfg = make_lady_bandit_guard(seed=0)
-env = OrbitalGameEnv(cfg)
+env = OrbitalGymEnv(cfg)
 adapter = POMDPAdapter(env)
 
 # 9-direction RT-plane Δv grid (8 dirs + no-op).
@@ -106,7 +106,7 @@ trusts the truth). Real `KFBelief`/`EKFBelief` whose `mean` is per-pair
 ## CPU vs MPS
 
 The dedicated benchmark lives in
-[`examples/mcts_cpu_vs_mps.ipynb`](https://github.com/sisl/orbital-game/blob/main/examples/mcts_cpu_vs_mps.ipynb).
+[`examples/mcts_cpu_vs_mps.ipynb`](https://github.com/sisl/OrbitalGym/blob/main/examples/mcts_cpu_vs_mps.ipynb).
 The expectation: MPS pulls ahead at higher `num_simulations` because
 more on-device work amortizes the JIT-compile cost. If you observe MPS
 lagging at every budget, that's a regression — investigate before

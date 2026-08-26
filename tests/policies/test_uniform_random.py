@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from orbital_game.policies import UniformRandomDiscretePolicy
+from orbitalgym.policies import UniformRandomDiscretePolicy
 from tests.policies._helpers import make_impulsive_maneuver_command_cls
 
 

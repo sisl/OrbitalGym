@@ -1,6 +1,6 @@
 # Gallery
 
-Every named, importable policy that ships with `orbital-game`. Use a
+Every named, importable policy that ships with `orbitalgym`. Use a
 class directly, or read its source as a starting point for your own.
 
 ## Roster
@@ -20,15 +20,15 @@ class directly, or read its source as a starting point for your own.
 ## Importing
 
 ```python
-from orbital_game.policies import UniformRandomDiscretePolicy, ZeroControl
-from orbital_game.policies.mcts import MCTSPolicy
-from orbital_game.policies.heuristic import (
+from orbitalgym.policies import UniformRandomDiscretePolicy, ZeroControl
+from orbitalgym.policies.mcts import MCTSPolicy
+from orbitalgym.policies.heuristic import (
     LeadInterceptPursuer,
     OrthogonalEvader,
     SunTrackerBlocker,
     JitteredPolicy,
 )
-from orbital_game.policies.controlled import (
+from orbitalgym.policies.controlled import (
     HeuristicWithFallbackPolicy,
     CompositeActionPolicy,
 )
@@ -38,39 +38,39 @@ from orbital_game.policies.controlled import (
 
 ### ZeroControl
 
-::: orbital_game.policies.zero.ZeroControl
+::: orbitalgym.policies.zero.ZeroControl
 
 ### UniformRandomDiscretePolicy
 
-::: orbital_game.policies.uniform_random.UniformRandomDiscretePolicy
+::: orbitalgym.policies.uniform_random.UniformRandomDiscretePolicy
 
 ### MCTSPolicy
 
 See [In depth → MCTS policy](../in-depth/mcts.md) for the full
 walkthrough; the API entry below is the bare class reference.
 
-::: orbital_game.policies.mcts.MCTSPolicy
+::: orbitalgym.policies.mcts.MCTSPolicy
 
 ### LeadInterceptPursuer
 
-::: orbital_game.policies.heuristic.lead_intercept.LeadInterceptPursuer
+::: orbitalgym.policies.heuristic.lead_intercept.LeadInterceptPursuer
 
 ### OrthogonalEvader
 
-::: orbital_game.policies.heuristic.evader.OrthogonalEvader
+::: orbitalgym.policies.heuristic.evader.OrthogonalEvader
 
 ### SunTrackerBlocker
 
-::: orbital_game.policies.heuristic.sun_tracker.SunTrackerBlocker
+::: orbitalgym.policies.heuristic.sun_tracker.SunTrackerBlocker
 
 ### JitteredPolicy
 
-::: orbital_game.policies.heuristic.jittered.JitteredPolicy
+::: orbitalgym.policies.heuristic.jittered.JitteredPolicy
 
 ### HeuristicWithFallbackPolicy
 
-::: orbital_game.policies.controlled.heuristic_with_fallback.HeuristicWithFallbackPolicy
+::: orbitalgym.policies.controlled.heuristic_with_fallback.HeuristicWithFallbackPolicy
 
 ### CompositeActionPolicy
 
-::: orbital_game.policies.controlled.composite_action.CompositeActionPolicy
+::: orbitalgym.policies.controlled.composite_action.CompositeActionPolicy

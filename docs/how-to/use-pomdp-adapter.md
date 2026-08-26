@@ -1,6 +1,6 @@
 # Use the POMDP adapter
 
-Expose `OrbitalGameEnv` as a duck-typed POMDPPlanners-shape protocol —
+Expose `OrbitalGymEnv` as a duck-typed POMDPPlanners-shape protocol —
 flat-state-vector `transition` / `observation` / `reward` / `discount` /
 `initialstate` over `StateLayout.flatten` / `unflatten`.
 
@@ -18,11 +18,11 @@ No extra needed.
 import jax
 import jax.numpy as jnp
 
-from orbital_game import OrbitalGameEnv, Side, make_lady_bandit_guard
-from orbital_game.adapters.pomdp import POMDPAdapter
+from orbitalgym import OrbitalGymEnv, Side, make_lady_bandit_guard
+from orbitalgym.adapters.pomdp import POMDPAdapter
 
 cfg = make_lady_bandit_guard()
-adapter = POMDPAdapter(OrbitalGameEnv(cfg))
+adapter = POMDPAdapter(OrbitalGymEnv(cfg))
 
 s0 = adapter.initialstate(jax.random.PRNGKey(0))    # (states_dim,)
 n_g, n_b = cfg.n_guards, cfg.n_bandits

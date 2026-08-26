@@ -3,10 +3,10 @@
 import jax
 import jax.numpy as jnp
 
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide
-from orbital_game.games.lady_bandit_guard import make_lady_bandit_guard
-from orbital_game.registry import ActionComponentKey
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide
+from orbitalgym.games.lady_bandit_guard import make_lady_bandit_guard
+from orbitalgym.registry import ActionComponentKey
 
 
 def test_lbg_comms_builder_wires_communicate():
@@ -17,7 +17,7 @@ def test_lbg_comms_builder_wires_communicate():
 
 def test_lbg_comms_charges_cost_when_active():
     cfg = make_lady_bandit_guard(with_communication=True, comm_cost=5.0)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     silent = env.guard_command_cls.zeros(cfg.n_guards)

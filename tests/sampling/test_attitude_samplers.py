@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 
-from orbital_game.sampling.attitude import (
+from orbitalgym.sampling.attitude import (
     FixedAttitude,
     IdentityAttitude,
     UniformAttitude,

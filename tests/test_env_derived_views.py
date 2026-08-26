@@ -14,10 +14,10 @@ import numpy as np
 
 
 def test_derived_rtn_view_populated_for_eci_truth():
-    from orbital_game.env.core import OrbitalGameEnv
-    from orbital_game.env.types import Actions, BySide
-    from orbital_game.frames.conversions import eci_to_rtn
-    from orbital_game.registry import DynamicsKey, StateComponentKey
+    from orbitalgym.env.core import OrbitalGymEnv
+    from orbitalgym.env.types import Actions, BySide
+    from orbitalgym.frames.conversions import eci_to_rtn
+    from orbitalgym.registry import DynamicsKey, StateComponentKey
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
     cfg = _minimal_cfg(
@@ -26,7 +26,7 @@ def test_derived_rtn_view_populated_for_eci_truth():
         guard_components=(StateComponentKey.ECI,),
         bandit_components=(StateComponentKey.ECI,),
     )
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     actions = Actions(
         sides=BySide(

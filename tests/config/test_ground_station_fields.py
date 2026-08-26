@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 import pytest
 
-from orbital_game.groundstations import (
+from orbitalgym.groundstations import (
     ContactSchedule,
     GroundStation,
     GroundStationNetwork,

@@ -143,7 +143,7 @@ spatial-dynamics validator remains unaware of attitude propagators.
 `AttitudeControl` is the bundled torque-commanding action component:
 
 ```python
-from orbital_game.actions.components import AttitudeControl
+from orbitalgym.actions.components import AttitudeControl
 
 component = AttitudeControl(
     rotation_dim=3,          # 1 for RT (N-axis only), 3 for RTN
@@ -219,7 +219,7 @@ boresights_4 = jnp.array([
     [ 0.0, -1.0, 0.0],   # -T
 ])
 
-from orbital_game.observations.conical import ConicalObservation
+from orbitalgym.observations.conical import ConicalObservation
 
 obs_fn = ConicalObservation(
     layout=cfg.layout,
@@ -236,15 +236,15 @@ attitude control and bandits do not:
 
 ```python
 import jax.numpy as jnp
-from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.dynamics.attitude import AttitudeParams
-from orbital_game.registry import (
+from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+from orbitalgym.dynamics.attitude import AttitudeParams
+from orbitalgym.registry import (
     ActionComponentKey,
     AttitudeDynamicsKey,
     DynamicsKey,
     StateComponentKey,
 )
-from orbital_game.observations.conical import ConicalObservation
+from orbitalgym.observations.conical import ConicalObservation
 
 boresights = jnp.array([[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
                          [0.0, 1.0, 0.0], [0.0, -1.0, 0.0]])

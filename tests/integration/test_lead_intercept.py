@@ -12,19 +12,19 @@ import jax
 import jax.numpy as jnp
 
 from examples.policies.lead_intercept import LeadInterceptPursuer
-from orbital_game import (
-    OrbitalGameEnv,
+from orbitalgym import (
+    OrbitalGymEnv,
     SingleAgentView,
     make_pursuit_evasion,
 )
-from orbital_game.policies import ZeroControl
-from orbital_game.rollout import rollout_single_agent
+from orbitalgym.policies import ZeroControl
+from orbitalgym.rollout import rollout_single_agent
 
 
 def _rollout_min_dist(bandit_policy):
     cfg = make_pursuit_evasion(seed=0, max_horizon_s=2000.0)
     cfg = dataclasses.replace(cfg, bandit_policy=bandit_policy)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     view = SingleAgentView(env)
     guard_policy = ZeroControl(command_cls=env.guard_command_cls, n_vehicles=cfg.n_guards)
 

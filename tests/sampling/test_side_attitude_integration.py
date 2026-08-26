@@ -5,16 +5,16 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from orbital_game.config import ScenarioConfig
-from orbital_game.dynamics.attitude import AttitudeParams
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.registry import (
+from orbitalgym.config import ScenarioConfig
+from orbitalgym.dynamics.attitude import AttitudeParams
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.registry import (
     AttitudeDynamicsKey,
     StateComponentKey,
 )
-from orbital_game.sampling.attitude import FixedAttitude, UniformBodyRates
-from orbital_game.sampling.side import RelativeEllipse
-from orbital_game.sampling.spec import ICSpec
+from orbitalgym.sampling.attitude import FixedAttitude, UniformBodyRates
+from orbitalgym.sampling.side import RelativeEllipse
+from orbitalgym.sampling.spec import ICSpec
 from tests.helpers.minimal_scenario import minimal_scenario_kwargs
 
 
@@ -53,7 +53,7 @@ def test_fixed_attitude_threads_to_state():
         ),
     )
     cfg = ScenarioConfig(**cfg_kwargs)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     # Guard pinned to the requested rate.
@@ -85,7 +85,7 @@ def test_uniform_body_rates_within_bound():
         ),
     )
     cfg = ScenarioConfig(**cfg_kwargs)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     assert bool(jnp.all(jnp.abs(state.guards.omega) <= 0.5)), (
         f"Guard omega out of bounds: {state.guards.omega}"
@@ -109,7 +109,7 @@ def test_no_attitude_sampler_defaults_to_identity():
         ),
     )
     cfg = ScenarioConfig(**cfg_kwargs)
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
 
     # Identity quaternion: w=1, xyz=0.

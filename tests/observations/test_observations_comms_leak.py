@@ -4,15 +4,15 @@ for the bandit side iff any guard's communicate.active is True this step."""
 import jax
 import jax.numpy as jnp
 
-from orbital_game.config import ScenarioConfig, VehicleParamsSpec
-from orbital_game.env.core import OrbitalGameEnv
-from orbital_game.env.types import Actions, BySide, Side
-from orbital_game.observations.comms_leak import CommsLeakObservation
-from orbital_game.reference_orbit import ReferenceOrbitState
-from orbital_game.registry import ActionComponentKey, StateComponentKey
-from orbital_game.sampling.mass import ConstantMass
-from orbital_game.sampling.side import RelativeEllipse
-from orbital_game.sampling.spec import ICSpec
+from orbitalgym.config import ScenarioConfig, VehicleParamsSpec
+from orbitalgym.env.core import OrbitalGymEnv
+from orbitalgym.env.types import Actions, BySide, Side
+from orbitalgym.observations.comms_leak import CommsLeakObservation
+from orbitalgym.reference_orbit import ReferenceOrbitState
+from orbitalgym.registry import ActionComponentKey, StateComponentKey
+from orbitalgym.sampling.mass import ConstantMass
+from orbitalgym.sampling.side import RelativeEllipse
+from orbitalgym.sampling.spec import ICSpec
 
 
 def _build_cfg_with_comms():
@@ -72,7 +72,7 @@ def _build_actions_with_comms(env, comms_active: bool):
 
 def test_comms_leak_silent_when_no_guard_communicates():
     cfg = _build_cfg_with_comms()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     actions = _build_actions_with_comms(env, comms_active=False)
     obs_fn = CommsLeakObservation(layout=cfg.layout)
@@ -82,7 +82,7 @@ def test_comms_leak_silent_when_no_guard_communicates():
 
 def test_comms_leak_visible_when_guard_communicates():
     cfg = _build_cfg_with_comms()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     actions = _build_actions_with_comms(env, comms_active=True)
     obs_fn = CommsLeakObservation(layout=cfg.layout)
@@ -100,7 +100,7 @@ def test_comms_leak_shape_matches_full_observation_layout():
     and the other reference observers. Own-side columns must be visible=False
     even when comms is active (a bandit doesn't observe itself via leak)."""
     cfg = _build_cfg_with_comms()
-    env = OrbitalGameEnv(cfg)
+    env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     actions = _build_actions_with_comms(env, comms_active=True)
     obs_fn = CommsLeakObservation(layout=cfg.layout)

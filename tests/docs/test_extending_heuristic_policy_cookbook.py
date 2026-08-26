@@ -9,8 +9,8 @@ def test_heuristic_cookbook_walkthrough():
     # --8<-- [start:imports]
     import dataclasses
 
-    from orbital_game import make_pursuit_evasion
-    from orbital_game.policies.heuristic import (
+    from orbitalgym import make_pursuit_evasion
+    from orbitalgym.policies.heuristic import (
         JitteredPolicy,
         LeadInterceptPursuer,
         OrthogonalEvader,
