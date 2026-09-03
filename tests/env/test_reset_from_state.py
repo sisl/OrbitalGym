@@ -18,7 +18,8 @@ def test_reset_from_state_reproduces_positions_and_zeroes_clock():
     assert int(restored.step) == 0
     assert jnp.allclose(restored.guards.rtn, state.guards.rtn)
     assert jnp.allclose(restored.bandits.rtn, state.bandits.rtn)
-    assert outputs.guard.obs[0].obs.shape == env.reset(jax.random.PRNGKey(0))[1].guard.obs[0].obs.shape
+    expected_obs = env.reset(jax.random.PRNGKey(0))[1].guard.obs[0].obs.shape
+    assert outputs.guard.obs[0].obs.shape == expected_obs
 
 
 def test_rollout_from_initial_state_starts_there():
