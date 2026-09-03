@@ -45,7 +45,8 @@ Before integration, validate your solver against the contract using
 JAX transformations (jit + vmap), and reports which checks passed:
 
 ```python
-from orbitalgym import OrbitalGymEnv, make_lady_bandit_guard
+import jax
+from orbitalgym import OrbitalGymEnv, Side, make_lady_bandit_guard
 from orbitalgym.belief.pf import ParticleFilterFromTruthInitializer
 from orbitalgym.eval import check_policy_conforms
 
@@ -80,46 +81,66 @@ reference orbits) sampled from a distribution. Solvers are integrated
 via the `policies` dict and a belief updater for each side:
 
 ```python
+import dataclasses
+import math
 import jax
 import jax.numpy as jnp
-from orbitalgym import OrbitalGymEnv, Side, make_lady_bandit_guard
-from orbitalgym.belief.pf import ParticleFilterFromTruthInitializer,
-ParticleFilterBeliefUpdater
+from orbitalgym import OrbitalGymEnv, make_lady_bandit_guard
+from orbitalgym.belief.pf import (
+    ParticleFilterFromTruthInitializer,
+    ParticleFilterBeliefUpdater,
+)
+from orbitalgym.belief.sync import PFTeamFusion
+from orbitalgym.env.types import BySide
 from orbitalgym.eval import sample_bank, evaluate_bank
 from orbitalgym.links import PointingConeLink
-from orbitalgym.rollout import PFTeamFusion, BySide
 from orbitalgym.dynamics.hcw import hcw_rtn_step
+from orbitalgym.policies.zero import ZeroControl
 
 cfg = make_lady_bandit_guard(n_guards=2, n_bandits=1)
 env = OrbitalGymEnv(cfg)
 
 # Sample 100 random scenarios from the distribution.
-bank = sample_bank(cfg, n=100, key=jax.random.PRNGKey(0))
+bank_states = sample_bank(env, n_episodes=100, seed=0)
 
 # Build a belief initializer and updater for your environment.
 initializer = ParticleFilterFromTruthInitializer(
     layout=env.layout, n_particles=64
 )
 d = env.layout.dynamics_state_dim
+
+def dyn_fn(x, u, dt):
+    return hcw_rtn_step(x[None, :], u[None, :], env, dt)[0]
+
 updater = ParticleFilterBeliefUpdater(
-    dynamics_fn=lambda x, u, dt: (
-        hcw_rtn_step(x[None, :], u[None, :], env, dt)[0]
-    ),
+    dynamics_fn=dyn_fn,
     process_noise=jnp.eye(d) * 1e-4,
     dt=cfg.dt,
 )
 
+# Set up zero control policy for the opposing side.
+bandit_policy = dataclasses.replace(
+    ZeroControl(),
+    command_cls=env.bandit_command_cls,
+    n_vehicles=cfg.n_bandits,
+)
+
 # Run evaluation: guard uses your solver, bandit uses zero control.
 metrics_per_scenario = evaluate_bank(
-    bank,
+    env,
     cfg,
-    policies=BySide(guard=my_solver, bandit=ZeroControl(...)),
-    policy_state_inits=BySide(guard=lambda c, s, k: None, bandit=None),
+    bank_states,
+    jax.random.PRNGKey(1),
+    n_steps=200,
+    policies=BySide(guard=my_solver, bandit=bandit_policy),
+    init_policy_state_fns=BySide(
+        guard=lambda c, s, k: None,
+        bandit=lambda c, s, k: None,
+    ),
     belief_initializers=BySide(guard=initializer, bandit=initializer),
     belief_updaters=BySide(guard=updater, bandit=updater),
-    guard_link=PointingConeLink(half_angle_deg=10.0),
+    guard_link=PointingConeLink(half_angle_rad=math.radians(10.0)),
     team_sync_fns=BySide(guard=PFTeamFusion(), bandit=None),
-    key=jax.random.PRNGKey(1),
 )
 ```
 
