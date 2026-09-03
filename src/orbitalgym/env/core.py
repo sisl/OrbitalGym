@@ -399,6 +399,50 @@ class OrbitalGymEnv:
         )
         return state, initial_outputs
 
+    def reset_from_state(self, state: EnvState, key: jax.Array) -> tuple[EnvState, BySide]:
+        """Start an episode from a stored state instead of sampling one.
+
+        Returns the state with the clock zeroed, derived frame views
+        re-materialized from the truth frame, and the initial observations
+        computed with ``key``. The reference orbit carried by ``state`` is
+        kept so a bank sampled under one epoch replays under the same one.
+        """
+        k_obs_g, k_obs_b = jax.random.split(key, 2)
+        ref_eci6 = jnp.concatenate(
+            [state.reference_orbit.position_eci, state.reference_orbit.velocity_eci]
+        )
+        truth_field_name = _truth_field(self.truth_frame)
+        guards = _materialize_derived_views(
+            state.guards, truth_field_name, self.truth_frame, self.guard_extended_frames, ref_eci6
+        )
+        bandits = _materialize_derived_views(
+            state.bandits, truth_field_name, self.truth_frame, self.bandit_extended_frames, ref_eci6
+        )
+        restored = state.replace(
+            t=jnp.zeros_like(state.t),
+            step=jnp.zeros_like(state.step),
+            guards=guards,
+            bandits=bandits,
+        )
+        identity_actions = Actions(
+            sides=BySide(
+                guard=self.guard_command_cls.zeros(self.config.n_guards),
+                bandit=self.bandit_command_cls.zeros(self.config.n_bandits),
+            )
+        )
+        obs_g = self.guard_observation_fn(
+            restored, identity_actions, Side.GUARD, self.config, k_obs_g, restored.t
+        )
+        obs_b = self.bandit_observation_fn(
+            restored, identity_actions, Side.BANDIT, self.config, k_obs_b, restored.t
+        )
+        initial_done = jnp.asarray(False)
+        outputs = BySide(
+            guard=SideOutput(obs=obs_g, reward=jnp.asarray(0.0), done=initial_done),
+            bandit=SideOutput(obs=obs_b, reward=jnp.asarray(0.0), done=initial_done),
+        )
+        return restored, outputs
+
     def _reset_with_icspec(self, k_ic: jax.Array):
         """Rejection-sampling reset for ICSpec configurations.
 

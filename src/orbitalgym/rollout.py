@@ -56,6 +56,8 @@ def rollout(
     init_policy_state_fns: BySide,  # BySide[Callable(config, env_state, key) -> ps]
     key: jax.Array,
     n_steps: int,
+    *,
+    initial_state: Any = None,
 ) -> Trajectory:
     """Symmetric obs-only rollout. Both sides driven by their own policies.
 
@@ -63,10 +65,16 @@ def rollout(
 
     Returns a Trajectory with sides.guard / sides.bandit each carrying
     ``(T, N_side, ...)`` leading-axis arrays, plus ``episode_done (T,)`` latched.
+
+    ``initial_state`` starts the episode from a stored ``EnvState`` (see
+    ``orbitalgym.eval.bank``) instead of sampling.
     """
     k_reset, k_init, k_scan = jax.random.split(key, 3)
     k_init_g, k_init_b = jax.random.split(k_init, 2)
-    env_state, initial_outputs = env.reset(k_reset)
+    if initial_state is None:
+        env_state, initial_outputs = env.reset(k_reset)
+    else:
+        env_state, initial_outputs = env.reset_from_state(initial_state, k_reset)
     ps_g = init_policy_state_fns.guard(env.config, env_state, k_init_g)
     ps_b = init_policy_state_fns.bandit(env.config, env_state, k_init_b)
     initial_terminated = jnp.asarray(False)
@@ -213,6 +221,7 @@ def belief_rollout(
     guard_ground_station_network: Any = None,
     bandit_ground_station_network: Any = None,
     team_sync_fns: Any = None,  # BySide[BeliefSyncFn | None] | None
+    initial_state: Any = None,
 ) -> tuple[Trajectory, BySide]:
     """Belief-aware rollout: agent_view = post-update Belief.
 
@@ -240,6 +249,9 @@ def belief_rollout(
     BySide whose leaves are belief leaves with a leading time axis — what
     feeds :class:`orbitalgym.viz.animation.RolloutScene`'s
     ``belief_history`` parameter for animated 2σ ellipsoids.
+
+    ``initial_state`` starts the episode from a stored ``EnvState`` (see
+    ``orbitalgym.eval.bank``) instead of sampling.
     """
     _require_impulsive_maneuver(env.config, where="belief_rollout")
 
@@ -257,7 +269,10 @@ def belief_rollout(
     k_init_g, k_init_b = jax.random.split(k_init, 2)
     k_b_init_g, k_b_init_b = jax.random.split(k_init_g, 2)
 
-    env_state, _initial_outputs = env.reset(k_reset)
+    if initial_state is None:
+        env_state, _initial_outputs = env.reset(k_reset)
+    else:
+        env_state, _initial_outputs = env.reset_from_state(initial_state, k_reset)
     ps_g = init_policy_state_fns.guard(env.config, env_state, k_init_g)
     ps_b = init_policy_state_fns.bandit(env.config, env_state, k_init_b)
     belief_g = belief_initializers.guard(env_state, Side.GUARD, k_b_init_g)
