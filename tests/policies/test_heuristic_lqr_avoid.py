@@ -20,7 +20,7 @@ def _view(bandit_rtn, guard_rtn):
     return _Belief(mean=rows[None])  # (1, 2, 6)
 
 
-def _policy(avoidance_gain):
+def _policy(avoidance_gain, max_dv_mps: float = 1.0):
     return LQRGoToLadyWithAvoidance.build(
         mean_motion=N_MOTION,
         dt=10.0,
@@ -28,7 +28,7 @@ def _policy(avoidance_gain):
         n_opponents=1,
         state_dim=6,
         command_cls=make_impulsive_maneuver_command_cls(1),
-        max_dv_mps=1.0,
+        max_dv_mps=max_dv_mps,
         avoidance_gain=avoidance_gain,
         avoidance_sigma_m=300.0,
     )
@@ -45,8 +45,8 @@ def test_pure_lqr_moves_toward_lady():
 
 
 def test_avoidance_pushes_away_from_guard():
-    pure, _ = _policy(0.0)(None, _view(BANDIT, GUARD), None, 0.0)
-    avoid, _ = _policy(1.0)(None, _view(BANDIT, GUARD), None, 0.0)
+    pure, _ = _policy(0.0, max_dv_mps=100.0)(None, _view(BANDIT, GUARD), None, 0.0)
+    avoid, _ = _policy(1.0, max_dv_mps=100.0)(None, _view(BANDIT, GUARD), None, 0.0)
     assert avoid.dv[0, 0] < pure.dv[0, 0]  # guard sits at +R; repulsion adds -R
 
 
