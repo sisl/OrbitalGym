@@ -62,6 +62,7 @@ def metrics_to_records(metrics: EpisodeMetrics, **constants: Any) -> list[dict[s
         "dv_bandit": np.asarray(metrics.dv_bandit).astype(float),
         "link_events_guard": np.asarray(metrics.link_events_guard).astype(int),
         "ic_valid": np.asarray(metrics.ic_valid).astype(bool),
+        "in_cone_fraction_guard": np.asarray(metrics.in_cone_fraction_guard).astype(float),
     }
     n = int(fields["outcome"].shape[0])
     rows = []

@@ -38,7 +38,11 @@ def _leaf_name(path) -> str:
 
 
 def save_bank(path: str | Path, cfg: ScenarioConfig, states: Any, seed: int) -> None:
-    """Write a bank and its scenario config to ``path``."""
+    """Write a bank and its scenario config to ``path``.
+
+    ``states`` must come from ``env.reset`` / ``sample_bank`` output, where
+    ``applied_dv`` is zero and the clock is at zero.
+    """
     leaves = jax.tree_util.tree_flatten_with_path(states)[0]
     n_episodes = int(states.ic_valid.shape[0])
     with h5py.File(Path(path), "w") as f:

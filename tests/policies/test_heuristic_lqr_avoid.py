@@ -70,3 +70,16 @@ def test_rejects_wrong_sized_flat_observation():
     wrong_size_flat = jnp.array([1.0, 2.0, 3.0])
     with pytest.raises(ValueError, match="full-state"):
         policy(None, wrong_size_flat, None, 0.0)
+
+
+def test_uses_last_channel_of_a_composite_flat_observation():
+    """Two equal-sized full-state channels concatenated (as CompositeObservation
+    would produce): the trailing channel is used, matching the single-channel
+    flat-observation result."""
+    view = _view(BANDIT, GUARD)
+    single_flat = view.mean.reshape(-1)
+    noise_channel = single_flat + 1000.0  # a differing leading channel
+    composite_flat = jnp.concatenate([noise_channel, single_flat])
+    a, _ = _policy(1.0)(None, single_flat, None, 0.0)
+    b, _ = _policy(1.0)(None, composite_flat, None, 0.0)
+    assert jnp.allclose(a.dv, b.dv)

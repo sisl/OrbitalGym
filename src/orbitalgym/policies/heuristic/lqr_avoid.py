@@ -51,10 +51,15 @@ class LQRGoToLadyWithAvoidance:
     The control is ``clip(u_lqr + u_avoid, ±max_dv_mps)`` where ``u_avoid`` sums
     ``avoidance_gain * exp(-d^2 / (2 sigma^2))`` per opponent, directed away from
     it. The agent view is either a belief with ``mean (N_obs, N_total, d)`` or a
-    flat full observation of the same numbers; observer ``i`` reads its own
-    state from cell ``(i, i)`` and opponents from columns ``N_obs`` onward. The
-    flat-observation path requires a single full-state channel (e.g. FullObservation
-    or ConicalObservation); composite or position-only channels must go through a belief.
+    flat observation of the same numbers; observer ``i`` reads its own state
+    from cell ``(i, i)`` and opponents from columns ``N_obs`` onward. The
+    flat-observation path requires either a single full-state channel (e.g.
+    FullObservation or ConicalObservation) or a
+    :class:`~orbitalgym.observations.composite.CompositeObservation` whose
+    channels are all full-state and the same size — in which case the last
+    channel is used (e.g. teammate-ephemeris + conical, where the conical
+    channel carries the truth-anchored per-pair state this policy needs).
+    Position-only channels must go through a belief.
     """
 
     gain: jax.Array
@@ -97,14 +102,22 @@ class LQRGoToLadyWithAvoidance:
         if isinstance(agent_view, jax.Array):
             n_total = self.n_vehicles + self.n_opponents
             expected_size = self.n_vehicles * n_total * self.state_dim
-            if agent_view.size != expected_size:
+            size = agent_view.size
+            if size == expected_size:
+                flat = agent_view
+            elif size % expected_size == 0:
+                # Multiple equal-sized full-state channels concatenated by
+                # CompositeObservation: use the last one.
+                flat = agent_view.reshape((-1, expected_size))[-1]
+            else:
                 raise ValueError(
-                    f"Flat observation size {agent_view.size} does not match expected "
+                    f"Flat observation size {size} is not a multiple of expected "
                     f"{expected_size} ({self.n_vehicles} vehicles × {n_total} entities × "
-                    f"{self.state_dim} dims). Flat-observation path requires a single full-state "
-                    f"channel; composite or position-only channels must use a belief view."
+                    f"{self.state_dim} dims). Flat-observation path requires one or more "
+                    f"equal-sized full-state channels; position-only channels must use a "
+                    f"belief view."
                 )
-            return agent_view.reshape((self.n_vehicles, n_total, self.state_dim))
+            return flat.reshape((self.n_vehicles, n_total, self.state_dim))
         return agent_view.mean
 
     def __call__(self, policy_state: Any, agent_view: Any, key: jax.Array, t: jax.Array):

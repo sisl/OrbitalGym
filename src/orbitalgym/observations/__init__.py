@@ -13,6 +13,7 @@ from orbitalgym.observations.negative_info import (
 from orbitalgym.observations.onboard_gps import OnboardGPSObservation
 from orbitalgym.observations.range_limited import RangeLimitedObservation
 from orbitalgym.observations.reference import FullObservation
+from orbitalgym.observations.teammate_ephemeris import TeammateEphemerisObservation
 from orbitalgym.observations.types import Observation, flatten_observations
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "OnboardGPSObservation",
     "RangeLimitedObservation",
     "Soft",
+    "TeammateEphemerisObservation",
     "flatten_observations",
     "softness_from_sigma",
 ]

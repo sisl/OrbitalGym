@@ -209,6 +209,16 @@ def _require_impulsive_maneuver(config: Any, *, where: str) -> None:
     )
 
 
+def _any_opponent_visible(obs_channels: tuple, n_self: int) -> jax.Array:
+    """Per own-vehicle bool: any opposing target visible in any channel.
+
+    Each channel's ``visible`` has shape ``(n_self, n_total)``; columns
+    ``n_self:`` are the opposing side. Returns shape ``(n_self,)``.
+    """
+    per_channel = [jnp.any(c.visible[:, n_self:], axis=-1) for c in obs_channels]
+    return jnp.any(jnp.stack(per_channel, axis=0), axis=0)
+
+
 def belief_rollout(
     env,
     policies: BySide,  # BySide[Policy]
@@ -337,6 +347,8 @@ def belief_rollout(
         # the policy.
         view_g = flatten_observations(step_out.outputs.guard.obs)
         view_b = flatten_observations(step_out.outputs.bandit.obs)
+        visible_g = _any_opponent_visible(step_out.outputs.guard.obs, n_g)
+        visible_b = _any_opponent_visible(step_out.outputs.bandit.obs, n_b)
         reward_g = step_out.outputs.guard.reward
         reward_b = step_out.outputs.bandit.reward
         next_terminated = terminated | step_out.episode_done
@@ -370,6 +382,8 @@ def belief_rollout(
             "bandit_belief": synced_belief_b,
             "guard_contact": contact_g,
             "bandit_contact": contact_b,
+            "guard_visible": visible_g,
+            "bandit_visible": visible_b,
         }
         return (
             advance_es,
@@ -407,6 +421,7 @@ def belief_rollout(
         ),
         episode_done=stacked["episode_done"],
         contact=BySide(guard=stacked["guard_contact"], bandit=stacked["bandit_contact"]),
+        visible=BySide(guard=stacked["guard_visible"], bandit=stacked["bandit_visible"]),
         controlled_side=getattr(env.config, "controlled_side", Side.GUARD),
     )
     belief_history = BySide(guard=stacked["guard_belief"], bandit=stacked["bandit_belief"])

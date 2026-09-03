@@ -103,4 +103,5 @@ class Trajectory:
     sides: BySide
     episode_done: jax.Array
     contact: Any = None  # BySide of (T, n_side) bool link masks; None for obs-only rollouts
+    visible: Any = None  # BySide of (T, n_side) bool: any opposing target visible; None if unlogged
     controlled_side: Side = flax.struct.field(pytree_node=False, default=Side.GUARD)

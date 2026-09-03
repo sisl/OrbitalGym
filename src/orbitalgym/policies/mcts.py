@@ -753,8 +753,12 @@ class ParticleRootMCTSPolicy:
         else:
             per_v = []
             for i in range(inner.n_vehicles):
+                # Decorrelate the stochastic opponent samples across
+                # vehicles: each vehicle's search draws from its own
+                # fold-in of k_search rather than sharing search_keys.
+                search_keys_i = jax.random.split(jax.random.fold_in(k_search, i), self.n_roots)
                 outs = jax.vmap(lambda s, k, i=i: inner._search_one_vehicle_out(s, k, i))(
-                    s_roots, search_keys
+                    s_roots, search_keys_i
                 )
                 weights = jnp.mean(outs.action_weights[:, 0, :], axis=0)
                 per_v.append(jnp.argmax(weights))

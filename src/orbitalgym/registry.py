@@ -97,6 +97,7 @@ class ObservationFnKey(StrEnum):
     COMPOSITE = "composite_observation"
     COMMS_LEAK = "comms_leak_observation"
     CONICAL = "conical_observation"  # conical field-of-view sensor
+    TEAMMATE_EPHEMERIS = "teammate_ephemeris_observation"
 
 
 class RewardFnKey(StrEnum):

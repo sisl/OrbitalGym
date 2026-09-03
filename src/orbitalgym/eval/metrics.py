@@ -30,6 +30,16 @@ class Outcome(IntEnum):
 
 @flax.struct.dataclass
 class EpisodeMetrics:
+    """Per-episode outcome and resource accounting.
+
+    ``link_events_guard`` counts rising edges of the any-guard-in-contact
+    signal within the episode mask (a link event starts when contact
+    becomes true), not the number of masked steps in contact.
+    ``in_cone_fraction_guard`` is the fraction of masked steps where any
+    guard observation channel sees any bandit; 0 when the trajectory did
+    not log a ``visible`` mask.
+    """
+
     outcome: jax.Array
     steps: jax.Array
     min_d_gb: jax.Array
@@ -38,6 +48,7 @@ class EpisodeMetrics:
     dv_bandit: jax.Array
     link_events_guard: jax.Array
     ic_valid: jax.Array
+    in_cone_fraction_guard: jax.Array
 
 
 def _positions(side_state: Any) -> jax.Array:
@@ -47,18 +58,20 @@ def _positions(side_state: Any) -> jax.Array:
     return side_state.rt[..., :2]
 
 
-def _side_delta_v(side_traj: Any, side_state: Any, params: Any, mask: jax.Array) -> jax.Array:
+def _side_delta_v(
+    side_traj: Any, side_state: Any, params: Any, mask: jax.Array, post_idx: jax.Array
+) -> jax.Array:
     """Team delta-v in m/s over the masked steps.
 
     With a propellant trace, delta-v follows from the rocket equation on
-    the mass consumed between the first and last valid step. Without one,
-    it is the sum of commanded delta-v magnitudes.
+    the mass consumed between the first step and the post-terminal state
+    at ``post_idx``. Without one, it is the sum of commanded delta-v
+    magnitudes.
     """
     if hasattr(side_state, "propellant_mass"):
         m_prop = side_state.propellant_mass  # (T, n)
         m0 = m_prop[0]
-        last_idx = jnp.sum(mask.astype(jnp.int32)) - 1
-        m1 = m_prop[last_idx]
+        m1 = m_prop[post_idx]
         dry = jnp.asarray(params.dry_mass_kg, dtype=m_prop.dtype)
         per_vehicle = params.isp_s * G0 * jnp.log((dry + m0) / (dry + m1))
         return jnp.sum(per_vehicle)
@@ -104,15 +117,34 @@ def lbg_episode_metrics(traj: Any, cfg: Any) -> EpisodeMetrics:
     ic_valid = traj.env_state.ic_valid[0]
     outcome = jnp.where(ic_valid, outcome, Outcome.INVALID_IC).astype(jnp.int32)
 
-    dv_guard = _side_delta_v(traj.sides.guard, traj.env_state.guards, cfg.guard_params, mask)
-    dv_bandit = _side_delta_v(traj.sides.bandit, traj.env_state.bandits, cfg.bandit_params, mask)
+    dv_guard = _side_delta_v(
+        traj.sides.guard, traj.env_state.guards, cfg.guard_params, mask, post_idx
+    )
+    dv_bandit = _side_delta_v(
+        traj.sides.bandit, traj.env_state.bandits, cfg.bandit_params, mask, post_idx
+    )
 
     contact = getattr(traj, "contact", None)
     if contact is None or contact.guard is None:
         link_events = jnp.asarray(0, dtype=jnp.int32)
     else:
-        any_contact = jnp.any(contact.guard, axis=-1)  # (T,)
-        link_events = jnp.sum((any_contact & mask).astype(jnp.int32))
+        any_contact = jnp.any(contact.guard, axis=-1)  # (T,) any guard in contact this step
+        # Rising edges of the any-guard-in-contact signal within the episode
+        # mask: a link event starts when contact becomes true after a masked
+        # step where it was false (or at the first masked step).
+        prev_contact = jnp.concatenate([jnp.zeros((1,), dtype=bool), any_contact[:-1]])
+        rising = any_contact & (~prev_contact) & mask
+        link_events = jnp.sum(rising.astype(jnp.int32))
+
+    visible = getattr(traj, "visible", None)
+    if visible is None or visible.guard is None:
+        in_cone_fraction_guard = jnp.asarray(0.0)
+    else:
+        any_visible = jnp.any(visible.guard, axis=-1)  # (T,) any guard sees any bandit
+        denom = jnp.maximum(steps, 1)
+        in_cone_fraction_guard = jnp.sum((any_visible & mask).astype(jnp.float32)) / denom.astype(
+            jnp.float32
+        )
 
     return EpisodeMetrics(
         outcome=outcome,
@@ -123,4 +155,5 @@ def lbg_episode_metrics(traj: Any, cfg: Any) -> EpisodeMetrics:
         dv_bandit=dv_bandit,
         link_events_guard=link_events,
         ic_valid=ic_valid,
+        in_cone_fraction_guard=in_cone_fraction_guard,
     )
