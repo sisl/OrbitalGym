@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
 
+from orbitalgym import OrbitalGymEnv, make_lady_bandit_guard
 from orbitalgym.belief.pf import (
     ParticleFilterBelief,
     ParticleFilterBeliefUpdater,
@@ -15,6 +16,7 @@ from orbitalgym.belief.pf import (
 )
 from orbitalgym.env.types import Side
 from orbitalgym.observations.types import Observation
+from orbitalgym.reference_orbit import mean_motion
 
 # ---- helpers ------------------------------------------------------------
 
@@ -525,3 +527,27 @@ def test_pf_predict_with_hcw_rt_keeps_ring_particles_on_ring():
     t = opp[:, 1]
     residual = (r / a) ** 2 + (t / (2 * a)) ** 2 - 1.0
     assert float(jnp.max(jnp.abs(residual))) < 1e-6
+
+
+def test_initializers_trace_under_jit_and_vmap():
+    """Initializers must build under an outer jit so batched evaluation can compile them."""
+    cfg = make_lady_bandit_guard()
+    env = OrbitalGymEnv(cfg)
+    states, _ = jax.vmap(env.reset)(jax.random.split(jax.random.PRNGKey(0), 3))
+    keys = jax.random.split(jax.random.PRNGKey(1), 3)
+
+    def _run_init(init):
+        fn = jax.jit(jax.vmap(lambda s, k: init(s, Side.GUARD, k)))
+        belief = fn(states, keys)
+        assert belief.particles.shape[0] == 3
+        assert jnp.allclose(belief.weight_entropy, jnp.log(8.0))
+
+    truth_init = ParticleFilterFromTruthInitializer(layout=env.layout, n_particles=8)
+    ring_init = ParticleFilterRingInitializer(
+        layout=env.layout,
+        ring_radius_m=1000.0,
+        mean_motion_rad_s=float(mean_motion(cfg.reference_orbit)),
+        n_particles=8,
+    )
+    _run_init(truth_init)
+    _run_init(ring_init)

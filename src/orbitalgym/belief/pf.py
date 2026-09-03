@@ -52,6 +52,7 @@ Updater pipeline per step:
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -346,7 +347,7 @@ def _initial_metrics(
     n_eff = K, weight_entropy = log K, resampled = False.
     """
     n_eff = jnp.full((n_obs, n_total), float(k_particles))
-    weight_entropy = jnp.full((n_obs, n_total), float(jnp.log(k_particles)))
+    weight_entropy = jnp.full((n_obs, n_total), math.log(k_particles))
     resampled = jnp.zeros((n_obs, n_total), dtype=bool)
     return n_eff, weight_entropy, resampled
 
