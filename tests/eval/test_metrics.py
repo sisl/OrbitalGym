@@ -80,3 +80,11 @@ def test_metrics_vmap_over_batch():
     m = jax.vmap(lambda t: lbg_episode_metrics(t, cfg))(batched)
     assert m.outcome.shape == (2,)
     assert m.dv_guard.shape == (2,)
+
+
+def test_breach_when_termination_is_the_last_step():
+    traj, cfg = _run(_ic(1000.0, 1.0, 0.0), n_steps=1)
+    m = lbg_episode_metrics(traj, cfg)
+    assert int(m.outcome) == Outcome.BREACH
+    assert int(m.steps) == 1
+    assert float(m.min_d_bl) < cfg.game.breach_radius_m
