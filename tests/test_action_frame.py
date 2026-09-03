@@ -16,18 +16,26 @@ def test_action_frame_default_is_rtn():
 
 
 def test_action_in_rtn_with_eci_truth_rotates_correctly():
-    """Policy emits RTN-frame Δv; truth is ECI; Δv reaches ECI as a rotated vector."""
+    """Policy emits RTN-frame Δv; truth is ECI; Δv reaches ECI as a rotated vector.
+
+    max_thrust_n is set to 1e6 to make thrust-limiting unconstrained; this test
+    validates frame conversion, not thrust limiting.
+    """
+    from orbitalgym.config import VehicleParamsSpec
     from orbitalgym.env.core import OrbitalGymEnv
     from orbitalgym.env.types import Actions, BySide
     from orbitalgym.frames.conversions import convert_action
     from orbitalgym.registry import DynamicsKey, Frame, StateComponentKey
     from tests.test_config_resolved_dynamics import _minimal_cfg
 
+    params = VehicleParamsSpec(dry_mass_kg=10.0, isp_s=200.0, max_thrust_n=1e6)
     cfg = _minimal_cfg(
         truth_dynamics=DynamicsKey.KEPLERIAN_ECI,
         policy_dynamics=DynamicsKey.HCW_RTN,
         guard_components=(StateComponentKey.ECI,),
         bandit_components=(StateComponentKey.ECI,),
+        guard_params=params,
+        bandit_params=params,
         action_frame=Frame.RTN,
         dt=1.0,
     )
