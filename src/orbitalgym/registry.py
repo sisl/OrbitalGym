@@ -87,6 +87,7 @@ class PolicyKey(StrEnum):
 
     ZERO_CONTROL = "zero_control"
     POINTING = "pointing_policy"
+    LQR_AVOID = "lqr_go_to_lady_with_avoidance"
 
 
 class ObservationFnKey(StrEnum):
