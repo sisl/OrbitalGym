@@ -54,6 +54,7 @@ nav = [
     { "Round-trip config to JSON" = "how-to/json-roundtrip-config.md" },
     { "Pick an observation channel" = "how-to/pick-observation-channel.md" },
     { "Model comms windows" = "how-to/model-comms-windows.md" },
+    { "Plug in a solver" = "how-to/plug-in-a-solver.md" },
   ] },
   { "In depth" = [
     { "Overview" = "in-depth/index.md" },

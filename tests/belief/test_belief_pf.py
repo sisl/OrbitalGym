@@ -367,11 +367,11 @@ def test_pf_ring_initializer_places_opposing_particles_on_ring():
     assert float(jnp.max(jnp.abs(vel_residual))) < 1e-6
 
 
-def test_pf_ring_initializer_rejects_3d_dynamics():
-    layout = _Layout(1, 1, 6)
+def test_pf_ring_initializer_rejects_unsupported_dimensions():
+    layout = _Layout(1, 1, 5)
     env_state = SimpleNamespace(
-        guards=SimpleNamespace(rtn=jnp.zeros((1, 6))),
-        bandits=SimpleNamespace(rtn=jnp.zeros((1, 6))),
+        guards=SimpleNamespace(state_5d=jnp.zeros((1, 5))),
+        bandits=SimpleNamespace(state_5d=jnp.zeros((1, 5))),
     )
     init = ParticleFilterRingInitializer(
         layout=layout, ring_radius_m=1.0, mean_motion_rad_s=1.0, n_particles=4
@@ -379,9 +379,9 @@ def test_pf_ring_initializer_rejects_3d_dynamics():
     try:
         init(env_state, side=Side.GUARD, key=jax.random.PRNGKey(0))
     except ValueError as e:
-        assert "RT-plane" in str(e)
+        assert "d in (4, 6)" in str(e)
         return
-    raise AssertionError("expected ValueError for d=6")
+    raise AssertionError("expected ValueError for d=5")
 
 
 # ---- collapse + resample tracking metrics -----------------------------

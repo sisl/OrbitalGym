@@ -1,0 +1,173 @@
+# Plug in a solver
+
+Mahdi's solvers integrate into OrbitalGym's batched evaluation pipeline
+when they satisfy the policy contract: a callable with a predictable
+signature, return types, and behavior under JAX transformations. This
+page covers the contract, validation, and integration patterns.
+
+## 1. The contract
+
+A solver is any callable that maps the policy state, the current
+observation, and time to a command and the next policy state:
+
+```python
+def my_solver(policy_state, agent_view, key, t):
+    """
+    Args:
+        policy_state: Any pytree threaded across rollout steps. Use None if
+            stateless (e.g., reactive controllers).
+        agent_view: ContactAwareBelief with .inner (particle belief) and
+            .contact (link mask). The inner belief has .particles (shape
+            N_observers × N_total × K × d) and .log_weights.
+        key: jax.random.PRNGKey for sampling or stochastic decisions.
+        t: Current simulation time (scalar or array).
+
+    Returns:
+        (command, new_policy_state) where command is an instance of the
+        side's command class (e.g., env.guard_command_cls.zeros(n) with
+        fields like .dv and .target_dir replaced).
+    """
+    # Example: zero control (stateless)
+    n_vehicles = agent_view.inner.particles.shape[0]
+    command = make_some_command_class().zeros(n_vehicles)
+    return command, policy_state  # Unchanged state
+```
+
+The `.inner` belief is a `ParticleFilterBelief` with particles indexed
+as `[observer_idx, target_idx, particle_idx, state_component]` and
+weights per target. `.contact` is a boolean array of length `n_vehicles`
+indicating which side members are in communication this tick.
+
+## 2. Checking a solver
+
+Before integration, validate your solver against the contract using
+`check_policy_conforms`. It exercises the solver in isolation and under
+JAX transformations (jit + vmap), and reports which checks passed:
+
+```python
+from orbitalgym import OrbitalGymEnv, make_lady_bandit_guard
+from orbitalgym.belief.pf import ParticleFilterFromTruthInitializer
+from orbitalgym.eval import check_policy_conforms
+
+cfg = make_lady_bandit_guard(n_guards=2)
+env = OrbitalGymEnv(cfg)
+init = ParticleFilterFromTruthInitializer(layout=env.layout, n_particles=8)
+
+report = check_policy_conforms(
+    my_solver,
+    env,
+    Side.GUARD,
+    init,
+    n_steps=5,
+)
+
+print(f"Command shape OK: {report.command_ok}")
+print(f"Traceable under jit+vmap: {report.traceable}")
+print(f"Runs in belief_rollout: {report.rollout_ok}")
+if not all([report.command_ok, report.traceable, report.rollout_ok]):
+    print(f"Message: {report.message}")
+```
+
+The report has fields `command_ok` (shape and type match the expected
+command), `traceable` (no data-dependent control flow or host callbacks
+under jit), and `rollout_ok` (integrates into a full episode rollout).
+All three must pass for integration into batched evaluation.
+
+## 3. Running from a bank
+
+Evaluation banks hold scenario initial conditions (guards, bandits,
+reference orbits) sampled from a distribution. Solvers are integrated
+via the `policies` dict and a belief updater for each side:
+
+```python
+import jax
+import jax.numpy as jnp
+from orbitalgym import OrbitalGymEnv, Side, make_lady_bandit_guard
+from orbitalgym.belief.pf import ParticleFilterFromTruthInitializer,
+ParticleFilterBeliefUpdater
+from orbitalgym.eval import sample_bank, evaluate_bank
+from orbitalgym.links import PointingConeLink
+from orbitalgym.rollout import PFTeamFusion, BySide
+from orbitalgym.dynamics.hcw import hcw_rtn_step
+
+cfg = make_lady_bandit_guard(n_guards=2, n_bandits=1)
+env = OrbitalGymEnv(cfg)
+
+# Sample 100 random scenarios from the distribution.
+bank = sample_bank(cfg, n=100, key=jax.random.PRNGKey(0))
+
+# Build a belief initializer and updater for your environment.
+initializer = ParticleFilterFromTruthInitializer(
+    layout=env.layout, n_particles=64
+)
+d = env.layout.dynamics_state_dim
+updater = ParticleFilterBeliefUpdater(
+    dynamics_fn=lambda x, u, dt: (
+        hcw_rtn_step(x[None, :], u[None, :], env, dt)[0]
+    ),
+    process_noise=jnp.eye(d) * 1e-4,
+    dt=cfg.dt,
+)
+
+# Run evaluation: guard uses your solver, bandit uses zero control.
+metrics_per_scenario = evaluate_bank(
+    bank,
+    cfg,
+    policies=BySide(guard=my_solver, bandit=ZeroControl(...)),
+    policy_state_inits=BySide(guard=lambda c, s, k: None, bandit=None),
+    belief_initializers=BySide(guard=initializer, bandit=initializer),
+    belief_updaters=BySide(guard=updater, bandit=updater),
+    guard_link=PointingConeLink(half_angle_deg=10.0),
+    team_sync_fns=BySide(guard=PFTeamFusion(), bandit=None),
+    key=jax.random.PRNGKey(1),
+)
+```
+
+`evaluate_bank` batches scenarios via `jax.vmap` (one vmap per scenario).
+Each scenario runs a full episode; belief state is updated per timestep
+using the particle filter updater. The `team_sync_fns` fuse particle
+beliefs across vehicles on the same side (e.g., guards share detection
+windows via the provided link).
+
+## 4. Non-traceable solvers
+
+If your solver uses host callbacks, data-dependent loops, or other
+non-traceable constructs, wrap it in `jax.pure_callback` to run on the
+slow path:
+
+```python
+import jax
+import jax.numpy as jnp
+
+def my_traced_solver(policy_state, agent_view, key, t):
+    # Pytree output shapes must be known at trace time.
+    def callback_impl(view_arrays):
+        # Host-side solver: returns command arrays.
+        return my_untraceable_solver(view_arrays)
+
+    # Specify output shapes and dtypes.
+    view_flat, tree_def = jax.tree_util.tree_flatten(agent_view)
+    command_shape = (env.guard_command_cls.zeros(2).dv.shape,)
+    command_dtype = jnp.float64
+
+    result = jax.pure_callback(
+        callback_impl,
+        jax.ShapeDtypeStruct(command_shape, command_dtype),
+        agent_view,
+        vectorized=False,
+    )
+    command = env.guard_command_cls(dv=result, ...)
+    return command, policy_state
+```
+
+When wrapped, the solver is called once per scenario (not vmapped into
+a batch). Batched evaluation still works but runs one episode at a time.
+Each scenario gets its own callback invocation.
+
+## See also
+
+- [API → eval.conformance](../api/eval-conformance.md) —
+  `check_policy_conforms` and `ConformanceReport` reference.
+- [API → rollout](../api/rollout.md) — `belief_rollout` internals.
+- [API → belief.pf](../api/belief-pf.md) — `ParticleFilterBelief`,
+  `ParticleFilterBeliefUpdater`.
