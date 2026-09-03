@@ -18,7 +18,7 @@ import jax
 import jax.numpy as jnp
 
 from orbitalgym.actions.assemble import build_command_class
-from orbitalgym.actions.components import AttitudeControl, Communicate, ImpulsiveManeuver
+from orbitalgym.actions.components import AttitudeControl, Communicate, ImpulsiveManeuver, PointAt
 from orbitalgym.config import ScenarioConfig
 from orbitalgym.dynamics.hcw import hcw_rt_step, hcw_rtn_step
 from orbitalgym.dynamics.j2 import j2_eci_step
@@ -69,6 +69,7 @@ _ACTION_COMP_LOOKUP: dict[ActionComponentKey, type] = {
     ActionComponentKey.IMPULSIVE_MANEUVER: ImpulsiveManeuver,
     ActionComponentKey.COMMUNICATE: Communicate,
     ActionComponentKey.ATTITUDE_CONTROL: AttitudeControl,
+    ActionComponentKey.POINT_AT: PointAt,
 }
 
 _DYN_LOOKUP = {
@@ -147,6 +148,7 @@ class _FleetParams:
     isp_s: jax.Array
     max_thrust_n: jax.Array
     mean_motion: jax.Array
+    slew_rate_rad_s: jax.Array
 
 
 def _build_per_side_params(spec, mean_motion: float) -> _FleetParams:
@@ -155,6 +157,7 @@ def _build_per_side_params(spec, mean_motion: float) -> _FleetParams:
         isp_s=jnp.asarray(spec.isp_s),
         max_thrust_n=jnp.asarray(spec.max_thrust_n),
         mean_motion=jnp.asarray(mean_motion),
+        slew_rate_rad_s=jnp.asarray(spec.slew_rate_rad_s),
     )
 
 
@@ -269,6 +272,8 @@ class OrbitalGymEnv:
                         rotation_dim=rotation_dim,
                         torque_max=self.config.attitude_control_torque_max,
                     )
+                elif cls is PointAt:
+                    inst = PointAt(boresight_body=tuple(self.config.pointing_boresight_body))
                 else:
                     raise ValueError(f"No instance constructor for action component {key!r}")
                 instances.append(inst)
@@ -398,6 +403,50 @@ class OrbitalGymEnv:
             bandit=SideOutput(obs=obs_b, reward=jnp.asarray(0.0), done=initial_done),
         )
         return state, initial_outputs
+
+    def reset_from_state(self, state: EnvState, key: jax.Array) -> tuple[EnvState, BySide]:
+        """Start an episode from a stored state instead of sampling one.
+
+        Returns the state with the clock zeroed, derived frame views
+        re-materialized from the truth frame, and the initial observations
+        computed with ``key``. The reference orbit carried by ``state`` is
+        kept so a bank sampled under one epoch replays under the same one.
+        """
+        k_obs_g, k_obs_b = jax.random.split(key, 2)
+        ref_eci6 = jnp.concatenate(
+            [state.reference_orbit.position_eci, state.reference_orbit.velocity_eci]
+        )
+        truth_field_name = _truth_field(self.truth_frame)
+        guards = _materialize_derived_views(
+            state.guards, truth_field_name, self.truth_frame, self.guard_extended_frames, ref_eci6
+        )
+        bandits = _materialize_derived_views(
+            state.bandits, truth_field_name, self.truth_frame, self.bandit_extended_frames, ref_eci6
+        )
+        restored = state.replace(
+            t=jnp.zeros_like(state.t),
+            step=jnp.zeros_like(state.step),
+            guards=guards,
+            bandits=bandits,
+        )
+        identity_actions = Actions(
+            sides=BySide(
+                guard=self.guard_command_cls.zeros(self.config.n_guards),
+                bandit=self.bandit_command_cls.zeros(self.config.n_bandits),
+            )
+        )
+        obs_g = self.guard_observation_fn(
+            restored, identity_actions, Side.GUARD, self.config, k_obs_g, restored.t
+        )
+        obs_b = self.bandit_observation_fn(
+            restored, identity_actions, Side.BANDIT, self.config, k_obs_b, restored.t
+        )
+        initial_done = jnp.asarray(False)
+        outputs = BySide(
+            guard=SideOutput(obs=obs_g, reward=jnp.asarray(0.0), done=initial_done),
+            bandit=SideOutput(obs=obs_b, reward=jnp.asarray(0.0), done=initial_done),
+        )
+        return restored, outputs
 
     def _reset_with_icspec(self, k_ic: jax.Array):
         """Rejection-sampling reset for ICSpec configurations.

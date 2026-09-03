@@ -17,6 +17,8 @@ which rejects float64 operations.
 
 from __future__ import annotations
 
+from typing import Any
+
 import flax.struct
 import jax
 import jax.numpy as jnp
@@ -95,3 +97,16 @@ def rigid_body_attitude_step(
     quat_new = quat_new / jnp.linalg.norm(quat_new, axis=-1, keepdims=True)
     omega_new = jnp.clip(omega_new, -params.omega_max, params.omega_max)
     return quat_new, omega_new
+
+
+@register(AttitudeDynamicsKey.KINEMATIC)
+def kinematic_attitude_step(
+    quat: jax.Array,
+    omega: jax.Array,
+    torque: jax.Array,
+    params: Any,
+    dt: float,
+) -> tuple[jax.Array, jax.Array]:
+    """Kinematic attitude: the quaternion is set by the PointAt action; rates stay zero."""
+    del torque, params, dt
+    return quat / jnp.linalg.norm(quat, axis=-1, keepdims=True), jnp.zeros_like(omega)

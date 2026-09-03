@@ -56,6 +56,8 @@ def rollout(
     init_policy_state_fns: BySide,  # BySide[Callable(config, env_state, key) -> ps]
     key: jax.Array,
     n_steps: int,
+    *,
+    initial_state: Any = None,
 ) -> Trajectory:
     """Symmetric obs-only rollout. Both sides driven by their own policies.
 
@@ -63,10 +65,16 @@ def rollout(
 
     Returns a Trajectory with sides.guard / sides.bandit each carrying
     ``(T, N_side, ...)`` leading-axis arrays, plus ``episode_done (T,)`` latched.
+
+    ``initial_state`` starts the episode from a stored ``EnvState`` (see
+    ``orbitalgym.eval.bank``) instead of sampling.
     """
     k_reset, k_init, k_scan = jax.random.split(key, 3)
     k_init_g, k_init_b = jax.random.split(k_init, 2)
-    env_state, initial_outputs = env.reset(k_reset)
+    if initial_state is None:
+        env_state, initial_outputs = env.reset(k_reset)
+    else:
+        env_state, initial_outputs = env.reset_from_state(initial_state, k_reset)
     ps_g = init_policy_state_fns.guard(env.config, env_state, k_init_g)
     ps_b = init_policy_state_fns.bandit(env.config, env_state, k_init_b)
     initial_terminated = jnp.asarray(False)
@@ -201,6 +209,16 @@ def _require_impulsive_maneuver(config: Any, *, where: str) -> None:
     )
 
 
+def _any_opponent_visible(obs_channels: tuple, n_self: int) -> jax.Array:
+    """Per own-vehicle bool: any opposing target visible in any channel.
+
+    Each channel's ``visible`` has shape ``(n_self, n_total)``; columns
+    ``n_self:`` are the opposing side. Returns shape ``(n_self,)``.
+    """
+    per_channel = [jnp.any(c.visible[:, n_self:], axis=-1) for c in obs_channels]
+    return jnp.any(jnp.stack(per_channel, axis=0), axis=0)
+
+
 def belief_rollout(
     env,
     policies: BySide,  # BySide[Policy]
@@ -213,14 +231,18 @@ def belief_rollout(
     guard_ground_station_network: Any = None,
     bandit_ground_station_network: Any = None,
     team_sync_fns: Any = None,  # BySide[BeliefSyncFn | None] | None
+    guard_link: Any = None,
+    bandit_link: Any = None,
+    initial_state: Any = None,
 ) -> tuple[Trajectory, BySide]:
     """Belief-aware rollout: agent_view = post-update Belief.
 
     Each tick:
 
       1. For each side, compute a per-tick contact mask of shape
-         ``(n_side,)`` from the side's ground-station network. When the
-         network is ``None`` the mask is all-False.
+         ``(n_side,)`` from the side's link predicate when given, else from
+         its ground-station network. When neither is given the mask is
+         all-False.
       2. Optionally fuse the side's belief across in-contact teammates via
          ``team_sync_fns.X(belief_X, contact_X)``.
       3. Wrap the (possibly synced) belief as a
@@ -240,24 +262,31 @@ def belief_rollout(
     BySide whose leaves are belief leaves with a leading time axis — what
     feeds :class:`orbitalgym.viz.animation.RolloutScene`'s
     ``belief_history`` parameter for animated 2σ ellipsoids.
+
+    ``initial_state`` starts the episode from a stored ``EnvState`` (see
+    ``orbitalgym.eval.bank``) instead of sampling.
     """
     _require_impulsive_maneuver(env.config, where="belief_rollout")
 
     n_g = env.config.n_guards
     n_b = env.config.n_bandits
 
-    def _contact_mask(network: Any, n_side: int, t: jax.Array) -> jax.Array:
-        """Per-side contact mask. None network → all-False of shape (n_side,)."""
+    def _contact_mask(link: Any, network: Any, n_side: int, es: Any, side: Side) -> jax.Array:
+        """Per-side link mask. A link predicate wins; else the network schedule; else all-False."""
+        if link is not None:
+            return link(es, side, es.t)
         if network is None:
             return jnp.zeros((n_side,), dtype=jnp.bool_)
-        scalar = in_contact_now(network.schedule, t)
-        return jnp.broadcast_to(scalar, (n_side,))
+        return jnp.broadcast_to(in_contact_now(network.schedule, es.t), (n_side,))
 
     k_reset, k_init, k_scan = jax.random.split(key, 3)
     k_init_g, k_init_b = jax.random.split(k_init, 2)
     k_b_init_g, k_b_init_b = jax.random.split(k_init_g, 2)
 
-    env_state, _initial_outputs = env.reset(k_reset)
+    if initial_state is None:
+        env_state, _initial_outputs = env.reset(k_reset)
+    else:
+        env_state, _initial_outputs = env.reset_from_state(initial_state, k_reset)
     ps_g = init_policy_state_fns.guard(env.config, env_state, k_init_g)
     ps_b = init_policy_state_fns.bandit(env.config, env_state, k_init_b)
     belief_g = belief_initializers.guard(env_state, Side.GUARD, k_b_init_g)
@@ -270,8 +299,8 @@ def belief_rollout(
 
         # Per-tick contact masks (closure-static branch on the Python
         # network handles, traced lookup on `es.t`).
-        contact_g = _contact_mask(guard_ground_station_network, n_g, es.t)
-        contact_b = _contact_mask(bandit_ground_station_network, n_b, es.t)
+        contact_g = _contact_mask(guard_link, guard_ground_station_network, n_g, es, Side.GUARD)
+        contact_b = _contact_mask(bandit_link, bandit_ground_station_network, n_b, es, Side.BANDIT)
 
         # Optional team-belief fusion. Runs BEFORE the policy call so the
         # policy sees the fused belief; the fused belief also replaces the
@@ -318,6 +347,8 @@ def belief_rollout(
         # the policy.
         view_g = flatten_observations(step_out.outputs.guard.obs)
         view_b = flatten_observations(step_out.outputs.bandit.obs)
+        visible_g = _any_opponent_visible(step_out.outputs.guard.obs, n_g)
+        visible_b = _any_opponent_visible(step_out.outputs.bandit.obs, n_b)
         reward_g = step_out.outputs.guard.reward
         reward_b = step_out.outputs.bandit.reward
         next_terminated = terminated | step_out.episode_done
@@ -349,6 +380,10 @@ def belief_rollout(
             "bandit_ps": ps_b,
             "guard_belief": synced_belief_g,
             "bandit_belief": synced_belief_b,
+            "guard_contact": contact_g,
+            "bandit_contact": contact_b,
+            "guard_visible": visible_g,
+            "bandit_visible": visible_b,
         }
         return (
             advance_es,
@@ -385,6 +420,8 @@ def belief_rollout(
             ),
         ),
         episode_done=stacked["episode_done"],
+        contact=BySide(guard=stacked["guard_contact"], bandit=stacked["bandit_contact"]),
+        visible=BySide(guard=stacked["guard_visible"], bandit=stacked["bandit_visible"]),
         controlled_side=getattr(env.config, "controlled_side", Side.GUARD),
     )
     belief_history = BySide(guard=stacked["guard_belief"], bandit=stacked["bandit_belief"])

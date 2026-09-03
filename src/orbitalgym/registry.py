@@ -69,6 +69,7 @@ class AttitudeDynamicsKey(StrEnum):
     """
 
     RIGID_BODY = "rigid_body_attitude"
+    KINEMATIC = "kinematic_attitude"
 
 
 class ActionComponentKey(StrEnum):
@@ -78,12 +79,15 @@ class ActionComponentKey(StrEnum):
     COMMUNICATE = "communicate"  # broadcast to other agents (Dec-POMDP comms)
     # body-frame torque (N·m) producer; reaction-wheel saturation modeled in dynamics
     ATTITUDE_CONTROL = "attitude_control"
+    POINT_AT = "point_at"  # slew-limited kinematic pointing
 
 
 class PolicyKey(StrEnum):
     """Role-agnostic policy registry key. Same key serves any side."""
 
     ZERO_CONTROL = "zero_control"
+    POINTING = "pointing_policy"
+    LQR_AVOID = "lqr_go_to_lady_with_avoidance"
 
 
 class ObservationFnKey(StrEnum):
@@ -93,6 +97,7 @@ class ObservationFnKey(StrEnum):
     COMPOSITE = "composite_observation"
     COMMS_LEAK = "comms_leak_observation"
     CONICAL = "conical_observation"  # conical field-of-view sensor
+    TEAMMATE_EPHEMERIS = "teammate_ephemeris_observation"
 
 
 class RewardFnKey(StrEnum):
@@ -157,6 +162,14 @@ class BeliefSyncKey(StrEnum):
     KF_TEAM_FUSION = "kf_team_fusion"
     EKF_TEAM_FUSION = "ekf_team_fusion"
     PF_TEAM_FUSION = "pf_team_fusion"
+
+
+class LinkKey(StrEnum):
+    """Team communication link predicate."""
+
+    ALWAYS = "always_linked"
+    GROUND_NETWORK = "ground_network_link"
+    POINTING_CONE = "pointing_cone_link"
 
 
 class GameKey(StrEnum):

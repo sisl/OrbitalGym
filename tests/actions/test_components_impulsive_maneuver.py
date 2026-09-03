@@ -117,3 +117,75 @@ def test_apply_does_not_invoke_dynamics():
         track_mass=False,
     )
     assert not hasattr(comp, "truth_dynamics")
+
+
+def _make_params_with_thrust(max_thrust_n: float) -> _Params:
+    return _Params(
+        dry_mass_kg=jnp.asarray([100.0]),
+        isp_s=jnp.asarray([220.0]),
+        max_thrust_n=jnp.asarray([max_thrust_n]),
+        mean_motion=jnp.asarray(0.001),
+    )
+
+
+def _apply(state, cmd, params, dt=10.0):
+    m = ImpulsiveManeuver(action_frame=Frame.RTN, truth_frame=Frame.RTN, track_mass=True)
+    ref_eci6 = jnp.array([7e6, 0.0, 0.0, 0.0, 7.5e3, 0.0])
+    return m.apply(cmd, state, params, dt=dt, ref_eci6=ref_eci6, key=jax.random.PRNGKey(0))
+
+
+def test_dv_above_thrust_cap_is_clipped_to_f_dt_over_wet_mass():
+    state = _make_side_state(1)  # propellant 10 kg, dry 100 kg -> wet 110 kg
+    params = _make_params_with_thrust(5.0)
+    cmd = _Command(dv=jnp.array([[2.0, 0.0, 0.0]]))
+    new_state = _apply(state, cmd, params, dt=10.0)
+    expected = 5.0 * 10.0 / 110.0  # 0.4545 m/s
+    assert jnp.allclose(jnp.linalg.norm(new_state.applied_dv[0]), expected, rtol=1e-6)
+
+
+def test_dv_below_thrust_cap_is_unchanged():
+    state = _make_side_state(1)
+    params = _make_params_with_thrust(5.0)
+    cmd = _Command(dv=jnp.array([[0.1, 0.2, 0.0]]))
+    new_state = _apply(state, cmd, params, dt=10.0)
+    assert jnp.allclose(new_state.applied_dv[0, :2], jnp.array([0.1, 0.2]), rtol=1e-6)
+
+
+def test_clip_preserves_direction():
+    state = _make_side_state(1)
+    params = _make_params_with_thrust(5.0)
+    cmd = _Command(dv=jnp.array([[3.0, 4.0, 0.0]]))
+    new_state = _apply(state, cmd, params, dt=10.0)
+    direction = new_state.applied_dv[0, :2] / jnp.linalg.norm(new_state.applied_dv[0, :2])
+    assert jnp.allclose(direction, jnp.array([0.6, 0.8]), rtol=1e-6)
+
+
+def test_empty_tank_produces_zero_dv_and_no_negative_propellant():
+    state = _make_side_state(1).replace(propellant_mass=jnp.array([0.0]))
+    params = _make_params_with_thrust(5.0)
+    cmd = _Command(dv=jnp.array([[0.3, 0.0, 0.0]]))
+    new_state = _apply(state, cmd, params, dt=10.0)
+    assert jnp.allclose(new_state.applied_dv, 0.0)
+    assert new_state.propellant_mass[0] == 0.0
+
+
+def test_last_drops_of_propellant_limit_dv_to_available_budget():
+    # Available budget: isp*g0*ln(wet/dry) = 220*9.80665*ln(100.001/100) ≈ 0.0216 m/s.
+    state = _make_side_state(1).replace(propellant_mass=jnp.array([0.001]))
+    params = _make_params_with_thrust(1e6)
+    cmd = _Command(dv=jnp.array([[0.3, 0.0, 0.0]]))
+    new_state = _apply(state, cmd, params, dt=10.0)
+    available = 220.0 * 9.80665 * jnp.log(100.001 / 100.0)
+    assert jnp.allclose(jnp.linalg.norm(new_state.applied_dv[0]), available, rtol=1e-4)
+    assert new_state.propellant_mass[0] >= 0.0
+    assert new_state.propellant_mass[0] < 1e-6
+
+
+def test_propellant_burn_uses_clipped_dv():
+    state = _make_side_state(1)
+    params = _make_params_with_thrust(5.0)
+    cmd = _Command(dv=jnp.array([[2.0, 0.0, 0.0]]))
+    new_state = _apply(state, cmd, params, dt=10.0)
+    dv_applied = 5.0 * 10.0 / 110.0
+    expected_burn = 110.0 * (1.0 - jnp.exp(-dv_applied / (220.0 * 9.80665)))
+    assert jnp.allclose(10.0 - new_state.propellant_mass[0], expected_burn, rtol=1e-5)

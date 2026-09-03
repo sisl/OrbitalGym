@@ -52,6 +52,7 @@ Updater pipeline per step:
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -346,7 +347,7 @@ def _initial_metrics(
     n_eff = K, weight_entropy = log K, resampled = False.
     """
     n_eff = jnp.full((n_obs, n_total), float(k_particles))
-    weight_entropy = jnp.full((n_obs, n_total), float(jnp.log(k_particles)))
+    weight_entropy = jnp.full((n_obs, n_total), math.log(k_particles))
     resampled = jnp.zeros((n_obs, n_total), dtype=bool)
     return n_eff, weight_entropy, resampled
 
@@ -407,9 +408,8 @@ class ParticleFilterRingInitializer:
     target).
 
     Layout requirements: ``n_guards``, ``n_bandits``,
-    ``dynamics_state_dim`` (must be 4 — RT plane). RTN (d=6) is not
-    yet supported; raise rather than silently dropping the cross-track
-    component.
+    ``dynamics_state_dim`` (must be 4 for RT plane or 6 for RTN). RTN
+    places zero cross-track position and rate, creating an in-plane ring.
 
     Parameters
     ----------
@@ -438,11 +438,8 @@ class ParticleFilterRingInitializer:
 
     def __call__(self, env_state, side: Side, key) -> ParticleFilterBelief:
         d = self.layout.dynamics_state_dim
-        if d != 4:
-            raise ValueError(
-                f"ParticleFilterRingInitializer expects RT-plane dynamics (d=4), got d={d}. "
-                "Use ParticleFilterFromTruthInitializer or extend the ring math to 3D."
-            )
+        if d not in (4, 6):
+            raise ValueError(f"ParticleFilterRingInitializer expects d in (4, 6), got d={d}")
 
         own_truth, opp_truth = _truth_arrays_for_side(env_state, side.value)
         n_self = own_truth.shape[0]
@@ -481,6 +478,20 @@ class ParticleFilterRingInitializer:
             ],
             axis=-1,
         )  # (n_self, n_opp, n_particles, 4)
+
+        if d == 6:
+            zeros = jnp.zeros_like(cp)
+            opp_particles = jnp.stack(
+                [
+                    -a * cp,
+                    2.0 * a * sp,
+                    zeros,
+                    n_motion * a * sp,
+                    2.0 * n_motion * a * cp,
+                    zeros,
+                ],
+                axis=-1,
+            )
 
         particles = jnp.concatenate([own_particles, opp_particles], axis=1)
         log_w = _uniform_log_weights(n_self, n_total, self.n_particles)

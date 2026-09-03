@@ -9,6 +9,7 @@ from typing import Any, Protocol, runtime_checkable
 import jax
 import jax.numpy as jnp
 
+from orbitalgym.dynamics.quaternion import rotate_toward
 from orbitalgym.frames.conversions import convert_action
 from orbitalgym.registry import Frame
 
@@ -65,6 +66,10 @@ class ImpulsiveManeuver:
     Does NOT integrate the dynamics — ``env.step`` owns the translational
     dynamics call (see the explicit propagation block in ``OrbitalGymEnv.step``).
 
+    Per-step delta-v magnitude is limited to ``max_thrust_n * dt / m_wet`` and
+    to the delta-v obtainable from remaining propellant. Direction is preserved
+    when clipping. An empty tank produces no delta-v.
+
     The Δv field shape follows ``action_frame.dim`` — 2 for RT (radial,
     along-track) and 3 for RTN/ECI. ``fields()`` and ``zeros()`` are instance
     methods (not staticmethods) so the assembled Command pytree carries the
@@ -96,26 +101,36 @@ class ImpulsiveManeuver:
         ref_eci6: jax.Array,
         key: jax.Array,
     ) -> Any:
-        del key, dt  # impulsive maneuver is deterministic; dt consumed by env.step
+        del key
         dv_action = command.dv  # (n, action_frame.dim)
+        dv_mag = jnp.linalg.norm(dv_action, axis=-1)  # (n,)
+        dtype = dv_action.dtype
+        dry_mass = jnp.asarray(side_params.dry_mass_kg, dtype=dtype)
 
-        # Frame conversion: rotate Δv from action frame to truth frame.
+        if self.track_mass:
+            wet_mass = dry_mass + side_state.propellant_mass
+            dv_available = side_params.isp_s * G0 * jnp.log(wet_mass / dry_mass)
+        else:
+            wet_mass = jnp.broadcast_to(dry_mass, dv_mag.shape)
+            dv_available = jnp.full_like(dv_mag, jnp.inf)
+
+        dv_cap = side_params.max_thrust_n * dt / wet_mass
+        dv_limit = jnp.minimum(dv_cap, dv_available)
+        safe_mag = jnp.maximum(dv_mag, jnp.asarray(1e-12, dtype=dtype))
+        scale = jnp.where(dv_mag > 0.0, jnp.minimum(1.0, dv_limit / safe_mag), 1.0)
+        dv_action = dv_action * scale[:, None]
+        dv_mag = dv_mag * scale
+
         dv_truth = convert_action(dv_action, self.action_frame, self.truth_frame, ref_eci6)
-
-        # Pad to width 3 (RT produces 2-D, RTN/ECI produce 3-D).
-        pad_width = 3 - self.truth_frame.dim  # 0 for RTN/ECI, 1 for RT
+        pad_width = 3 - self.truth_frame.dim
         dv_padded = jnp.pad(dv_truth, ((0, 0), (0, pad_width)))
 
         replacements: dict[str, Any] = {"applied_dv": dv_padded}
-
         if self.track_mass:
-            dv_mag = jnp.linalg.norm(dv_action, axis=-1)
-            wet_mass = side_params.dry_mass_kg + side_state.propellant_mass
             delta_propellant = wet_mass * (1.0 - jnp.exp(-dv_mag / (side_params.isp_s * G0)))
             replacements["propellant_mass"] = jnp.maximum(
                 side_state.propellant_mass - delta_propellant, 0.0
             )
-
         return side_state.replace(**replacements)
 
 
@@ -209,3 +224,46 @@ class AttitudeControl:
             tau_3d = jnp.clip(tau_3d, -tmax, tmax)
 
         return side_state.replace(applied_torque=tau_3d)
+
+
+@dataclass(frozen=True)
+class PointAt:
+    """Slew-limited kinematic pointing.
+
+    Command field ``target_dir`` (3,) is the desired direction of the body
+    boresight in the truth frame; a zero vector holds the current attitude.
+    Each step rotates the boresight toward the target along the shortest arc
+    by at most ``side_params.slew_rate_rad_s * dt``.
+    """
+
+    boresight_body: tuple[float, float, float] = (1.0, 0.0, 0.0)
+
+    def fields(self) -> Mapping[str, tuple[int, ...]]:
+        return {"target_dir": (3,)}
+
+    def zeros(self, n: int) -> Mapping[str, jax.Array]:
+        return {"target_dir": jnp.zeros((n, 3))}
+
+    def apply(
+        self,
+        command: Any,
+        side_state: Any,
+        side_params: Any,
+        dt: float,
+        ref_eci6: jax.Array,
+        key: jax.Array,
+    ) -> Any:
+        del ref_eci6, key
+        quat = side_state.quat
+        dtype = quat.dtype
+        target = jnp.asarray(command.target_dir, dtype=dtype)
+        boresight = jnp.asarray(self.boresight_body, dtype=dtype)
+        max_angle = jnp.asarray(side_params.slew_rate_rad_s, dtype=dtype) * jnp.asarray(
+            dt, dtype=dtype
+        )
+        slewed = jax.vmap(rotate_toward, in_axes=(0, None, 0, None))(
+            quat, boresight, target, max_angle
+        )
+        hold = jnp.linalg.norm(target, axis=-1) < 1e-9
+        new_quat = jnp.where(hold[:, None], quat, slewed)
+        return side_state.replace(quat=new_quat)
