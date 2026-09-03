@@ -58,6 +58,7 @@ import mctx
 
 from orbitalgym.adapters._command_flatten import flatten_command
 from orbitalgym.adapters.pomdp.adapter import POMDPAdapter
+from orbitalgym.belief.flatten import belief_mean_to_flat_state
 from orbitalgym.env.types import Actions, BySide, Side
 from orbitalgym.observations.types import flatten_observations
 
@@ -165,10 +166,20 @@ class MCTSPolicy:
             return self._search_joint(s_flat, key)
         return self._search_independent(s_flat, key)
 
+    def _decode_joint_idx(self, joint_idx: jax.Array) -> jax.Array:
+        """Base-A decode of a joint action index into ``(n_vehicles,)`` per-vehicle indices."""
+        a_count = int(self.action_grid.shape[0])
+        return jnp.stack([(joint_idx // (a_count**v)) % a_count for v in range(self.n_vehicles)])
+
     def _search_joint(self, s_flat: jax.Array, key: jax.Array) -> jax.Array:
+        policy_out = self._search_joint_out(s_flat, key)
+        return self._decode_joint_idx(jnp.asarray(policy_out.action)[0])
+
+    def _search_joint_out(self, s_flat: jax.Array, key: jax.Array) -> Any:
         """Single MCTS over the joint action space ``A^n_vehicles``.
 
-        Returns ``(n_vehicles,)`` per-vehicle action indices.
+        Returns the mctx ``PolicyOutput`` with ``action_weights`` shape
+        ``(1, A^n_vehicles)``.
         """
         adapter = self.env_model
         env = adapter.env
@@ -201,12 +212,6 @@ class MCTSPolicy:
         discount = jnp.asarray(self.discount, dtype=s_flat.dtype)
         self_dv_dim = int(self.command_cls.zeros(n_self).dv.shape[-1])
 
-        def _decode_joint(joint_idx: jax.Array) -> jax.Array:
-            """``joint_idx`` (scalar) → ``(n_self,)`` per-vehicle indices."""
-            # Base-A decoding; n_self is a Python int so the comprehension
-            # unrolls statically inside jit.
-            return jnp.stack([(joint_idx // (a_count**v)) % a_count for v in range(n_self)])
-
         def _per_v_dv(per_v_idx: jax.Array) -> jax.Array:
             """``(n_self,)`` action indices → ``(n_self, self_dv_dim)`` Δv."""
             dv = action_grid[per_v_idx]  # (n_self, dv_dim_grid)
@@ -235,7 +240,7 @@ class MCTSPolicy:
 
         def _step_one_no_schedule(s: jax.Array, joint_idx: jax.Array, k: jax.Array):
             k_opp, k_step = jax.random.split(k, 2)
-            self_dv = _per_v_dv(_decode_joint(joint_idx))
+            self_dv = _per_v_dv(self._decode_joint_idx(joint_idx))
             opp_dv = _opponent_dv(s, k_opp)
 
             self_cmd = self.command_cls.zeros(n_self).replace(
@@ -270,7 +275,7 @@ class MCTSPolicy:
             ``s_next`` so it can persist as part of the MCTS embedding.
             """
             k_opp, k_step = jax.random.split(k, 2)
-            self_dv = _per_v_dv(_decode_joint(joint_idx))
+            self_dv = _per_v_dv(self._decode_joint_idx(joint_idx))
 
             state = adapter.unpack(s)
             in_contact = in_contact_now(opp_schedule, state.t)
@@ -369,8 +374,7 @@ class MCTSPolicy:
                 num_simulations=self.num_simulations,
                 max_depth=self.max_depth,
             )
-        joint_idx = jnp.asarray(policy_out.action)[0]
-        return _decode_joint(joint_idx)
+        return policy_out
 
     def _search_independent(self, s_flat: jax.Array, key: jax.Array) -> jax.Array:
         """One single-vehicle MCTS per teammate.
@@ -392,10 +396,19 @@ class MCTSPolicy:
         key: jax.Array,
         self_index: int,
     ) -> jax.Array:
+        policy_out = self._search_one_vehicle_out(s_flat, key, self_index)
+        return jnp.asarray(policy_out.action)[0]
+
+    def _search_one_vehicle_out(
+        self,
+        s_flat: jax.Array,
+        key: jax.Array,
+        self_index: int,
+    ) -> Any:
         """Single-vehicle MCTS for the vehicle at ``self_index``.
 
         Other teammates' Δv during simulation come from ``teammate_model``.
-        Returns the chosen action grid index (scalar) for this vehicle.
+        Returns the mctx ``PolicyOutput`` with ``action_weights`` shape ``(1, A)``.
         """
         adapter = self.env_model
         env = adapter.env
@@ -587,7 +600,7 @@ class MCTSPolicy:
                 num_simulations=self.num_simulations,
                 max_depth=self.max_depth,
             )
-        return jnp.asarray(policy_out.action)[0]
+        return policy_out
 
     def _action_idx_to_command(self, per_v_idx: jax.Array) -> Any:
         """``(n_vehicles,)`` per-vehicle action indices → side Command."""
@@ -675,3 +688,76 @@ class BeliefAdaptedMCTSPolicy:
             self.template_env_state,
         )
         return self.inner_mcts(policy_state, s_flat, key, t)
+
+
+@dataclass(frozen=True)
+class ParticleRootMCTSPolicy:
+    """Determinized search over a particle belief.
+
+    Samples ``n_roots`` joint states by drawing one particle per tracked
+    entity from observer 0's clouds, runs the inner search from every root
+    under ``jax.vmap``, averages the root action weights, and acts on the
+    argmax. Own-side entities are anchored to truth by the filter, so the
+    roots differ only in the opposing side's states.
+    """
+
+    inner_mcts: MCTSPolicy
+    template_env_state: Any
+    n_roots: int = 8
+
+    @property
+    def n_vehicles(self) -> int:
+        return self.inner_mcts.n_vehicles
+
+    @property
+    def command_cls(self) -> Any:
+        return self.inner_mcts.command_cls
+
+    @property
+    def side(self) -> Side:
+        return self.inner_mcts.side
+
+    def _sample_roots(self, belief: Any, key: jax.Array) -> jax.Array:
+        particles = belief.particles[0]  # (N_total, K, d)
+        log_w = belief.log_weights[0]  # (N_total, K)
+        n_total = particles.shape[0]
+        keys = jax.random.split(key, n_total)
+        idx = jax.vmap(lambda k, lw: jax.random.categorical(k, lw, shape=(self.n_roots,)))(
+            keys, log_w
+        )  # (N_total, n_roots)
+        sampled = particles[jnp.arange(n_total)[:, None], idx]  # (N_total, n_roots, d)
+        roots = jnp.swapaxes(sampled, 0, 1)  # (n_roots, N_total, d)
+        n_obs = belief.particles.shape[0]
+
+        def to_flat(row):
+            mean_like = jnp.broadcast_to(row[None], (n_obs,) + row.shape)
+            return belief_mean_to_flat_state(
+                mean_like, self.inner_mcts.side, self.inner_mcts.env_model, self.template_env_state
+            )
+
+        return jax.vmap(to_flat)(roots)
+
+    def __call__(self, policy_state: Any, agent_view: Any, key: jax.Array, t: jax.Array):
+        if isinstance(agent_view, jax.Array):
+            return self.inner_mcts(policy_state, agent_view, key, t)
+        belief = agent_view.inner if hasattr(agent_view, "inner") else agent_view
+        k_sample, k_search = jax.random.split(key)
+        s_roots = self._sample_roots(belief, k_sample)  # (n_roots, states_dim)
+        search_keys = jax.random.split(k_search, self.n_roots)
+        inner = self.inner_mcts
+
+        if inner.coordination == "joint" or inner.n_vehicles == 1:
+            outs = jax.vmap(inner._search_joint_out)(s_roots, search_keys)
+            weights = jnp.mean(outs.action_weights[:, 0, :], axis=0)
+            per_v_idx = inner._decode_joint_idx(jnp.argmax(weights))
+        else:
+            per_v = []
+            for i in range(inner.n_vehicles):
+                outs = jax.vmap(lambda s, k, i=i: inner._search_one_vehicle_out(s, k, i))(
+                    s_roots, search_keys
+                )
+                weights = jnp.mean(outs.action_weights[:, 0, :], axis=0)
+                per_v.append(jnp.argmax(weights))
+            per_v_idx = jnp.stack(per_v)
+
+        return inner._action_idx_to_command(per_v_idx), policy_state
