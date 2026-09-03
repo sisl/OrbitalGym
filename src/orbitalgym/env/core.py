@@ -18,7 +18,7 @@ import jax
 import jax.numpy as jnp
 
 from orbitalgym.actions.assemble import build_command_class
-from orbitalgym.actions.components import AttitudeControl, Communicate, ImpulsiveManeuver
+from orbitalgym.actions.components import AttitudeControl, Communicate, ImpulsiveManeuver, PointAt
 from orbitalgym.config import ScenarioConfig
 from orbitalgym.dynamics.hcw import hcw_rt_step, hcw_rtn_step
 from orbitalgym.dynamics.j2 import j2_eci_step
@@ -69,6 +69,7 @@ _ACTION_COMP_LOOKUP: dict[ActionComponentKey, type] = {
     ActionComponentKey.IMPULSIVE_MANEUVER: ImpulsiveManeuver,
     ActionComponentKey.COMMUNICATE: Communicate,
     ActionComponentKey.ATTITUDE_CONTROL: AttitudeControl,
+    ActionComponentKey.POINT_AT: PointAt,
 }
 
 _DYN_LOOKUP = {
@@ -147,6 +148,7 @@ class _FleetParams:
     isp_s: jax.Array
     max_thrust_n: jax.Array
     mean_motion: jax.Array
+    slew_rate_rad_s: jax.Array
 
 
 def _build_per_side_params(spec, mean_motion: float) -> _FleetParams:
@@ -155,6 +157,7 @@ def _build_per_side_params(spec, mean_motion: float) -> _FleetParams:
         isp_s=jnp.asarray(spec.isp_s),
         max_thrust_n=jnp.asarray(spec.max_thrust_n),
         mean_motion=jnp.asarray(mean_motion),
+        slew_rate_rad_s=jnp.asarray(spec.slew_rate_rad_s),
     )
 
 
@@ -269,6 +272,8 @@ class OrbitalGymEnv:
                         rotation_dim=rotation_dim,
                         torque_max=self.config.attitude_control_torque_max,
                     )
+                elif cls is PointAt:
+                    inst = PointAt(boresight_body=tuple(self.config.pointing_boresight_body))
                 else:
                     raise ValueError(f"No instance constructor for action component {key!r}")
                 instances.append(inst)

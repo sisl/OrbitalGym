@@ -20,36 +20,11 @@ import jax
 import jax.numpy as jnp
 
 from orbitalgym.belief._common import _truth_arrays_for_side
+from orbitalgym.dynamics.quaternion import (
+    quat_to_rotation_matrix as _quat_wxyz_to_rotation_matrix_jax,
+)
 from orbitalgym.observations.types import Observation
 from orbitalgym.registry import ObservationFnKey, register
-
-
-def _quat_wxyz_to_rotation_matrix_jax(q: jax.Array) -> jax.Array:
-    """Convert (w, x, y, z) quaternion to a 3x3 body-to-reference rotation matrix.
-
-    JAX-native version (fully traceable, safe to vmap). Normalises the quaternion
-    first to guard against near-zero inputs — returns identity for zero quaternion.
-    Matches the convention in ``viz.glyphs.quat_to_rotation_matrix``.
-    """
-    dtype = q.dtype
-    norm = jnp.linalg.norm(q)
-    q = q / jnp.maximum(norm, jnp.asarray(1e-12, dtype=dtype))
-    w, x, y, z = q[0], q[1], q[2], q[3]
-    one = jnp.asarray(1.0, dtype=dtype)
-    two = jnp.asarray(2.0, dtype=dtype)
-    return jnp.stack(
-        [
-            one - two * (y * y + z * z),
-            two * (x * y - z * w),
-            two * (x * z + y * w),
-            two * (x * y + z * w),
-            one - two * (x * x + z * z),
-            two * (y * z - x * w),
-            two * (x * z - y * w),
-            two * (y * z + x * w),
-            one - two * (x * x + y * y),
-        ]
-    ).reshape(3, 3)
 
 
 @register(ObservationFnKey.CONICAL)

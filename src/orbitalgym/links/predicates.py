@@ -13,9 +13,9 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 
+from orbitalgym.dynamics.quaternion import quat_to_rotation_matrix
 from orbitalgym.env.types import Side
 from orbitalgym.groundstations.contacts import in_contact_now
-from orbitalgym.observations.conical import _quat_wxyz_to_rotation_matrix_jax
 from orbitalgym.registry import LinkKey, register
 
 
@@ -80,7 +80,7 @@ class PointingConeLink:
         n = pos.shape[0]
         dtype = pos.dtype
         quat = _quats(side_state, n, dtype)
-        rot = jax.vmap(_quat_wxyz_to_rotation_matrix_jax)(quat)  # (n, 3, 3)
+        rot = jax.vmap(quat_to_rotation_matrix)(quat)  # (n, 3, 3)
         b_body = jnp.asarray(self.boresight_body, dtype=dtype)
         b_world = rot @ (b_body / jnp.linalg.norm(b_body))  # (n, 3)
 

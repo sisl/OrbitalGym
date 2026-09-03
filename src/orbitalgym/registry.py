@@ -69,6 +69,7 @@ class AttitudeDynamicsKey(StrEnum):
     """
 
     RIGID_BODY = "rigid_body_attitude"
+    KINEMATIC = "kinematic_attitude"
 
 
 class ActionComponentKey(StrEnum):
@@ -78,12 +79,14 @@ class ActionComponentKey(StrEnum):
     COMMUNICATE = "communicate"  # broadcast to other agents (Dec-POMDP comms)
     # body-frame torque (N·m) producer; reaction-wheel saturation modeled in dynamics
     ATTITUDE_CONTROL = "attitude_control"
+    POINT_AT = "point_at"  # slew-limited kinematic pointing
 
 
 class PolicyKey(StrEnum):
     """Role-agnostic policy registry key. Same key serves any side."""
 
     ZERO_CONTROL = "zero_control"
+    POINTING = "pointing_policy"
 
 
 class ObservationFnKey(StrEnum):

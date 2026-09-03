@@ -44,6 +44,7 @@ class VehicleParamsSpec:
     dry_mass_kg: float
     isp_s: float
     max_thrust_n: float
+    slew_rate_rad_s: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -152,6 +153,7 @@ class ScenarioConfig:
     guard_attitude_params: Any = None  # AttitudeParams | None
     bandit_attitude_params: Any = None  # AttitudeParams | None
     attitude_control_torque_max: tuple[float, float, float] | None = None
+    pointing_boresight_body: tuple[float, float, float] = (1.0, 0.0, 0.0)
 
     # State layout — derived from n_guards/n_bandits/components. Built once
     # in __post_init__ so custom observation functions can read it via
@@ -456,7 +458,7 @@ class ScenarioConfig:
                 "components — add them or unset attitude_dynamics_key"
             )
 
-        if self.attitude_dynamics_key is not None:
+        if self.attitude_dynamics_key is AttitudeDynamicsKey.RIGID_BODY:
             if has_attitude_g and self.guard_attitude_params is None:
                 raise ValueError(
                     "guard_attitude_params is None but guards have ATTITUDE+BODY_RATES; "
@@ -481,6 +483,37 @@ class ScenarioConfig:
             raise ValueError(
                 "bandit_action_components contains ATTITUDE_CONTROL but bandits lack "
                 "ATTITUDE+BODY_RATES state components"
+            )
+
+        if ActionComponentKey.POINT_AT in self.guard_action_components and not (
+            has_attitude_g and has_rates_g
+        ):
+            raise ValueError(
+                "guard_action_components contains POINT_AT but guards lack "
+                "ATTITUDE+BODY_RATES state components"
+            )
+        if ActionComponentKey.POINT_AT in self.bandit_action_components and not (
+            has_attitude_b and has_rates_b
+        ):
+            raise ValueError(
+                "bandit_action_components contains POINT_AT but bandits lack "
+                "ATTITUDE+BODY_RATES state components"
+            )
+        if (
+            ActionComponentKey.POINT_AT in self.guard_action_components
+            and ActionComponentKey.ATTITUDE_CONTROL in self.guard_action_components
+        ):
+            raise ValueError(
+                "guard_action_components contains both POINT_AT and ATTITUDE_CONTROL; "
+                "a side cannot have both"
+            )
+        if (
+            ActionComponentKey.POINT_AT in self.bandit_action_components
+            and ActionComponentKey.ATTITUDE_CONTROL in self.bandit_action_components
+        ):
+            raise ValueError(
+                "bandit_action_components contains both POINT_AT and ATTITUDE_CONTROL; "
+                "a side cannot have both"
             )
 
     def to_json(self) -> str:
@@ -748,6 +781,8 @@ def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> Scen
                 pass
             else:
                 kwargs[f.name] = tuple(float(x) for x in v)
+        elif f.name == "pointing_boresight_body":
+            kwargs[f.name] = tuple(float(x) for x in v)
         elif f.name in ("guard_attitude_params", "bandit_attitude_params"):
             if v is None:
                 pass  # leave absent; __post_init__ validates None is allowed

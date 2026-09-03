@@ -9,6 +9,7 @@ from typing import Any, Protocol, runtime_checkable
 import jax
 import jax.numpy as jnp
 
+from orbitalgym.dynamics.quaternion import rotate_toward
 from orbitalgym.frames.conversions import convert_action
 from orbitalgym.registry import Frame
 
@@ -223,3 +224,46 @@ class AttitudeControl:
             tau_3d = jnp.clip(tau_3d, -tmax, tmax)
 
         return side_state.replace(applied_torque=tau_3d)
+
+
+@dataclass(frozen=True)
+class PointAt:
+    """Slew-limited kinematic pointing.
+
+    Command field ``target_dir`` (3,) is the desired direction of the body
+    boresight in the truth frame; a zero vector holds the current attitude.
+    Each step rotates the boresight toward the target along the shortest arc
+    by at most ``side_params.slew_rate_rad_s * dt``.
+    """
+
+    boresight_body: tuple[float, float, float] = (1.0, 0.0, 0.0)
+
+    def fields(self) -> Mapping[str, tuple[int, ...]]:
+        return {"target_dir": (3,)}
+
+    def zeros(self, n: int) -> Mapping[str, jax.Array]:
+        return {"target_dir": jnp.zeros((n, 3))}
+
+    def apply(
+        self,
+        command: Any,
+        side_state: Any,
+        side_params: Any,
+        dt: float,
+        ref_eci6: jax.Array,
+        key: jax.Array,
+    ) -> Any:
+        del ref_eci6, key
+        quat = side_state.quat
+        dtype = quat.dtype
+        target = jnp.asarray(command.target_dir, dtype=dtype)
+        boresight = jnp.asarray(self.boresight_body, dtype=dtype)
+        max_angle = jnp.asarray(side_params.slew_rate_rad_s, dtype=dtype) * jnp.asarray(
+            dt, dtype=dtype
+        )
+        slewed = jax.vmap(rotate_toward, in_axes=(0, None, 0, None))(
+            quat, boresight, target, max_angle
+        )
+        hold = jnp.linalg.norm(target, axis=-1) < 1e-9
+        new_quat = jnp.where(hold[:, None], quat, slewed)
+        return side_state.replace(quat=new_quat)
