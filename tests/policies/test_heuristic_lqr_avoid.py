@@ -3,6 +3,7 @@
 import flax
 import jax
 import jax.numpy as jnp
+import pytest
 
 from orbitalgym.policies.heuristic.lqr_avoid import LQRGoToLadyWithAvoidance
 from tests.policies._helpers import make_impulsive_maneuver_command_cls
@@ -62,3 +63,10 @@ def test_flat_observation_matches_belief_path():
     a, _ = _policy(1.0)(None, view, None, 0.0)
     b, _ = _policy(1.0)(None, flat, None, 0.0)
     assert jnp.allclose(a.dv, b.dv)
+
+
+def test_rejects_wrong_sized_flat_observation():
+    policy = _policy(0.0)
+    wrong_size_flat = jnp.array([1.0, 2.0, 3.0])
+    with pytest.raises(ValueError, match="full-state"):
+        policy(None, wrong_size_flat, None, 0.0)
