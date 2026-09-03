@@ -221,6 +221,8 @@ def belief_rollout(
     guard_ground_station_network: Any = None,
     bandit_ground_station_network: Any = None,
     team_sync_fns: Any = None,  # BySide[BeliefSyncFn | None] | None
+    guard_link: Any = None,
+    bandit_link: Any = None,
     initial_state: Any = None,
 ) -> tuple[Trajectory, BySide]:
     """Belief-aware rollout: agent_view = post-update Belief.
@@ -228,8 +230,9 @@ def belief_rollout(
     Each tick:
 
       1. For each side, compute a per-tick contact mask of shape
-         ``(n_side,)`` from the side's ground-station network. When the
-         network is ``None`` the mask is all-False.
+         ``(n_side,)`` from the side's link predicate when given, else from
+         its ground-station network. When neither is given the mask is
+         all-False.
       2. Optionally fuse the side's belief across in-contact teammates via
          ``team_sync_fns.X(belief_X, contact_X)``.
       3. Wrap the (possibly synced) belief as a
@@ -258,12 +261,13 @@ def belief_rollout(
     n_g = env.config.n_guards
     n_b = env.config.n_bandits
 
-    def _contact_mask(network: Any, n_side: int, t: jax.Array) -> jax.Array:
-        """Per-side contact mask. None network → all-False of shape (n_side,)."""
+    def _contact_mask(link: Any, network: Any, n_side: int, es: Any, side: Side) -> jax.Array:
+        """Per-side link mask. A link predicate wins; else the network schedule; else all-False."""
+        if link is not None:
+            return link(es, side, es.t)
         if network is None:
             return jnp.zeros((n_side,), dtype=jnp.bool_)
-        scalar = in_contact_now(network.schedule, t)
-        return jnp.broadcast_to(scalar, (n_side,))
+        return jnp.broadcast_to(in_contact_now(network.schedule, es.t), (n_side,))
 
     k_reset, k_init, k_scan = jax.random.split(key, 3)
     k_init_g, k_init_b = jax.random.split(k_init, 2)
@@ -285,8 +289,8 @@ def belief_rollout(
 
         # Per-tick contact masks (closure-static branch on the Python
         # network handles, traced lookup on `es.t`).
-        contact_g = _contact_mask(guard_ground_station_network, n_g, es.t)
-        contact_b = _contact_mask(bandit_ground_station_network, n_b, es.t)
+        contact_g = _contact_mask(guard_link, guard_ground_station_network, n_g, es, Side.GUARD)
+        contact_b = _contact_mask(bandit_link, bandit_ground_station_network, n_b, es, Side.BANDIT)
 
         # Optional team-belief fusion. Runs BEFORE the policy call so the
         # policy sees the fused belief; the fused belief also replaces the
@@ -364,6 +368,8 @@ def belief_rollout(
             "bandit_ps": ps_b,
             "guard_belief": synced_belief_g,
             "bandit_belief": synced_belief_b,
+            "guard_contact": contact_g,
+            "bandit_contact": contact_b,
         }
         return (
             advance_es,
@@ -400,6 +406,7 @@ def belief_rollout(
             ),
         ),
         episode_done=stacked["episode_done"],
+        contact=BySide(guard=stacked["guard_contact"], bandit=stacked["bandit_contact"]),
         controlled_side=getattr(env.config, "controlled_side", Side.GUARD),
     )
     belief_history = BySide(guard=stacked["guard_belief"], bandit=stacked["bandit_belief"])

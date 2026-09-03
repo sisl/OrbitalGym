@@ -159,6 +159,14 @@ class BeliefSyncKey(StrEnum):
     PF_TEAM_FUSION = "pf_team_fusion"
 
 
+class LinkKey(StrEnum):
+    """Team communication link predicate."""
+
+    ALWAYS = "always_linked"
+    GROUND_NETWORK = "ground_network_link"
+    POINTING_CONE = "pointing_cone_link"
+
+
 class GameKey(StrEnum):
     """Game catalog key. NoGame is the default for custom scenarios."""
 

@@ -104,6 +104,7 @@ def make_lady_bandit_guard(
     # is wired separately by the caller (see CommsLeakObservation).
     with_communication: bool = False,
     comm_cost: float = 5.0,
+    **config_kwargs: Any,
 ):
     """Builder for an LBG scenario.
 
@@ -115,6 +116,8 @@ def make_lady_bandit_guard(
     to 2D RT dynamics, pass matching `truth_dynamics`/`policy_dynamics`
     *and* corresponding `guard_components`/`bandit_components`; otherwise
     `ScenarioConfig.__post_init__` will reject the incoherent combo.
+
+    Additional keyword arguments are forwarded to `ScenarioConfig`.
     """
     import jax.numpy as jnp
 
@@ -191,5 +194,6 @@ def make_lady_bandit_guard(
             catch_radius_m=catch_radius_m,
         ),
         **extra_kwargs,
+        **config_kwargs,
     )
     return cfg
