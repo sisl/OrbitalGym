@@ -9,9 +9,10 @@ existing 3D ``Axes``. The same renderer is consumed by:
   via ``ffmpeg`` to MP4
 
 A :class:`RolloutScene` bundles the trajectory plus toggleable layers:
-trails, agent cubes, sensor-range spheres, thrust arrows, and EKF belief
-ellipsoids. Heavy data-dependent quantities (axis limit, max thrust
-magnitude) are precomputed once on the scene so per-frame work stays cheap.
+trails, agent cubes, sensor-range spheres, sensor cones, communication-link
+cones, thrust arrows, and EKF belief ellipsoids. Heavy data-dependent
+quantities (axis limit, max thrust magnitude) are precomputed once on the
+scene so per-frame work stays cheap.
 """
 
 from __future__ import annotations
@@ -125,6 +126,38 @@ def _walk_for_conical(obs_fn: Any) -> list:
     return []
 
 
+def _link_cone_params(link: Any) -> tuple[np.ndarray, float] | None:
+    """Return ``(boresight_body_unit, half_angle_rad)`` for a ``PointingConeLink``.
+
+    Returns ``None`` for other link kinds (e.g. ``AlwaysLinked``,
+    ``GroundNetworkLink``) which carry no cone geometry to draw.
+    """
+    from orbitalgym.links.predicates import PointingConeLink
+
+    if not isinstance(link, PointingConeLink):
+        return None
+    boresight = np.asarray(link.boresight_body, dtype=float)
+    boresight = boresight / np.linalg.norm(boresight)
+    return boresight, float(link.half_angle_rad)
+
+
+def _resolve_link_masks(link_mask: Any, contact: Any) -> dict[Side, np.ndarray | None]:
+    """Resolve the per-side link mask source: explicit ``link_mask`` wins,
+    else the trajectory's logged ``contact`` field, else unknown (``None``).
+
+    Accepts a ``BySide`` or a plain ``dict`` keyed by ``Side`` — both support
+    ``.get(side)`` with a ``Side`` key.
+    """
+    source = link_mask if link_mask is not None else contact
+    if source is None:
+        return {Side.GUARD: None, Side.BANDIT: None}
+    out: dict[Side, np.ndarray | None] = {}
+    for side in (Side.GUARD, Side.BANDIT):
+        mask = source.get(side)
+        out[side] = np.asarray(mask) if mask is not None else None
+    return out
+
+
 def _infer_sensor_ranges(cfg: Any) -> dict[Side, float | None]:
     """Read ``sensor_range_m`` from a config if its observation fn is range-limited."""
     from orbitalgym.observations.range_limited import RangeLimitedObservation
@@ -181,6 +214,13 @@ class RolloutScene:
     show_belief: bool = False
     show_reference_marker: bool = True
     show_contact_state: bool = False
+    # When True, overlay each vehicle's communication cone from its side's
+    # link predicate (``guard_link`` / ``bandit_link``), solid when
+    # ``link_mask`` (or, absent that, ``traj.contact``) marks the link
+    # closed at that frame, translucent otherwise. Only ``PointingConeLink``
+    # carries cone geometry; other link kinds (e.g. ``AlwaysLinked``,
+    # ``GroundNetworkLink``) are silently skipped.
+    show_link_cones: bool = False
     # When True, render the cached LQR plan as a faint dashed polyline
     # forward from each agent's current position. Reads
     # ``traj.sides.<side>.policy_state.{plan, step_in_plan}`` and
@@ -213,6 +253,13 @@ class RolloutScene:
     cone_length_m: float | None = None  # None ⇒ render to plot edge (cones are unbounded);
     # set to a float to truncate (cosmetic only).
     cone_alpha: float = 0.15
+    guard_link: Any = None  # link predicate (e.g. PointingConeLink) for comm-cone geometry
+    bandit_link: Any = None
+    link_mask: Any = None  # BySide or dict[Side, (T, n)] bool; defaults to traj.contact
+    link_cone_length_m: float | None = None  # None ⇒ render to plot edge, like cone_length_m
+    link_cone_color: str = "limegreen"
+    link_cone_alpha_closed: float = 0.35
+    link_cone_alpha_open: float = 0.08
     thrust_max_fraction: float = 1.0 / 20.0
     thrust_color: str = "orange"
     belief_history: BySide | None = None
@@ -256,6 +303,8 @@ class RolloutScene:
     _cube_scale: float = field(init=False, repr=False)
     _thrust_scale: float = field(init=False, repr=False)
     _sensor_ranges: dict[Side, float | None] = field(init=False, repr=False)
+    _link_predicates: dict[Side, Any] = field(init=False, repr=False)
+    _link_masks: dict[Side, np.ndarray | None] = field(init=False, repr=False)
     _n_frames: int = field(init=False, repr=False)
 
     def __post_init__(self):
@@ -357,6 +406,9 @@ class RolloutScene:
                 Side.GUARD: self.sensor_range_m.get(Side.GUARD),
                 Side.BANDIT: self.sensor_range_m.get(Side.BANDIT),
             }
+
+        self._link_predicates = {Side.GUARD: self.guard_link, Side.BANDIT: self.bandit_link}
+        self._link_masks = _resolve_link_masks(self.link_mask, self.traj.contact)
 
     @property
     def resolved_mode(self) -> str:
@@ -684,6 +736,34 @@ def _render_side_3d(scene: RolloutScene, ax: Any, frame: int, side: Side) -> Non
                         alpha=scene.cone_alpha,
                     )
 
+        if scene.show_link_cones:
+            cone_params = _link_cone_params(scene._link_predicates.get(side))
+            if cone_params is not None:
+                boresight_body, half_angle = cone_params
+                mask = scene._link_masks.get(side)
+                eff_length = (
+                    scene.link_cone_length_m
+                    if scene.link_cone_length_m is not None
+                    else 2.5 * scene._axis_limit
+                )
+                closed = bool(mask[frame, i]) if mask is not None else False
+                alpha = scene.link_cone_alpha_closed if closed else scene.link_cone_alpha_open
+                R_body = (  # noqa: N806
+                    _RTN_TO_PLOT @ quat_to_rotation_matrix(quat[frame, i])
+                    if quat is not None
+                    else np.eye(3)
+                )
+                b_world = R_body @ boresight_body
+                draw_cone_3d(
+                    ax,
+                    center,
+                    b_world,
+                    half_angle,
+                    eff_length,
+                    color=scene.link_cone_color,
+                    alpha=alpha,
+                )
+
         if scene.show_cubes:
             # Quat is body→RTN; the plot frame is permuted from RTN, so
             # body→plot = P @ R_rtn.
@@ -769,6 +849,33 @@ def _render_side_2d(scene: RolloutScene, ax: Any, frame: int, side: Side) -> Non
                         color=color,
                         alpha=scene.cone_alpha,
                     )
+
+        if scene.show_link_cones:
+            cone_params = _link_cone_params(scene._link_predicates.get(side))
+            if cone_params is not None:
+                boresight_body, half_angle = cone_params
+                mask = scene._link_masks.get(side)
+                eff_length = (
+                    scene.link_cone_length_m
+                    if scene.link_cone_length_m is not None
+                    else 2.5 * scene._axis_limit
+                )
+                closed = bool(mask[frame, i]) if mask is not None else False
+                alpha = scene.link_cone_alpha_closed if closed else scene.link_cone_alpha_open
+                R_rtn = (  # noqa: N806
+                    quat_to_rotation_matrix(quat[frame, i]) if quat is not None else np.eye(3)
+                )
+                b_rtn = R_rtn @ boresight_body
+                b_plot_xy = np.array([b_rtn[1], b_rtn[0]])  # [R, T, N] → plot [T, R]
+                draw_wedge_2d(
+                    ax,
+                    np.array([cx, cy]),
+                    b_plot_xy,
+                    half_angle,
+                    eff_length,
+                    color=scene.link_cone_color,
+                    alpha=alpha,
+                )
 
         if scene.show_cubes:
             # 2D yaw glyph: rotated square + heading-indicator triangle
