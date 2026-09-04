@@ -104,7 +104,16 @@ def check_policy_conforms(
         if side is Side.GUARD
         else BySide(guard=other, bandit=policy)
     )
-    none_init = BySide(guard=lambda c, s, k: None, bandit=lambda c, s, k: None)
+
+    def _initial_policy_state(p: Any) -> Any:
+        """``p.init_state()`` when available, else ``None`` (stateless policies)."""
+        init_state = getattr(p, "init_state", None)
+        return init_state() if init_state is not None else None
+
+    none_init = BySide(
+        guard=lambda c, s, k, p=policies.guard: _initial_policy_state(p),
+        bandit=lambda c, s, k, p=policies.bandit: _initial_policy_state(p),
+    )
     try:
         belief_rollout(
             env,
