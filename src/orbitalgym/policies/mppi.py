@@ -3,7 +3,8 @@
 Samples ``n_samples`` control sequences around a warm-started mean, rolls each
 through the adapter's transition with the opponent modeled by ``opponent_model``,
 scores them by negative cumulative side reward (plus an optional terminal
-value), and updates the mean with softmax weights at ``temperature``. The mean
+value), standardizes the costs by their spread, and updates the mean with
+softmax weights at ``temperature`` applied to the standardized costs. The mean
 sequence is the policy state, shifted by one step after each call.
 """
 
@@ -126,7 +127,9 @@ class MPPIPolicy:
         u = _clip_norm(u_mean[None] + eps, self.dv_max)  # (K, H, n, dv_dim)
         roll_keys = jax.random.split(k_roll, self.n_samples)
         costs = jax.vmap(lambda uk, kk: self._rollout_cost(s0, uk, kk))(u, roll_keys)
-        weights = jax.nn.softmax(-(costs - jnp.min(costs)) / self.temperature)
+        centered = costs - jnp.min(costs)
+        scale = jnp.maximum(jnp.std(costs), 1e-6)
+        weights = jax.nn.softmax(-centered / (scale * self.temperature))
         u_new = jnp.einsum("k,khnd->hnd", weights, u).astype(u_mean.dtype)
         action = u_new[0]
         next_state = jnp.concatenate([u_new[1:], jnp.zeros_like(u_new[:1])], axis=0)
