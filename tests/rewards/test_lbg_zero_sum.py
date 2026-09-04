@@ -100,3 +100,24 @@ def test_rewards_are_zero_sum():
     nxt = _state([[0.0, 0.0, 0.0]], [[400.0, 30.0, 0.0]], step=1)
     guard, bandit = _rewards(reward, prev, nxt, cfg)
     assert abs(guard + bandit) < 1e-5
+
+
+def test_repelled_step_pays_the_guard_the_catch_bonus():
+    """A bandit driven beyond the escape radius pays the same as a catch."""
+    reward = LbgZeroSumReward(escape_radius_m=5000.0)
+    prev = _state(_FAR_GUARD, [[6000.0, 0.0, 0.0]])
+    nxt = _state(_FAR_GUARD, [[6000.0, 10.0, 0.0]], step=1)
+    guard, bandit = _rewards(reward, prev, nxt, _Cfg())
+    assert guard > reward.r_catch - 10.0
+    assert bandit < -(reward.r_catch - 10.0)
+
+
+def test_repelled_and_termination_agree():
+    """The reward pays the bonus on exactly the step the termination fires."""
+    reward = LbgZeroSumReward(escape_radius_m=5000.0)
+    term = LbgEventTermination(breach_radius_m=5.0, escape_radius_m=5000.0)
+    prev = _state(_FAR_GUARD, [[4000.0, 0.0, 0.0]])
+    nxt = _state(_FAR_GUARD, [[4000.0, 10.0, 0.0]], step=1)
+    guard, _ = _rewards(reward, prev, nxt, _Cfg())
+    assert guard < reward.r_catch
+    assert not bool(term(prev, nxt, _Cfg(), nxt.step))

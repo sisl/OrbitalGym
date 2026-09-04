@@ -388,6 +388,7 @@ class ScenarioConfig:
         game = self.game if self.game is not None else NoGame()
         if self.game is None:
             object.__setattr__(self, "game", game)
+        game.validate(self)
 
         # Defaults for typed-instance components. Local imports to avoid cycles.
         if self.guard_observation_fn is None:

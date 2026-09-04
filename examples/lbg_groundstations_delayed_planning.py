@@ -935,9 +935,7 @@ plt.show()
 # 90% of the video as a static frame after the episode ends.
 def _truncate_trajectory(traj, n_real_ticks: int):
     """Slice every time-stacked leaf; `final_state` carries no time axis."""
-    sliced = jax.tree_util.tree_map(
-        lambda x: x[:n_real_ticks], traj.replace(final_state=None)
-    )
+    sliced = jax.tree_util.tree_map(lambda x: x[:n_real_ticks], traj.replace(final_state=None))
     return sliced.replace(final_state=traj.final_state)
 
 

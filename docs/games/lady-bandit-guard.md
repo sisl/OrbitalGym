@@ -18,14 +18,16 @@ traj = rollout_single_agent(view, guard, lambda c, s, k: None,
 
 For a full walkthrough see [T1 — First rollout](../tutorials/t1-first-rollout.md).
 
-The guard defends the lady — a virtual point at the reference-orbit origin (the RTN frame) — from one or more bandits. The bandit wins by reaching within `breach_radius_m` of the lady; the guard wins by catching a bandit within `catch_radius_m`. Episode termination is event-driven (`LbgEventTermination`); the per-step reward is zero-sum (`LbgZeroSumReward`).
+The guard defends the lady — a virtual point at the reference-orbit origin (the RTN frame) — from one or more bandits. The bandit wins by reaching within `breach_radius_m` of the lady; the guard wins by catching a bandit within `catch_radius_m`, or by repelling every bandit so none can threaten the lady again. Episode termination is event-driven (`LbgEventTermination`); the per-step reward is zero-sum (`LbgZeroSumReward`).
 
 ## What the reward shapes
 
 `LbgZeroSumReward` mirrors guard and bandit signals every step:
 
-- **Guard**: `−α·d_guard_bandit_min + R_catch·1[catch] − R_breach·1[breach]`. The dense term pulls the guard toward the closest bandit; the terminal events dominate cumulative return when triggered.
-- **Bandit** (mirror): `−α·d_bandit_lady_min + R_breach·1[breach] − R_catch·1[catch]`. The dense term pulls the bandit toward the lady; terminal events flip the sign of the guard's reward.
+- **Guard**: `−α·d_guard_bandit_min + R_catch·1[catch or repelled] − R_breach·1[breach]`. The dense term pulls the guard toward the closest bandit; the terminal events dominate cumulative return when triggered.
+- **Bandit** (mirror): `−α·d_bandit_lady_min + R_breach·1[breach] − R_catch·1[catch or repelled]`. The dense term pulls the bandit toward the lady; terminal events flip the sign of the guard's reward.
+
+Repelling the bandits pays the guard exactly what a catch pays: either way the bandit team is out of the fight, so the guard is indifferent between intercepting a bandit and driving it off.
 
 `α=1e-3`, `R_catch=R_breach=1000.0` by default; the radii and the speed gates come from `cfg.game`, and both the reward and the termination read the same closest-approach events, so a terminal bonus is paid in exactly the step the episode ends.
 
@@ -36,10 +38,22 @@ The guard defends the lady — a virtual point at the reference-orbit origin (th
 1. `state.step >= cfg.max_steps` (horizon exhausted).
 2. Some bandit passes within `breach_radius_m` of the lady at a relative speed below `breach_speed_mps` (bandit win).
 3. Some guard passes within `catch_radius_m` of any bandit at a relative speed below `catch_speed_mps` (guard win).
+4. Every bandit is repelled (guard win without an intercept).
 
 Both spatial events are resolved over the whole step, not just at its endpoints: the relative motion between two samples is treated as a straight line and the closest approach along it is what the radius test sees. A 10 s decision step at 7000 km altitude departs from that chord by well under 0.1 m, so the approximation is far finer than any usable event radius.
 
 The speed gates default to infinity, which tests the radius alone. Setting them finite distinguishes a capture from a high-speed flyby that merely passes close.
+
+### Repelled
+
+A bandit is repelled when either of two independent gates fires, and the episode ends only once *every* bandit is repelled:
+
+- **Distance**: the bandit is farther than `escape_radius_m` from the lady. `escape_radius_m=0`, the default, disables this gate.
+- **Empty tank**: with `repel_on_empty_tank=True`, the bandit has no propellant left and its ballistic coast cannot reach the breach sphere in the steps the horizon still allows. The coast is propagated with the one-step HCW state transition matrix for the reference orbit, so a bandit stranded on a bounded relative ellipse is repelled while one still drifting toward the lady is not.
+
+The empty-tank gate reads `state.bandits.propellant_mass` and coasts the bandit's RTN state, so it requires both a `MASS` and an `RTN` component on the bandit side. Setting it on a layout that has neither raises when the `ScenarioConfig` is built.
+
+An episode ended this way classifies as `Outcome.REPELLED`.
 
 `max_steps` and `dt` are read from the cfg at call time — the termination class itself does not store them.
 
@@ -53,6 +67,8 @@ cfg = make_lady_bandit_guard(
     catch_radius_m=50.0,
     breach_speed_mps=float("inf"),
     catch_speed_mps=float("inf"),
+    escape_radius_m=0.0,
+    repel_on_empty_tank=False,
     max_horizon_s=2000.0,
     seed=0,
 )
@@ -80,6 +96,8 @@ cfg = ScenarioConfig(
 | `n_bandits` | `int` | `1` | Number of bandit vehicles. |
 | `breach_radius_m` | `float` | `5.0` | Bandit wins when any bandit-to-lady distance falls below this radius. |
 | `catch_radius_m` | `float` | `50.0` | Guard wins when any guard-to-bandit distance falls below this radius. |
+| `escape_radius_m` | `float` | `0.0` | Bandit counts as repelled beyond this distance from the lady. `0` disables the gate. |
+| `repel_on_empty_tank` | `bool` | `False` | Treat an out-of-propellant bandit that can no longer coast to the lady as repelled. Needs a mass-tracked bandit in an RTN frame. |
 | `max_horizon_s` | `float` | `2000.0` | Total episode duration in seconds. |
 | `dt` | `float` | `10.0` | Step size in seconds. |
 | `seed` | `int` | `0` | PRNG seed for IC sampling. |

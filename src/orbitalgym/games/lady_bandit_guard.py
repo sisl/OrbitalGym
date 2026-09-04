@@ -47,12 +47,36 @@ class LadyBanditGuard(Game):
         catch_speed_mps: guard-vs-bandit relative speed below which a pass
             inside `catch_radius_m` counts as a catch. Infinite gates on
             radius alone.
+        escape_radius_m: bandit-vs-lady distance above which the bandit
+            counts as repelled. Zero disables the gate.
+        repel_on_empty_tank: when True, a bandit out of propellant whose
+            coast cannot reach the lady before the horizon ends counts as
+            repelled. Requires a mass-tracked bandit in an RTN frame.
+
+    The episode is a guard win by repulsion once *every* bandit is repelled.
     """
 
     breach_radius_m: float = 5.0
     catch_radius_m: float = 50.0
     breach_speed_mps: float = float("inf")
     catch_speed_mps: float = float("inf")
+    escape_radius_m: float = 0.0
+    repel_on_empty_tank: bool = False
+
+    def validate(self, cfg: Any) -> None:
+        if not self.repel_on_empty_tank:
+            return
+        missing = [
+            key.value
+            for key in (StateComponentKey.RTN, StateComponentKey.MASS)
+            if key not in cfg.bandit_components
+        ]
+        if missing:
+            raise ValueError(
+                "repel_on_empty_tank reads the bandit's propellant and coasts its "
+                "RTN state to the horizon, so bandit_components must include "
+                f"{', '.join(missing)}; got {tuple(k.value for k in cfg.bandit_components)}."
+            )
 
     def default_reward_fn(self):
         from orbitalgym.rewards.lbg_zero_sum import LbgZeroSumReward
@@ -62,6 +86,8 @@ class LadyBanditGuard(Game):
             breach_radius_m=self.breach_radius_m,
             catch_speed_mps=self.catch_speed_mps,
             breach_speed_mps=self.breach_speed_mps,
+            escape_radius_m=self.escape_radius_m,
+            repel_on_empty_tank=self.repel_on_empty_tank,
         )
 
     def default_termination_fn(self):
@@ -72,6 +98,8 @@ class LadyBanditGuard(Game):
             catch_radius_m=self.catch_radius_m,
             breach_speed_mps=self.breach_speed_mps,
             catch_speed_mps=self.catch_speed_mps,
+            escape_radius_m=self.escape_radius_m,
+            repel_on_empty_tank=self.repel_on_empty_tank,
         )
 
 
@@ -82,6 +110,8 @@ def make_lady_bandit_guard(
     catch_radius_m: float = 50.0,
     breach_speed_mps: float = float("inf"),
     catch_speed_mps: float = float("inf"),
+    escape_radius_m: float = 0.0,
+    repel_on_empty_tank: bool = False,
     # Fleet sizing
     n_guards: int = 1,
     n_bandits: int = 1,
@@ -208,6 +238,8 @@ def make_lady_bandit_guard(
             catch_radius_m=catch_radius_m,
             breach_speed_mps=breach_speed_mps,
             catch_speed_mps=catch_speed_mps,
+            escape_radius_m=escape_radius_m,
+            repel_on_empty_tank=repel_on_empty_tank,
         ),
         **extra_kwargs,
         **config_kwargs,

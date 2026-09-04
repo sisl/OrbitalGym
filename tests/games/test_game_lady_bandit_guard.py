@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
 from orbitalgym.config import ScenarioConfig
 from orbitalgym.games import LadyBanditGuard, make_lady_bandit_guard
 from orbitalgym.games.base import NoGame
-from orbitalgym.registry import GameKey, resolve_game
+from orbitalgym.registry import GameKey, StateComponentKey, resolve_game
 
 
 def test_lady_bandit_guard_registered():
@@ -41,3 +43,31 @@ def test_lady_bandit_guard_serialize_roundtrip():
 def test_lady_bandit_guard_not_no_game():
     cfg = make_lady_bandit_guard()
     assert not isinstance(cfg.game, NoGame)
+
+
+def test_repel_knobs_thread_through_termination_and_reward():
+    cfg = make_lady_bandit_guard(
+        escape_radius_m=5000.0,
+        repel_on_empty_tank=True,
+        bandit_components=(StateComponentKey.RTN, StateComponentKey.MASS),
+    )
+    assert cfg.termination_fn.escape_radius_m == 5000.0
+    assert cfg.termination_fn.repel_on_empty_tank is True
+    assert cfg.reward_fn.escape_radius_m == 5000.0
+    assert cfg.reward_fn.repel_on_empty_tank is True
+
+
+def test_repel_on_empty_tank_requires_a_mass_component():
+    with pytest.raises(ValueError, match="repel_on_empty_tank"):
+        make_lady_bandit_guard(
+            repel_on_empty_tank=True,
+            bandit_components=(StateComponentKey.RTN,),
+        )
+
+
+def test_repel_on_empty_tank_accepts_a_mass_tracked_bandit():
+    cfg = make_lady_bandit_guard(
+        repel_on_empty_tank=True,
+        bandit_components=(StateComponentKey.RTN, StateComponentKey.MASS),
+    )
+    assert cfg.game.repel_on_empty_tank is True

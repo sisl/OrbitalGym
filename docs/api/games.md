@@ -63,6 +63,10 @@ termination, so both resolve catch and breach over the whole step.
 
 ::: orbitalgym.games.proximity.lbg_events
 
+::: orbitalgym.games.proximity.ballistic_breach_possible
+
+::: orbitalgym.games.proximity.lbg_repelled
+
 ## Dispatch
 
 ::: orbitalgym.games.make_game

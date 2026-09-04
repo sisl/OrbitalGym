@@ -27,6 +27,7 @@ class Outcome(IntEnum):
     BREACH = 2
     BOTH = 3
     INVALID_IC = 4
+    REPELLED = 5
 
 
 @flax.struct.dataclass
@@ -122,10 +123,16 @@ def lbg_episode_metrics(traj: Any, cfg: Any) -> EpisodeMetrics:
     post_idx = jnp.minimum(last_idx + 1, T - 1)
     caught = caught_t[last_idx]
     breached = breached_t[last_idx]
+    # An episode that stopped before the horizon without a catch or a breach
+    # was ended by the repel gate: those are the only terminal events the LBG
+    # termination function raises. An episode that used every logged step, or
+    # every step the horizon allows, timed out instead.
+    stopped_early = steps < min(T, cfg.max_steps)
+    quiet = jnp.where(stopped_early, Outcome.REPELLED, Outcome.TIMEOUT)
     outcome = jnp.where(
         caught & breached,
         Outcome.BOTH,
-        jnp.where(caught, Outcome.CATCH, jnp.where(breached, Outcome.BREACH, Outcome.TIMEOUT)),
+        jnp.where(caught, Outcome.CATCH, jnp.where(breached, Outcome.BREACH, quiet)),
     )
     ic_valid = traj.env_state.ic_valid[0]
     outcome = jnp.where(ic_valid, outcome, Outcome.INVALID_IC).astype(jnp.int32)

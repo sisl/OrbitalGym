@@ -23,6 +23,9 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
+from orbitalgym.dynamics.hcw import hcw_rtn_stm
+from orbitalgym.reference_orbit import mean_motion
+
 _EPS = 1e-12
 
 
@@ -143,3 +146,90 @@ def lbg_events(
         breach_radius_m,
         breach_speed_mps,
     )
+
+
+def ballistic_breach_possible(
+    x_rtn: jax.Array,
+    phi: jax.Array,
+    n_remaining: jax.Array,
+    max_steps: int,
+    dt: float,
+    radius_m: float,
+    speed_mps: float,
+) -> jax.Array:
+    """Whether a coasting RTN state can still reach the lady before the clock runs out.
+
+    Propagates ``x_rtn`` under the one-step state transition matrix ``phi``
+    for ``max_steps`` steps and tests :func:`proximity_event` against the
+    origin on each segment, keeping only the first ``n_remaining`` of them.
+    ``max_steps`` is the static scan length; ``n_remaining`` is traced, so
+    the same compiled scan serves every step of an episode.
+
+    Args:
+        x_rtn: Coasting state ``(..., 6)`` as ``[R, T, N, Rdot, Tdot, Ndot]``.
+        phi: One-step ``(6, 6)`` state transition matrix.
+        n_remaining: Steps left in the episode; segments beyond it are masked.
+        max_steps: Static upper bound on the number of segments scanned.
+        dt: Step duration in seconds, matching ``phi``.
+        radius_m: Breach radius about the origin.
+        speed_mps: Relative-speed gate for the breach.
+
+    Returns:
+        Boolean with the leading shape of ``x_rtn``.
+    """
+
+    dtype = jnp.result_type(x_rtn, phi)
+    x_rtn = jnp.asarray(x_rtn, dtype=dtype)
+    phi = jnp.asarray(phi, dtype=dtype)
+
+    def step(x, k):
+        x_next = x @ phi.T
+        r0 = x[..., :3]
+        v = (x_next[..., :3] - r0) / dt
+        hit = jnp.logical_and(proximity_event(r0, v, dt, radius_m, speed_mps), k < n_remaining)
+        return x_next, hit
+
+    _, hits = jax.lax.scan(step, x_rtn, jnp.arange(max_steps))
+    return jnp.any(hits, axis=0)
+
+
+def lbg_repelled(
+    state,
+    params,
+    escape_radius_m: float,
+    repel_on_empty_tank: bool,
+    breach_radius_m: float,
+    breach_speed_mps: float,
+) -> jax.Array:
+    """Whether every bandit has been repelled — no longer a threat to the lady.
+
+    A bandit is repelled when it is farther than ``escape_radius_m`` from the
+    lady (zero disables that gate), or when ``repel_on_empty_tank`` is set and
+    it has burnt its propellant on a coast that cannot reach the lady within
+    the episode's remaining steps. Both gates off returns ``False``.
+
+    ``params`` is the scenario config: ``dt``, ``max_steps`` and, for the
+    empty-tank gate, ``reference_orbit`` supply the coast model.
+    """
+    if escape_radius_m <= 0.0 and not repel_on_empty_tank:
+        return jnp.asarray(False)
+
+    bandits = state.bandits
+    r_bandits = positions(bandits)
+    repelled = jnp.zeros(r_bandits.shape[:-1], dtype=bool)
+    if escape_radius_m > 0.0:
+        repelled = jnp.linalg.norm(r_bandits, axis=-1) > escape_radius_m
+    if repel_on_empty_tank:
+        phi = hcw_rtn_stm(float(mean_motion(params.reference_orbit)), params.dt)
+        reachable = ballistic_breach_possible(
+            bandits.rtn,
+            phi,
+            params.max_steps - state.step,
+            params.max_steps,
+            params.dt,
+            breach_radius_m,
+            breach_speed_mps,
+        )
+        stranded = jnp.logical_and(bandits.propellant_mass <= 0.0, jnp.logical_not(reachable))
+        repelled = jnp.logical_or(repelled, stranded)
+    return jnp.all(repelled, axis=-1)

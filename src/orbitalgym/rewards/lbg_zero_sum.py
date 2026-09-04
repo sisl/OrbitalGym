@@ -5,12 +5,14 @@ Both sides receive a per-step signal:
     guard:
         -alpha * d_guard_bandit_min                  (dense shaping)
         + R_catch  * 1[catch event]                  (caught bandit terminal bonus)
+        + R_catch  * 1[repelled]                     (bandits repelled terminal bonus)
         - R_breach * 1[breach event]                 (lady breached terminal penalty)
 
     bandit (mirror):
         -alpha * d_bandit_lady_min                   (dense shaping)
         + R_breach * 1[breach event]                 (intercepted lady terminal bonus)
         - R_catch  * 1[catch event]                  (caught by guard terminal penalty)
+        - R_catch  * 1[repelled]                     (repelled terminal penalty)
 
 Distances and events come from
 :func:`orbitalgym.games.proximity.lbg_events` over the step from
@@ -33,7 +35,7 @@ from dataclasses import dataclass
 import jax.numpy as jnp
 
 from orbitalgym.env.types import Side
-from orbitalgym.games.proximity import lbg_events
+from orbitalgym.games.proximity import lbg_events, lbg_repelled
 from orbitalgym.registry import RewardFnKey, register
 from orbitalgym.rewards.base import RewardScope
 
@@ -55,6 +57,8 @@ class LbgZeroSumReward:
     breach_radius_m: float = 5.0
     catch_speed_mps: float = float("inf")
     breach_speed_mps: float = float("inf")
+    escape_radius_m: float = 0.0
+    repel_on_empty_tank: bool = False
     scope: RewardScope = RewardScope.PER_SIDE
 
     def __call__(self, prev_state, action, next_state, side, params, t):
@@ -69,11 +73,20 @@ class LbgZeroSumReward:
             self.breach_radius_m,
             self.breach_speed_mps,
         )
-        catch_event = caught.astype(jnp.float32)
+        repelled = lbg_repelled(
+            next_state,
+            params,
+            self.escape_radius_m,
+            self.repel_on_empty_tank,
+            self.breach_radius_m,
+            self.breach_speed_mps,
+        )
+        # A repelled step pays what a catch pays: the bandit team is out of
+        # the fight either way, so the guard should be indifferent between
+        # intercepting a bandit and driving it off.
+        guard_win = jnp.logical_or(caught, repelled).astype(jnp.float32)
         breach_event = breached.astype(jnp.float32)
 
         if side is Side.GUARD:
-            return (
-                -self.alpha * d_gb_min + self.r_catch * catch_event - self.r_breach * breach_event
-            )
-        return -self.alpha * d_bl_min + self.r_breach * breach_event - self.r_catch * catch_event
+            return -self.alpha * d_gb_min + self.r_catch * guard_win - self.r_breach * breach_event
+        return -self.alpha * d_bl_min + self.r_breach * breach_event - self.r_catch * guard_win

@@ -49,8 +49,8 @@ def _ic(guard_radius_m: float, bandit_radius_m: float, bandit_phase: float) -> I
     )
 
 
-def _run(ic: ICSpec, n_steps: int = 5):
-    cfg = make_lady_bandit_guard(ic_sampler=ic, max_horizon_s=n_steps * 10.0)
+def _run(ic: ICSpec, n_steps: int = 5, **game_kwargs):
+    cfg = make_lady_bandit_guard(ic_sampler=ic, max_horizon_s=n_steps * 10.0, **game_kwargs)
     env = OrbitalGymEnv(cfg)
     policies = BySide(
         guard=ZeroControl(n_vehicles=1, command_cls=env.guard_command_cls),
@@ -213,3 +213,19 @@ def test_metrics_require_the_final_state():
     traj, cfg = _run(_ic(1000.0, 1000.0, jnp.pi))
     with pytest.raises(ValueError, match="final_state"):
         lbg_episode_metrics(traj.replace(final_state=None), cfg)
+
+
+def test_repelled_when_the_bandit_is_pushed_past_the_escape_radius():
+    """An early termination with neither catch nor breach classifies as REPELLED."""
+    traj, cfg = _run(_ic(1000.0, 6000.0, jnp.pi), n_steps=5, escape_radius_m=5000.0)
+    m = lbg_episode_metrics(traj, cfg)
+    assert int(m.outcome) == Outcome.REPELLED
+    assert int(m.steps) == 1
+
+
+def test_timeout_is_not_repelled():
+    """Running out the clock without an event stays TIMEOUT."""
+    traj, cfg = _run(_ic(1000.0, 1000.0, jnp.pi), n_steps=5, escape_radius_m=5000.0)
+    m = lbg_episode_metrics(traj, cfg)
+    assert int(m.outcome) == Outcome.TIMEOUT
+    assert int(m.steps) == 5
