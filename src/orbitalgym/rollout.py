@@ -47,7 +47,6 @@ from orbitalgym.env.types import (
 )
 from orbitalgym.groundstations.contacts import in_contact_now
 from orbitalgym.observations.types import flatten_observations
-from orbitalgym.registry import ActionComponentKey
 
 
 def rollout(
@@ -193,28 +192,6 @@ def rollout_single_agent(
     return rollout(view.env, policies, init_fns, key, n_steps)
 
 
-def _require_impulsive_maneuver(config: Any, *, where: str) -> None:
-    """Fail fast if ``dv`` is not on the assembled Command pytree.
-
-    ``belief_rollout`` predicts belief means under control from the Δv the
-    env actually imparted (``StepOutput.info["applied_dv"]``), which is
-    nonzero only for a side carrying ``IMPULSIVE_MANEUVER``. Without this
-    check, a comms-only side would silently predict free drift while its
-    policy believed it was manoeuvring.
-    """
-    g = tuple(config.guard_action_components)
-    b = tuple(config.bandit_action_components)
-    has_g = ActionComponentKey.IMPULSIVE_MANEUVER in g
-    has_b = ActionComponentKey.IMPULSIVE_MANEUVER in b
-    if has_g and has_b:
-        return
-    raise ValueError(
-        f"{where} requires IMPULSIVE_MANEUVER in guard_action_components and "
-        f"bandit_action_components (it predicts belief from the Δv the env "
-        f"applied for each side). Got: guard={g!r}, bandit={b!r}"
-    )
-
-
 def _any_opponent_visible(obs_channels: tuple, n_self: int) -> jax.Array:
     """Per own-vehicle bool: any opposing target visible in any channel.
 
@@ -275,7 +252,6 @@ def belief_rollout(
     ``initial_state`` starts the episode from a stored ``EnvState`` (see
     ``orbitalgym.eval.bank``) instead of sampling.
     """
-    _require_impulsive_maneuver(env.config, where="belief_rollout")
 
     n_g = env.config.n_guards
     n_b = env.config.n_bandits

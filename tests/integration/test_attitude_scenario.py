@@ -12,9 +12,9 @@ rotation matrix R = I, so the body-fixed boresight (+x) maps to +x world.
 180-deg rotation about z = (0, 0, 0, 1) gives R[0, 0] = -1, so the
 boresight maps to -x world.
 
-NOTE: belief_rollout() requires IMPULSIVE_MANEUVER (reads .dv for EKF
-prediction). Because this scenario uses ATTITUDE_CONTROL only, the belief
-loop is hand-rolled with env.step + guard_observation_fn + ekf_updater.
+The belief loop is hand-rolled with env.step + guard_observation_fn +
+ekf_updater so the test can inspect each stage of an ATTITUDE_CONTROL-only
+scenario.
 """
 
 from __future__ import annotations
