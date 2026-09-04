@@ -33,7 +33,7 @@ Every `Game` subclass declares its default termination via `default_termination_
 
 ::: orbitalgym.termination.reference.MaxStepsOnly
 
-`LbgEventTermination` adds the bandit-breach and guard-catch events on top of the step cap; it's `LadyBanditGuard`'s default and reads `breach_radius_m` / `catch_radius_m` plus the optional relative-speed gates `breach_speed_mps` / `catch_speed_mps` from its own fields (which `LadyBanditGuard.default_termination_fn` threads from the game knobs). Each event is evaluated over the whole step by treating the relative motion as a straight line between samples, so a fast encounter that never lands inside the radius at a sample still fires:
+`LbgEventTermination` adds the bandit-breach and guard-catch events on top of the step cap; it's `LadyBanditGuard`'s default and reads `breach_radius_m` / `catch_radius_m` plus the optional relative-speed gates `breach_speed_mps` / `catch_speed_mps` from its own fields (which `LadyBanditGuard.default_termination_fn` threads from the game knobs). Each event is evaluated over the whole step by treating the relative motion as a straight line between samples, so a slow encounter that never lands inside the radius at a sample still fires:
 
 ::: orbitalgym.termination.lbg_events.LbgEventTermination
 

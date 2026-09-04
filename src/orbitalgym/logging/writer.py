@@ -54,7 +54,11 @@ def _write_pytree(grp: h5py.Group, node: Any) -> None:
     for path, leaf in leaves_with_paths:
         name = ".".join(_key_to_str(k) for k in path) if path else "value"
         arr = np.asarray(leaf)
-        grp.create_dataset(name, data=arr, compression="gzip")
+        # HDF5 filters need a chunked layout, which a scalar dataset cannot
+        # have; scalars (e.g. the single time and step of a final state) are
+        # written uncompressed.
+        compression = None if arr.ndim == 0 else "gzip"
+        grp.create_dataset(name, data=arr, compression=compression)
 
 
 def _key_to_str(key_entry) -> str:

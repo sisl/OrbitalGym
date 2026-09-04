@@ -135,3 +135,81 @@ def test_one_step_delta_v_is_reported_for_a_side_with_mass():
     m = lbg_episode_metrics(traj, cfg)
     assert int(m.steps) == 2
     assert float(m.dv_guard) == pytest.approx(0.1, abs=1e-3)
+
+
+def _two_guard_traj(guard_rtn, bandit_rtn, guard_final, bandit_final, cfg):
+    """One-step trajectory whose geometry is set by hand.
+
+    The rollout supplies the machinery metrics needs (mask, delta-v trace,
+    ic_valid); only the positions are overwritten, so the classification is
+    read off exactly the segment the test describes.
+    """
+    env = OrbitalGymEnv(cfg)
+    policies = BySide(
+        guard=ZeroControl(n_vehicles=cfg.n_guards, command_cls=env.guard_command_cls),
+        bandit=ZeroControl(n_vehicles=cfg.n_bandits, command_cls=env.bandit_command_cls),
+    )
+    init = BySide(guard=lambda c, s, k: None, bandit=lambda c, s, k: None)
+    traj = rollout(env, policies, init, jax.random.PRNGKey(0), n_steps=1)
+
+    def _set(state, guards_xyz, bandits_xyz):
+        guards = state.guards.replace(rtn=state.guards.rtn.at[..., :3].set(guards_xyz))
+        bandits = state.bandits.replace(rtn=state.bandits.rtn.at[..., :3].set(bandits_xyz))
+        return state.replace(guards=guards, bandits=bandits)
+
+    return traj.replace(
+        env_state=_set(traj.env_state, jnp.asarray(guard_rtn)[None], jnp.asarray(bandit_rtn)[None]),
+        final_state=_set(traj.final_state, jnp.asarray(guard_final), jnp.asarray(bandit_final)),
+    )
+
+
+def test_catch_uses_per_pair_speed_gate_not_the_closest_pair():
+    """A slow pair at 4 m catches even though a faster pair passes closer."""
+    cfg = make_lady_bandit_guard(
+        n_guards=2,
+        ic_sampler=_ic(1000.0, 1000.0, jnp.pi),
+        max_horizon_s=10.0,
+        catch_radius_m=5.0,
+        catch_speed_mps=0.5,
+        breach_radius_m=1.0,
+    )
+    bandit_prev = [[1000.0, 0.0, 0.0]]
+    bandit_next = [[1000.0, 0.0, 0.0]]
+    # Guard 0 holds a 4 m standoff (zero relative speed); guard 1 sweeps past
+    # at 2 m and 4 m/s.
+    guard_prev = [[1004.0, 0.0, 0.0], [980.0, 2.0, 0.0]]
+    guard_next = [[1004.0, 0.0, 0.0], [1020.0, 2.0, 0.0]]
+
+    traj = _two_guard_traj(guard_prev, bandit_prev, guard_next, bandit_next, cfg)
+    m = lbg_episode_metrics(traj, cfg)
+    assert int(m.outcome) == Outcome.CATCH
+    assert float(m.min_d_gb) == pytest.approx(2.0, abs=1e-6)
+
+
+def test_fast_arrival_inside_the_radius_at_the_last_step_is_not_a_breach():
+    """The final segment is a real transition, so its speed gate still applies."""
+    cfg = make_lady_bandit_guard(
+        n_guards=1,
+        ic_sampler=_ic(1000.0, 1000.0, jnp.pi),
+        max_horizon_s=10.0,
+        catch_radius_m=1.0,
+        breach_radius_m=50.0,
+        breach_speed_mps=0.5,
+    )
+    guard_prev = [[5000.0, 0.0, 0.0]]
+    guard_next = [[5000.0, 0.0, 0.0]]
+    # The bandit ends 14.1 m from the lady — well inside 50 m — but crosses at
+    # 21 m/s, far above the gate.
+    bandit_prev = [[-200.0, 10.0, 0.0]]
+    bandit_next = [[10.0, 10.0, 0.0]]
+
+    traj = _two_guard_traj(guard_prev, bandit_prev, guard_next, bandit_next, cfg)
+    m = lbg_episode_metrics(traj, cfg)
+    assert float(jnp.linalg.norm(jnp.asarray(bandit_next[0]))) < cfg.game.breach_radius_m
+    assert int(m.outcome) == Outcome.TIMEOUT
+
+
+def test_metrics_require_the_final_state():
+    traj, cfg = _run(_ic(1000.0, 1000.0, jnp.pi))
+    with pytest.raises(ValueError, match="final_state"):
+        lbg_episode_metrics(traj.replace(final_state=None), cfg)

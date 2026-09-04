@@ -97,11 +97,16 @@ class SideTrajectory:
 class Trajectory:
     """Time-stacked rollout. `env_state` has leading T on every leaf;
     `sides.guard` / `sides.bandit` are `SideTrajectory`s. `episode_done`
-    is (T,) latched. `controlled_side` is a Python-level enum (not traced)."""
+    is (T,) latched. `controlled_side` is a Python-level enum (not traced).
+
+    `env_state` at index k is the state *entering* step k, so the state
+    leaving the last step has no slot in it. `final_state` carries that one
+    state, which is what closes the last step into a real transition."""
 
     env_state: Any  # EnvState
     sides: BySide
     episode_done: jax.Array
     contact: Any = None  # BySide of (T, n_side) bool link masks; None for obs-only rollouts
     visible: Any = None  # BySide of (T, n_side) bool: any opposing target visible; None if unlogged
+    final_state: Any = None  # EnvState leaving the last step; None if the rollout did not log it
     controlled_side: Side = flax.struct.field(pytree_node=False, default=Side.GUARD)

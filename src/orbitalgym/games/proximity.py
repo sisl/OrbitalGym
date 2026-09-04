@@ -26,12 +26,16 @@ import jax.numpy as jnp
 _EPS = 1e-12
 
 
-def _positions(side_state) -> jax.Array:
-    """Per-vehicle (N, 3) positions, zero-padded from a 2D ``rt`` layout."""
+def positions(side_state) -> jax.Array:
+    """Per-vehicle ``(..., N, 3)`` positions, zero-padded from a 2D ``rt`` layout.
+
+    Leading axes pass through, so a time-stacked side state returns
+    ``(T, N, 3)``.
+    """
     if hasattr(side_state, "rtn"):
-        return side_state.rtn[:, :3]
-    rt = side_state.rt[:, :2]
-    return jnp.concatenate([rt, jnp.zeros_like(rt[:, :1])], axis=-1)
+        return side_state.rtn[..., :3]
+    rt = side_state.rt[..., :2]
+    return jnp.concatenate([rt, jnp.zeros_like(rt[..., :1])], axis=-1)
 
 
 def closest_approach(r0: jax.Array, v: jax.Array, dt: float) -> tuple[jax.Array, jax.Array]:
@@ -66,6 +70,49 @@ def proximity_event(
     return jnp.logical_and(distance < radius_m, speed < speed_mps)
 
 
+def lbg_events_from_positions(
+    guard_prev: jax.Array,
+    guard_next: jax.Array,
+    bandit_prev: jax.Array,
+    bandit_next: jax.Array,
+    dt: float,
+    catch_radius_m: float,
+    catch_speed_mps: float,
+    breach_radius_m: float,
+    breach_speed_mps: float,
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+    """Catch/breach events and closest-approach distances from position arrays.
+
+    Positions are ``(..., n_g, 3)`` and ``(..., n_b, 3)``; leading axes pass
+    through, so a whole trajectory is scored in one call. An event holds when
+    *some* pair is both inside the radius and slower than the threshold — the
+    per-pair conjunction, not the closest pair's speed.
+
+    Returns:
+        ``(caught, breached, d_gb_min, d_bl_min)`` with the leading shape of
+        the inputs.
+    """
+    rel_gb = guard_prev[..., :, None, :] - bandit_prev[..., None, :, :]
+    rel_gb_next = guard_next[..., :, None, :] - bandit_next[..., None, :, :]
+    d_gb, speed_gb = closest_approach(rel_gb, (rel_gb_next - rel_gb) / dt, dt)
+    d_gb_min = jnp.min(d_gb, axis=(-2, -1))
+
+    d_bl, speed_bl = closest_approach(bandit_prev, (bandit_next - bandit_prev) / dt, dt)
+    d_bl_min = jnp.min(d_bl, axis=-1)
+
+    if catch_radius_m > 0.0:
+        caught = jnp.any(
+            jnp.logical_and(d_gb < catch_radius_m, speed_gb < catch_speed_mps), axis=(-2, -1)
+        )
+    else:
+        caught = jnp.zeros(d_gb_min.shape, dtype=bool)
+    breached = jnp.any(
+        jnp.logical_and(d_bl < breach_radius_m, speed_bl < breach_speed_mps), axis=-1
+    )
+
+    return caught, breached, d_gb_min, d_bl_min
+
+
 def lbg_events(
     prev_state,
     next_state,
@@ -85,23 +132,14 @@ def lbg_events(
         ``(caught, breached, d_gb_min, d_bl_min)`` — two scalar booleans and
         the two minimum closest-approach distances over the step.
     """
-    guard_prev = _positions(prev_state.guards)
-    guard_next = _positions(next_state.guards)
-    bandit_prev = _positions(prev_state.bandits)
-    bandit_next = _positions(next_state.bandits)
-
-    rel_gb_prev = guard_prev[:, None, :] - bandit_prev[None, :, :]
-    rel_gb_next = guard_next[:, None, :] - bandit_next[None, :, :]
-    d_gb, speed_gb = closest_approach(rel_gb_prev, (rel_gb_next - rel_gb_prev) / dt, dt)
-    d_gb_min = jnp.min(d_gb)
-
-    d_bl, speed_bl = closest_approach(bandit_prev, (bandit_next - bandit_prev) / dt, dt)
-    d_bl_min = jnp.min(d_bl)
-
-    if catch_radius_m > 0.0:
-        caught = jnp.any(jnp.logical_and(d_gb < catch_radius_m, speed_gb < catch_speed_mps))
-    else:
-        caught = jnp.asarray(False)
-    breached = jnp.any(jnp.logical_and(d_bl < breach_radius_m, speed_bl < breach_speed_mps))
-
-    return caught, breached, d_gb_min, d_bl_min
+    return lbg_events_from_positions(
+        positions(prev_state.guards),
+        positions(next_state.guards),
+        positions(prev_state.bandits),
+        positions(next_state.bandits),
+        dt,
+        catch_radius_m,
+        catch_speed_mps,
+        breach_radius_m,
+        breach_speed_mps,
+    )

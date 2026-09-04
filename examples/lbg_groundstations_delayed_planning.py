@@ -934,8 +934,11 @@ plt.show()
 # pads to N_STEPS with frozen-on-done state, which would otherwise show
 # 90% of the video as a static frame after the episode ends.
 def _truncate_trajectory(traj, n_real_ticks: int):
-    """Slice every leaf along the leading time axis."""
-    return jax.tree_util.tree_map(lambda x: x[:n_real_ticks], traj)
+    """Slice every time-stacked leaf; `final_state` carries no time axis."""
+    sliced = jax.tree_util.tree_map(
+        lambda x: x[:n_real_ticks], traj.replace(final_state=None)
+    )
+    return sliced.replace(final_state=traj.final_state)
 
 
 traj_for_scene = _truncate_trajectory(traj_default, n_real)

@@ -138,7 +138,7 @@ def rollout(
     step_keys = jax.random.split(k_scan, n_steps)
     initial_view_g = flatten_observations(initial_outputs.guard.obs)
     initial_view_b = flatten_observations(initial_outputs.bandit.obs)
-    _, stacked = jax.lax.scan(
+    final_carry, stacked = jax.lax.scan(
         _step,
         (env_state, ps_g, ps_b, initial_view_g, initial_view_b, initial_terminated),
         step_keys,
@@ -146,6 +146,7 @@ def rollout(
 
     return Trajectory(
         env_state=stacked["env_state"],
+        final_state=final_carry[0],
         sides=BySide(
             guard=SideTrajectory(
                 obs=stacked["guard_obs"],
@@ -395,7 +396,7 @@ def belief_rollout(
         ), logged
 
     step_keys = jax.random.split(k_scan, n_steps)
-    _, stacked = jax.lax.scan(
+    final_carry, stacked = jax.lax.scan(
         _step,
         (env_state, ps_g, ps_b, belief_g, belief_b, initial_terminated),
         step_keys,
@@ -403,6 +404,7 @@ def belief_rollout(
 
     traj = Trajectory(
         env_state=stacked["env_state"],
+        final_state=final_carry[0],
         sides=BySide(
             guard=SideTrajectory(
                 obs=stacked["guard_obs"],
