@@ -67,9 +67,7 @@ def _cone_pointed_away_kwargs():
         ),
         bandit_action_components=(ActionComponentKey.IMPULSIVE_MANEUVER,),
         attitude_dynamics_key=AttitudeDynamicsKey.RIGID_BODY,
-        guard_attitude_params=AttitudeParams(
-            inertia_diag=jnp.ones(3), omega_max=jnp.ones(3) * 0.5
-        ),
+        guard_attitude_params=AttitudeParams(inertia_diag=jnp.ones(3), omega_max=jnp.ones(3) * 0.5),
         pointing_boresight_body=(1.0, 0.0, 0.0),
         guard_params=VehicleParamsSpec(
             dry_mass_kg=10.0, isp_s=200.0, max_thrust_n=1.0, slew_rate_rad_s=0.1

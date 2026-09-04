@@ -273,7 +273,7 @@ class OrbitalGymEnv:
                         torque_max=self.config.attitude_control_torque_max,
                     )
                 elif cls is PointAt:
-                    inst = PointAt(boresight_body=tuple(self.config.pointing_boresight_body))
+                    inst = PointAt(boresight_body=self.config.pointing_boresight_body)
                 else:
                     raise ValueError(f"No instance constructor for action component {key!r}")
                 instances.append(inst)
@@ -423,7 +423,7 @@ class OrbitalGymEnv:
         bandits = _materialize_derived_views(
             state.bandits, truth_field_name, self.truth_frame, self.bandit_extended_frames, ref_eci6
         )
-        restored = state.replace(
+        restored = state.replace(  # pyrefly: ignore[missing-attribute]
             t=jnp.zeros_like(state.t),
             step=jnp.zeros_like(state.step),
             guards=guards,
