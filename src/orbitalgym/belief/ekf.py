@@ -81,39 +81,39 @@ class EKFBeliefUpdater:
         return EKFBelief(mean=mean_cur, cov=cov_cur)
 
     def _apply_channel(self, mean, cov, ch: Observation):
+        n_obs, n_total = ch.visible.shape
         if ch.obs_fn is None:
-            per_pair = jax.vmap(
-                jax.vmap(
-                    lambda m, c, o: _single_pair_correct(
-                        m, c, o, ch.obs_matrix, ch.obs_noise, self.use_joseph_form
-                    ),
-                    in_axes=(0, 0, 0),
-                ),
-                in_axes=(0, 0, 0),
-            )
-            new_mean, new_cov = per_pair(mean, cov, ch.obs)
+
+            def correct_pair_linear(m, c, o, i, j):
+                return _single_pair_correct(
+                    m, c, o, ch.obs_matrix, ch.noise_for(i, j), self.use_joseph_form
+                )
+
+            pair_fn = correct_pair_linear
         else:
             obs_fn = ch.obs_fn
 
-            def correct_pair_nonlinear(m, c, o):
+            def correct_pair_nonlinear(m, c, o, i, j):
+                R = ch.noise_for(i, j)  # noqa: N806
                 H = jax.jacfwd(obs_fn)(m)  # noqa: N806
-                S = H @ c @ H.T + ch.obs_noise  # noqa: N806
+                S = H @ c @ H.T + R  # noqa: N806
                 K = c @ H.T @ jnp.linalg.inv(S)  # noqa: N806
                 innovation = o - obs_fn(m)
                 new_mean_ik = m + K @ innovation
                 identity = jnp.eye(c.shape[0])
                 if self.use_joseph_form:
                     i_minus_kh = identity - K @ H
-                    new_cov_ik = i_minus_kh @ c @ i_minus_kh.T + K @ ch.obs_noise @ K.T
+                    new_cov_ik = i_minus_kh @ c @ i_minus_kh.T + K @ R @ K.T
                 else:
                     new_cov_ik = (identity - K @ H) @ c
                 return new_mean_ik, new_cov_ik
 
-            per_pair = jax.vmap(
-                jax.vmap(correct_pair_nonlinear, in_axes=(0, 0, 0)),
-                in_axes=(0, 0, 0),
-            )
-            new_mean, new_cov = per_pair(mean, cov, ch.obs)
+            pair_fn = correct_pair_nonlinear
+
+        per_pair = jax.vmap(
+            jax.vmap(pair_fn, in_axes=(0, 0, 0, None, 0)), in_axes=(0, 0, 0, 0, None)
+        )
+        new_mean, new_cov = per_pair(mean, cov, ch.obs, jnp.arange(n_obs), jnp.arange(n_total))
 
         visible_mean = ch.visible[:, :, None]
         visible_cov = ch.visible[:, :, None, None]

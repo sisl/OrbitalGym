@@ -25,7 +25,12 @@ class Observation:
       obs:        (N_obs, N_total, m)         per-pair measurement
       visible:    (N_obs, N_total) bool       per-pair visibility mask
       obs_matrix: (m, d)                       linear measurement matrix H
-      obs_noise:  (m, m)                       measurement noise R
+      obs_noise:  (m, m) or (N_obs, N_total, m, m)  measurement noise R
+
+    `obs_noise` is either shared across every pair, shape (m, m), or
+    conditioned on the pair, shape (N_obs, N_total, m, m). Use
+    `noise_for(i, j)` to read the (m, m) block for one pair regardless of
+    which form a channel supplies.
 
     `obs_fn` (optional): nonlinear measurement function h(x) -> z. When set,
     the EKF updater computes H = jax.jacfwd(obs_fn)(predicted_mean) per pair
@@ -46,6 +51,16 @@ class Observation:
     obs_noise: jax.Array
     obs_fn: Callable | None = flax.struct.field(default=None, pytree_node=False)
     visibility_score_fn: Callable | None = flax.struct.field(default=None, pytree_node=False)
+
+    def noise_for(self, i, j) -> jax.Array:
+        """Measurement noise `(m, m)` for the (observer i, entity j) pair.
+
+        Accepts traced indices, so belief updaters can call it from inside
+        a `vmap` over the observer and entity axes.
+        """
+        if self.obs_noise.ndim == 2:
+            return self.obs_noise
+        return self.obs_noise[i, j]
 
 
 def flatten_observations(channels: tuple[Observation, ...]) -> jax.Array:

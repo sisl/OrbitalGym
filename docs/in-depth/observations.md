@@ -16,7 +16,10 @@ channel carries `(obs, visible, obs_matrix, obs_noise[, obs_fn])`:
 - `visible` — boolean mask, shape `(N_self, N_total)`. False entries
   are not measured this step.
 - `obs_matrix` (`H`) — linear measurement matrix `(m, d)`.
-- `obs_noise` (`R`) — measurement covariance `(m, m)`.
+- `obs_noise` (`R`) — measurement covariance, either `(m, m)` shared by
+  every pair or `(N_self, N_total, m, m)` conditioned on the pair. Call
+  `channel.noise_for(i, j)` to read one pair's `(m, m)` block whichever
+  form the channel supplies.
 - `obs_fn` — optional nonlinear measurement function (EKF only).
 
 Each side has its own observation function; `OrbitalGymEnv` exposes
@@ -96,8 +99,9 @@ boresights = jnp.array([
 obs_fn = ConicalObservation(
     layout=cfg.layout,
     sensor_boresights_body=boresights,
-    half_angle_rad=0.5236,   # 30-degree half-angle
-    sigma=10.0,              # measurement noise std (m or m/s)
+    half_angle_rad=0.5236,      # 30-degree half-angle
+    sigma_floor=10.0,           # noise std at zero range (m or m/s)
+    sigma_range_frac=0.01,      # + 1 cm of std per metre of range
 )
 ```
 
@@ -117,10 +121,29 @@ opposing side. Own-side pairs are always masked out.
 updater sees the same interface as any other channel.
 
 **Measurement model:** When visible, `obs[i, j, :]` is the target's full
-dynamics state plus additive Gaussian noise (`sigma` std, independent per
-entry). `H = I_d`, `R = sigma² I_d`. Setting `sigma=0` produces
-`R = 1e-12 I` (near-noiseless) rather than `R = 0` so that Kalman updates
-remain numerically stable and correctly weight near-perfect measurements.
+dynamics state plus additive Gaussian noise, independent per entry. The
+noise std is conditioned on the observer-target range:
+
+```
+sigma_ij = sigma_floor + sigma_range_frac * range_ij
+```
+
+`H = I_d` and `R[i, j] = sigma_ij² I_d`, so this channel's `obs_noise` has
+the per-pair shape `(N_self, N_total, m, m)`. The same `sigma_ij` scales
+every measurement row, so velocity rows are noised in proportion to range
+exactly as position rows are. A zero std produces `R = 1e-12 I`
+(near-noiseless) rather than `R = 0` so that Kalman updates remain
+numerically stable and correctly weight near-perfect measurements.
+
+`sigma_range_frac=0.0` (the default) reproduces a constant per-pair sigma
+equal to `sigma_floor`: every pair then gets `R[i, j] = sigma_floor² I_d`,
+matching an isotropic sensor with no range dependence.
+
+**`range_ij` is the true range**, read from ground-truth state. That is a
+benchmark convention: it lets a scenario dial in a realistic degradation
+with range without modelling a range estimator. The filter never sees this
+range on its own — it only receives the resulting `R` — so a policy cannot
+back out truth from the noise level any more precisely than `R` reveals.
 
 **2D / 3D handling:** Works in both RT and RTN scenarios. For RT (2D),
 positions are zero-padded to 3D internally before the cone math. The

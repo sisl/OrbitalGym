@@ -89,7 +89,7 @@ def _make_env_with_cone():
         layout=cfg.layout,
         sensor_boresights_body=_BORESIGHT,
         half_angle_rad=_HALF_ANGLE_RAD,
-        sigma=0.1,
+        sigma_floor=0.1,
     )
     cfg_with_cone = ScenarioConfig(
         **{

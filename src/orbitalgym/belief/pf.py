@@ -113,9 +113,10 @@ def _gaussian_log_likelihood(residual: jax.Array, R: jax.Array) -> jax.Array:  #
 
     Drops the ``-0.5 * log det(2π R)`` term — it cancels under
     log-softmax across particles since R is the same for every particle
-    in a pair, so only the Mahalanobis term affects the resulting
-    weights. Keeping the residual term alone is faster and avoids a
-    `slogdet` call per pair.
+    within a pair, so only the Mahalanobis term affects the resulting
+    weights. A per-pair R varies across pairs, not across the particles
+    the softmax normalizes over, so the cancellation still holds. Keeping
+    the residual term alone is faster and avoids a `slogdet` call per pair.
     """
     solved = jnp.linalg.solve(R, residual)
     return -0.5 * residual @ solved
@@ -255,22 +256,29 @@ class ParticleFilterBeliefUpdater:
         if ch.obs_fn is None:
             H = ch.obs_matrix  # noqa: N806
 
-            def lik_one_linear(p: jax.Array, z: jax.Array) -> jax.Array:
-                return _gaussian_log_likelihood(z - H @ p, ch.obs_noise)
+            def lik_one_linear(p: jax.Array, z: jax.Array, R: jax.Array) -> jax.Array:  # noqa: N803
+                return _gaussian_log_likelihood(z - H @ p, R)
 
             base = lik_one_linear
         else:
             obs_fn = ch.obs_fn
 
-            def lik_one_nonlinear(p: jax.Array, z: jax.Array) -> jax.Array:
-                return _gaussian_log_likelihood(z - obs_fn(p), ch.obs_noise)
+            def lik_one_nonlinear(p: jax.Array, z: jax.Array, R: jax.Array) -> jax.Array:  # noqa: N803
+                return _gaussian_log_likelihood(z - obs_fn(p), R)
 
             base = lik_one_nonlinear
 
-        per_particle = jax.vmap(base, in_axes=(0, None))
-        per_target = jax.vmap(per_particle, in_axes=(0, 0))
-        per_observer = jax.vmap(per_target, in_axes=(0, 0))
-        log_lik = per_observer(particles, ch.obs)  # (N_obs, N_total, K)
+        per_particle = jax.vmap(base, in_axes=(0, None, None))
+
+        def lik_one_pair(p: jax.Array, z: jax.Array, i: jax.Array, j: jax.Array) -> jax.Array:
+            return per_particle(p, z, ch.noise_for(i, j))
+
+        n_obs_axis, n_total_axis = ch.visible.shape
+        per_target = jax.vmap(lik_one_pair, in_axes=(0, 0, None, 0))
+        per_observer = jax.vmap(per_target, in_axes=(0, 0, 0, None))
+        log_lik = per_observer(
+            particles, ch.obs, jnp.arange(n_obs_axis), jnp.arange(n_total_axis)
+        )  # (N_obs, N_total, K)
 
         # Negative-information branch (only when channel is gated and mode != Off).
         if ch.visibility_score_fn is None or isinstance(self.negative_info, Off):
