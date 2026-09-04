@@ -26,7 +26,7 @@ import jax
 import jax.numpy as jnp
 
 from orbitalgym.dynamics.hcw import hcw_rtn_stm
-from orbitalgym.reference_orbit import mean_motion
+from orbitalgym.reference_orbit import mean_motion_host
 
 _EPS = 1e-12
 
@@ -240,7 +240,7 @@ def lbg_repelled(
         repelled = jnp.linalg.norm(r_bandits, axis=-1) > escape_radius_m
     if repel_on_empty_tank:
         powers = _stm_power_stack_cached(
-            float(mean_motion(params.reference_orbit)), float(params.dt), int(params.max_steps)
+            mean_motion_host(params.reference_orbit), float(params.dt), int(params.max_steps)
         )
         reachable = ballistic_breach_possible(
             bandits.rtn,

@@ -14,6 +14,7 @@ from __future__ import annotations
 import flax.struct
 import jax
 import jax.numpy as jnp
+import numpy as np
 from astrojax import state_koe_to_eci
 
 MU_EARTH = 3.986004418e14
@@ -119,3 +120,19 @@ def mean_motion(ref: ReferenceOrbitState) -> jax.Array:
     v2 = jnp.sum(ref.velocity_eci**2)
     a = 1.0 / (2.0 / r - v2 / MU_EARTH)
     return jnp.sqrt(MU_EARTH / a**3)
+
+
+def mean_motion_host(ref: ReferenceOrbitState) -> float:
+    """Mean motion as a Python float, computed with NumPy on concrete arrays.
+
+    Use this where the value keys a host-side cache or feeds a static shape,
+    including inside functions that run under ``jax.jit``: the reference
+    orbit is a concrete constant there, and NumPy arithmetic on it stays
+    un-traced, whereas :func:`mean_motion` would return a tracer.
+    """
+    pos = np.asarray(ref.position_eci, dtype=np.float64)
+    vel = np.asarray(ref.velocity_eci, dtype=np.float64)
+    r = np.linalg.norm(pos)
+    v2 = float(np.sum(vel**2))
+    a = 1.0 / (2.0 / r - v2 / MU_EARTH)
+    return float(np.sqrt(MU_EARTH / a**3))
