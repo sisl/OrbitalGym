@@ -81,7 +81,7 @@ def _sun_eci_at_mjd(mjd: jax.Array) -> jax.Array:
 
     return jax.pure_callback(
         host_fn,
-        jax.ShapeDtypeStruct((3,), jnp.float64),
+        jax.ShapeDtypeStruct((3,), jax.dtypes.canonicalize_dtype(jnp.float64)),
         mjd,
     )
 
