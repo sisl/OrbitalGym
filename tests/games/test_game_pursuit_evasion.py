@@ -60,7 +60,7 @@ def test_pe_termination_triggers_on_capture():
     state, _outs = env.reset(jax.random.PRNGKey(0))
     # Force the bandit to be co-located with the guard.
     state = state.replace(bandits=state.bandits.replace(rtn=state.guards.rtn))
-    done = cfg.termination_fn(state, cfg, state.t)
+    done = cfg.termination_fn(state, state, cfg, state.t)
     assert bool(done) is True
 
 

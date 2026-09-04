@@ -654,7 +654,7 @@ class OrbitalGymEnv:
         reward_g = self.reward_fn(state, actions, next_state, Side.GUARD, self.config, state.t)
         reward_b = self.reward_fn(state, actions, next_state, Side.BANDIT, self.config, state.t)
 
-        episode_done = self.termination_fn(next_state, self.config, next_state.t)
+        episode_done = self.termination_fn(state, next_state, self.config, next_state.t)
 
         # Per-side done is the scalar broadcast (shape uniformity for adapters).
         return StepOutput(

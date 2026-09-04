@@ -52,6 +52,17 @@ Typed `Game` subtypes (knob bundles) and per-game `make_<game>(...)` builders.
 
 ::: orbitalgym.games.get_off_my_lawn.make_get_off_my_lawn
 
+## Proximity events
+
+Closest-approach geometry shared by the Lady-Bandit-Guard reward and
+termination, so both resolve catch and breach over the whole step.
+
+::: orbitalgym.games.proximity.closest_approach
+
+::: orbitalgym.games.proximity.proximity_event
+
+::: orbitalgym.games.proximity.lbg_events
+
 ## Dispatch
 
 ::: orbitalgym.games.make_game

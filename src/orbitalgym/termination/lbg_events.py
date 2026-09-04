@@ -2,8 +2,15 @@
 
 Terminates when any of:
   - Max episode steps reached (read from ``params.max_steps`` at call time).
-  - Any bandit is within ``breach_radius_m`` of the lady (origin) — bandit win.
-  - Any guard is within ``catch_radius_m`` of any bandit — guard intercept.
+  - Any bandit passes within ``breach_radius_m`` of the lady (origin) during
+    the step, slower than ``breach_speed_mps`` — bandit win.
+  - Any guard passes within ``catch_radius_m`` of any bandit during the
+    step, slower than ``catch_speed_mps`` — guard intercept.
+
+Both spatial events are evaluated over the whole step with
+:func:`orbitalgym.games.proximity.lbg_events`, so an encounter peaking
+between two decision samples still fires. The speed thresholds default to
+infinity, which gates on radius alone.
 
 The framing assumes the bandit is the threat trying to reach the lady and
 the guard is defending. ``LadyBanditGuard.default_termination_fn`` wires
@@ -18,13 +25,8 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 
+from orbitalgym.games.proximity import lbg_events
 from orbitalgym.registry import TerminationFnKey, register
-
-
-def _positions(side_state):
-    if hasattr(side_state, "rtn"):
-        return side_state.rtn[:, :3]
-    return side_state.rt[:, :2]
 
 
 @register(TerminationFnKey.LBG_EVENTS)
@@ -33,27 +35,25 @@ class LbgEventTermination:
     """Terminate on max_steps OR bandit breaches lady OR guard catches bandit.
 
     The catch event is optional: set `catch_radius_m=0` to disable, leaving
-    only the max-steps and breach gates. `max_steps` is read from
-    `params.max_steps` at call time (single source of truth on the cfg).
+    only the max-steps and breach gates. `max_steps` and the step duration
+    are read from `params` at call time (single source of truth on the cfg).
     """
 
     breach_radius_m: float
     catch_radius_m: float = 0.0
+    breach_speed_mps: float = float("inf")
+    catch_speed_mps: float = float("inf")
 
-    def __call__(self, state, params, t) -> jax.Array:
+    def __call__(self, prev_state, state, params, t) -> jax.Array:
         del t
         hit_max = state.step >= params.max_steps
-
-        bandit_pos = _positions(state.bandits)
-        d_bandit_lady_min = jnp.min(jnp.linalg.norm(bandit_pos, axis=-1))
-        breached = d_bandit_lady_min < self.breach_radius_m
-
-        if self.catch_radius_m > 0.0:
-            guard_pos = _positions(state.guards)
-            diffs = guard_pos[:, None, :] - bandit_pos[None, :, :]
-            d_gb_min = jnp.min(jnp.linalg.norm(diffs, axis=-1))
-            caught = d_gb_min < self.catch_radius_m
-        else:
-            caught = jnp.asarray(False)
-
+        caught, breached, _, _ = lbg_events(
+            prev_state,
+            state,
+            params.dt,
+            self.catch_radius_m,
+            self.catch_speed_mps,
+            self.breach_radius_m,
+            self.breach_speed_mps,
+        )
         return jnp.logical_or(hit_max, jnp.logical_or(breached, caught))

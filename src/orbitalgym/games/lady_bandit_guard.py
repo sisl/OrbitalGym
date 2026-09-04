@@ -41,10 +41,18 @@ class LadyBanditGuard(Game):
             considered to have breached (bandit win).
         catch_radius_m: guard-vs-bandit distance below which the guard
             catches the bandit (guard win).
+        breach_speed_mps: bandit-vs-lady relative speed below which a pass
+            inside `breach_radius_m` counts as a breach. Infinite gates on
+            radius alone.
+        catch_speed_mps: guard-vs-bandit relative speed below which a pass
+            inside `catch_radius_m` counts as a catch. Infinite gates on
+            radius alone.
     """
 
     breach_radius_m: float = 5.0
     catch_radius_m: float = 50.0
+    breach_speed_mps: float = float("inf")
+    catch_speed_mps: float = float("inf")
 
     def default_reward_fn(self):
         from orbitalgym.rewards.lbg_zero_sum import LbgZeroSumReward
@@ -52,6 +60,8 @@ class LadyBanditGuard(Game):
         return LbgZeroSumReward(
             catch_radius_m=self.catch_radius_m,
             breach_radius_m=self.breach_radius_m,
+            catch_speed_mps=self.catch_speed_mps,
+            breach_speed_mps=self.breach_speed_mps,
         )
 
     def default_termination_fn(self):
@@ -60,6 +70,8 @@ class LadyBanditGuard(Game):
         return LbgEventTermination(
             breach_radius_m=self.breach_radius_m,
             catch_radius_m=self.catch_radius_m,
+            breach_speed_mps=self.breach_speed_mps,
+            catch_speed_mps=self.catch_speed_mps,
         )
 
 
@@ -68,6 +80,8 @@ def make_lady_bandit_guard(
     # Game-specific knobs
     breach_radius_m: float = 5.0,
     catch_radius_m: float = 50.0,
+    breach_speed_mps: float = float("inf"),
+    catch_speed_mps: float = float("inf"),
     # Fleet sizing
     n_guards: int = 1,
     n_bandits: int = 1,
@@ -192,6 +206,8 @@ def make_lady_bandit_guard(
         game=LadyBanditGuard(
             breach_radius_m=breach_radius_m,
             catch_radius_m=catch_radius_m,
+            breach_speed_mps=breach_speed_mps,
+            catch_speed_mps=catch_speed_mps,
         ),
         **extra_kwargs,
         **config_kwargs,

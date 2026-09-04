@@ -1,7 +1,9 @@
 # Customize termination
 
-`cfg.termination_fn` is called every step with the new state and returns
-a scalar `bool` array. Once it fires, the episode ends and per-side
+`cfg.termination_fn` is called every step with the pre-step state, the
+new state, the cfg, and the new time, and returns a scalar `bool` array.
+Both states are passed so a termination can resolve events that peak
+*between* two decision samples. Once it fires, the episode ends and per-side
 `done` fields broadcast that scalar (see [In depth → Symmetric core](../in-depth/symmetric-core.md)).
 
 Two paths to swap the termination:
@@ -16,7 +18,7 @@ Every `Game` subclass declares its default termination via `default_termination_
 | Game | Default termination |
 |---|---|
 | `NoGame` | `MaxStepsOnly` (step-cap only, no spatial event) |
-| `LadyBanditGuard` | `LbgEventTermination` (max-steps OR bandit breach OR guard catch) |
+| `LadyBanditGuard` | `LbgEventTermination` (max-steps OR bandit breach OR guard catch, both resolved within the step) |
 | `PursuitEvasion` | `PursuitEvasionTermination` (max-steps OR capture) |
 | `SunBlocking` | `MaxStepsOnly` |
 | `ObservationBlocking` | `MaxStepsOnly` |
@@ -31,7 +33,7 @@ Every `Game` subclass declares its default termination via `default_termination_
 
 ::: orbitalgym.termination.reference.MaxStepsOnly
 
-`LbgEventTermination` adds the bandit-breach and guard-catch events on top of the step cap; it's `LadyBanditGuard`'s default and reads `breach_radius_m` / `catch_radius_m` from its own fields (which `LadyBanditGuard.default_termination_fn` threads from the game knobs):
+`LbgEventTermination` adds the bandit-breach and guard-catch events on top of the step cap; it's `LadyBanditGuard`'s default and reads `breach_radius_m` / `catch_radius_m` plus the optional relative-speed gates `breach_speed_mps` / `catch_speed_mps` from its own fields (which `LadyBanditGuard.default_termination_fn` threads from the game knobs). Each event is evaluated over the whole step by treating the relative motion as a straight line between samples, so a fast encounter that never lands inside the radius at a sample still fires:
 
 ::: orbitalgym.termination.lbg_events.LbgEventTermination
 

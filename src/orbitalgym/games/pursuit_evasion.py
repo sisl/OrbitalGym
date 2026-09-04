@@ -101,8 +101,8 @@ class PursuitEvasionTermination:
     `params.game`.
     """
 
-    def __call__(self, state, params, t):
-        del t
+    def __call__(self, prev_state, state, params, t):
+        del prev_state, t
         if not isinstance(params.game, PursuitEvasion):
             raise TypeError(
                 f"PursuitEvasionTermination requires cfg.game: PursuitEvasion; "

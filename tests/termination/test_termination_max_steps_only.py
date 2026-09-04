@@ -21,17 +21,17 @@ class _State:
 
 def test_terminates_at_max_steps():
     term = MaxStepsOnly()
-    done = term(state=_State(10), params=_Cfg(max_steps=10), t=jnp.asarray(0.0))
+    done = term(prev_state=None, state=_State(10), params=_Cfg(max_steps=10), t=jnp.asarray(0.0))
     assert bool(done)
 
 
 def test_terminates_past_max_steps():
     term = MaxStepsOnly()
-    done = term(state=_State(11), params=_Cfg(max_steps=10), t=jnp.asarray(0.0))
+    done = term(prev_state=None, state=_State(11), params=_Cfg(max_steps=10), t=jnp.asarray(0.0))
     assert bool(done)
 
 
 def test_does_not_terminate_below_max_steps():
     term = MaxStepsOnly()
-    done = term(state=_State(5), params=_Cfg(max_steps=10), t=jnp.asarray(0.0))
+    done = term(prev_state=None, state=_State(5), params=_Cfg(max_steps=10), t=jnp.asarray(0.0))
     assert not bool(done)

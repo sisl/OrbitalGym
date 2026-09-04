@@ -17,6 +17,7 @@ import jax
 import jax.numpy as jnp
 
 from orbitalgym.actions.components import G0
+from orbitalgym.games.proximity import closest_approach
 from orbitalgym.rollout import episode_mask
 
 
@@ -87,28 +88,43 @@ def lbg_episode_metrics(traj: Any, cfg: Any) -> EpisodeMetrics:
 
     guard_pos = _positions(traj.env_state.guards)  # (T, n_g, dim)
     bandit_pos = _positions(traj.env_state.bandits)  # (T, n_b, dim)
-    d_gb = jnp.linalg.norm(guard_pos[:, :, None, :] - bandit_pos[:, None, :, :], axis=-1)
-    d_gb_min_t = jnp.min(d_gb, axis=(1, 2))  # (T,)
-    d_bl_min_t = jnp.min(jnp.linalg.norm(bandit_pos, axis=-1), axis=1)  # (T,)
+
+    # Distances are closest approaches over each step's segment, not the
+    # distances at the sampled endpoints: a guard and a bandit can pass
+    # within metres of each other between two decision samples. Segment k
+    # runs from the state logged at k to the one at k+1; the final segment
+    # has no successor and degenerates to the endpoint distance.
+    dt = cfg.dt
+    rel_gb = guard_pos[:, :, None, :] - bandit_pos[:, None, :, :]  # (T, n_g, n_b, dim)
+    rel_gb_next = jnp.concatenate([rel_gb[1:], rel_gb[-1:]], axis=0)
+    d_gb_seg, speed_gb_seg = closest_approach(rel_gb, (rel_gb_next - rel_gb) / dt, dt)
+    d_gb_flat = d_gb_seg.reshape(d_gb_seg.shape[0], -1)
+    speed_gb_flat = speed_gb_seg.reshape(speed_gb_seg.shape[0], -1)
+    pair_idx = jnp.argmin(d_gb_flat, axis=-1)[:, None]
+    d_gb_min_t = jnp.take_along_axis(d_gb_flat, pair_idx, axis=-1)[:, 0]
+    speed_gb_min_t = jnp.take_along_axis(speed_gb_flat, pair_idx, axis=-1)[:, 0]
+
+    bandit_next = jnp.concatenate([bandit_pos[1:], bandit_pos[-1:]], axis=0)
+    d_bl_seg, speed_bl_seg = closest_approach(bandit_pos, (bandit_next - bandit_pos) / dt, dt)
+    bandit_idx = jnp.argmin(d_bl_seg, axis=-1)[:, None]
+    d_bl_min_t = jnp.take_along_axis(d_bl_seg, bandit_idx, axis=-1)[:, 0]
+    speed_bl_min_t = jnp.take_along_axis(speed_bl_seg, bandit_idx, axis=-1)[:, 0]
 
     big = jnp.asarray(jnp.inf, dtype=d_gb_min_t.dtype)
     min_d_gb = jnp.min(jnp.where(mask, d_gb_min_t, big))
     min_d_bl = jnp.min(jnp.where(mask, d_bl_min_t, big))
 
-    # The logged env_state at index k is the state entering step k; the
-    # terminating event is visible in the state after the last valid step,
-    # which the freeze-on-done rule holds at index last_idx + 1 when it
-    # exists. Use the post-step state when available, else the last state.
+    # The event that ended the episode lives on the last masked segment.
     T = mask.shape[0]  # noqa: N806
     post_idx = jnp.minimum(last_idx + 1, T - 1)
-    terminated = traj.episode_done[last_idx]
-    d_gb_final = jnp.where(terminated, d_gb_min_t[post_idx], d_gb_min_t[last_idx])
-    d_bl_final = jnp.where(terminated, d_bl_min_t[post_idx], d_bl_min_t[last_idx])
-    min_d_gb = jnp.minimum(min_d_gb, jnp.where(terminated, d_gb_final, big))
-    min_d_bl = jnp.minimum(min_d_bl, jnp.where(terminated, d_bl_final, big))
-
-    caught = d_gb_final < cfg.game.catch_radius_m
-    breached = d_bl_final < cfg.game.breach_radius_m
+    catch_speed = float(getattr(cfg.game, "catch_speed_mps", jnp.inf))
+    breach_speed = float(getattr(cfg.game, "breach_speed_mps", jnp.inf))
+    caught = (d_gb_min_t[last_idx] < cfg.game.catch_radius_m) & (
+        speed_gb_min_t[last_idx] < catch_speed
+    )
+    breached = (d_bl_min_t[last_idx] < cfg.game.breach_radius_m) & (
+        speed_bl_min_t[last_idx] < breach_speed
+    )
     outcome = jnp.where(
         caught & breached,
         Outcome.BOTH,

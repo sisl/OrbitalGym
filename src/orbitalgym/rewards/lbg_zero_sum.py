@@ -4,17 +4,22 @@ Both sides receive a per-step signal:
 
     guard:
         -alpha * d_guard_bandit_min                  (dense shaping)
-        + R_catch  * 1[d_guard_bandit_min < r_catch]   (caught bandit terminal bonus)
-        - R_breach * 1[d_bandit_lady_min < r_breach]   (lady breached terminal penalty)
+        + R_catch  * 1[catch event]                  (caught bandit terminal bonus)
+        - R_breach * 1[breach event]                 (lady breached terminal penalty)
 
     bandit (mirror):
         -alpha * d_bandit_lady_min                   (dense shaping)
-        + R_breach * 1[d_bandit_lady_min < r_breach] (intercepted lady terminal bonus)
-        - R_catch  * 1[d_guard_bandit_min < r_catch]  (caught by guard terminal penalty)
+        + R_breach * 1[breach event]                 (intercepted lady terminal bonus)
+        - R_catch  * 1[catch event]                  (caught by guard terminal penalty)
 
-Where:
-    d_guard_bandit_min = min over (g, b) of ||guard_pos[g] - bandit_pos[b]||
-    d_bandit_lady_min  = min over b      of ||bandit_pos[b]||           (lady at origin)
+Distances and events come from
+:func:`orbitalgym.games.proximity.lbg_events` over the step from
+``prev_state`` to ``next_state``, the same source
+:class:`~orbitalgym.termination.lbg_events.LbgEventTermination` reads, so a
+terminal bonus is paid in exactly the step the episode ends:
+
+    d_guard_bandit_min = min over (g, b) of the guard-bandit closest approach
+    d_bandit_lady_min  = min over b      of the bandit-lady closest approach
 
 Lady is virtual — fixed at the RTN origin (the reference orbit). The reward is
 scope=PER_SIDE: returns a scalar per side and is JIT-friendly (no Python branches
@@ -28,18 +33,9 @@ from dataclasses import dataclass
 import jax.numpy as jnp
 
 from orbitalgym.env.types import Side
+from orbitalgym.games.proximity import lbg_events
 from orbitalgym.registry import RewardFnKey, register
 from orbitalgym.rewards.base import RewardScope
-
-
-def _positions(side_state):
-    """Extract per-vehicle position vectors from a side state pytree.
-
-    Falls back from RTN to RT, mirroring DistanceToReferenceOrbit.
-    """
-    if hasattr(side_state, "rtn"):
-        return side_state.rtn[:, :3]
-    return side_state.rt[:, :2]
 
 
 @register(RewardFnKey.LBG_ZERO_SUM)
@@ -57,25 +53,24 @@ class LbgZeroSumReward:
     r_breach: float = 1000.0
     catch_radius_m: float = 50.0
     breach_radius_m: float = 5.0
+    catch_speed_mps: float = float("inf")
+    breach_speed_mps: float = float("inf")
     scope: RewardScope = RewardScope.PER_SIDE
 
     def __call__(self, prev_state, action, next_state, side, params, t):
-        del prev_state, action, params, t
+        del action, t
 
-        guard_pos = _positions(next_state.guards)  # (n_g, dim)
-        bandit_pos = _positions(next_state.bandits)  # (n_b, dim)
-
-        # Pairwise guard-bandit distances: (n_g, n_b).
-        diffs = guard_pos[:, None, :] - bandit_pos[None, :, :]
-        d_gb = jnp.linalg.norm(diffs, axis=-1)
-        d_gb_min = jnp.min(d_gb)
-
-        # Bandit-to-lady distances (lady at origin): (n_b,).
-        d_bl = jnp.linalg.norm(bandit_pos, axis=-1)
-        d_bl_min = jnp.min(d_bl)
-
-        catch_event = (d_gb_min < self.catch_radius_m).astype(jnp.float32)
-        breach_event = (d_bl_min < self.breach_radius_m).astype(jnp.float32)
+        caught, breached, d_gb_min, d_bl_min = lbg_events(
+            prev_state,
+            next_state,
+            params.dt,
+            self.catch_radius_m,
+            self.catch_speed_mps,
+            self.breach_radius_m,
+            self.breach_speed_mps,
+        )
+        catch_event = caught.astype(jnp.float32)
+        breach_event = breached.astype(jnp.float32)
 
         if side is Side.GUARD:
             return (

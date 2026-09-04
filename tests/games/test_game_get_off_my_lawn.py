@@ -227,13 +227,13 @@ def test_termination_uses_hcw_metric_for_pushout():
     # Along-track 1000 m: Euclidean = 1000, HCW = 500 — still > keep_out=400.
     bandit_rtn = jnp.array([[0.0, 1000.0, 0.0, 0.0, 0.0, 0.0]])
     state = state.replace(bandits=state.bandits.replace(rtn=bandit_rtn))
-    done = cfg.termination_fn(state, cfg, state.t)
+    done = cfg.termination_fn(state, state, cfg, state.t)
     assert bool(done) is True
     # Along-track 700 m: Euclidean = 700 (would push out under Euclidean) but
     # HCW = 350 < keep_out=400, so under HCW the bandit is NOT pushed out.
     bandit_rtn = jnp.array([[0.0, 700.0, 0.0, 0.0, 0.0, 0.0]])
     state = state.replace(bandits=state.bandits.replace(rtn=bandit_rtn))
-    done = cfg.termination_fn(state, cfg, state.t)
+    done = cfg.termination_fn(state, state, cfg, state.t)
     assert bool(done) is False
 
 
@@ -277,7 +277,7 @@ def test_termination_triggers_on_pushout():
     state, _ = env.reset(jax.random.PRNGKey(0))
     bandit_rtn = jnp.array([[1000.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
     state = state.replace(bandits=state.bandits.replace(rtn=bandit_rtn))
-    done = cfg.termination_fn(state, cfg, state.t)
+    done = cfg.termination_fn(state, state, cfg, state.t)
     assert bool(done) is True
 
 
@@ -287,7 +287,7 @@ def test_termination_triggers_on_capture():
     env = OrbitalGymEnv(cfg)
     state, _ = env.reset(jax.random.PRNGKey(0))
     state = state.replace(bandits=state.bandits.replace(rtn=state.guards.rtn))
-    done = cfg.termination_fn(state, cfg, state.t)
+    done = cfg.termination_fn(state, state, cfg, state.t)
     assert bool(done) is True
 
 

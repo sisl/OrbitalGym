@@ -27,17 +27,21 @@ The guard defends the lady — a virtual point at the reference-orbit origin (th
 - **Guard**: `−α·d_guard_bandit_min + R_catch·1[catch] − R_breach·1[breach]`. The dense term pulls the guard toward the closest bandit; the terminal events dominate cumulative return when triggered.
 - **Bandit** (mirror): `−α·d_bandit_lady_min + R_breach·1[breach] − R_catch·1[catch]`. The dense term pulls the bandit toward the lady; terminal events flip the sign of the guard's reward.
 
-`α=1e-3`, `R_catch=R_breach=1000.0` by default; both `breach_radius_m` and `catch_radius_m` come from `cfg.game` so the reward and the termination always agree on the radii.
+`α=1e-3`, `R_catch=R_breach=1000.0` by default; the radii and the speed gates come from `cfg.game`, and both the reward and the termination read the same closest-approach events, so a terminal bonus is paid in exactly the step the episode ends.
 
 ## Termination
 
 `LbgEventTermination` ends the episode as soon as any of the following holds:
 
 1. `state.step >= cfg.max_steps` (horizon exhausted).
-2. Some bandit is within `breach_radius_m` of the lady (bandit win).
-3. Some guard is within `catch_radius_m` of any bandit (guard win).
+2. Some bandit passes within `breach_radius_m` of the lady at a relative speed below `breach_speed_mps` (bandit win).
+3. Some guard passes within `catch_radius_m` of any bandit at a relative speed below `catch_speed_mps` (guard win).
 
-`max_steps` is read from `params.max_steps` (the cfg) at call time — the termination class itself does not store it.
+Both spatial events are resolved over the whole step, not just at its endpoints: the relative motion between two samples is treated as a straight line and the closest approach along it is what the radius test sees. A 10 s decision step at 7000 km altitude departs from that chord by well under 0.1 m, so the approximation is far finer than any usable event radius.
+
+The speed gates default to infinity, which tests the radius alone. Setting them finite distinguishes a capture from a high-speed flyby that merely passes close.
+
+`max_steps` and `dt` are read from the cfg at call time — the termination class itself does not store them.
 
 ## Builder
 
@@ -47,12 +51,14 @@ from orbitalgym import make_lady_bandit_guard
 cfg = make_lady_bandit_guard(
     breach_radius_m=5.0,
     catch_radius_m=50.0,
+    breach_speed_mps=float("inf"),
+    catch_speed_mps=float("inf"),
     max_horizon_s=2000.0,
     seed=0,
 )
 ```
 
-`LadyBanditGuard` owns both knobs and provides the matching reward + termination via `default_reward_fn` / `default_termination_fn`. `ScenarioConfig.__post_init__` calls those automatically — the builder never sets `reward_fn` or `termination_fn` explicitly. To override either, pass it as a constructor kwarg on `ScenarioConfig` directly:
+`LadyBanditGuard` owns these knobs and provides the matching reward + termination via `default_reward_fn` / `default_termination_fn`. `ScenarioConfig.__post_init__` calls those automatically — the builder never sets `reward_fn` or `termination_fn` explicitly. To override either, pass it as a constructor kwarg on `ScenarioConfig` directly:
 
 ```python
 from orbitalgym.config import ScenarioConfig

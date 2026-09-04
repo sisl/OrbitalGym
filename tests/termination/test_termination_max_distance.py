@@ -56,7 +56,7 @@ def _state(g_xyz, b_xyz, step=0):
 def test_max_distance_below_threshold():
     term = MaxDistanceTermination(max_distance_m=10000.0)
     s = _state([[100.0, 200.0, 0.0]], [[3000.0, 0.0, 0.0]])
-    done = term(state=s, params=_Cfg(), t=jnp.asarray(0.0))
+    done = term(prev_state=s, state=s, params=_Cfg(), t=jnp.asarray(0.0))
     assert not bool(done)
 
 
@@ -64,7 +64,7 @@ def test_max_distance_bandit_drifted_terminates():
     term = MaxDistanceTermination(max_distance_m=10000.0)
     # Bandit at 30km — should trigger.
     s = _state([[100.0, 200.0, 0.0]], [[30000.0, 0.0, 0.0]])
-    done = term(state=s, params=_Cfg(), t=jnp.asarray(0.0))
+    done = term(prev_state=s, state=s, params=_Cfg(), t=jnp.asarray(0.0))
     assert bool(done)
 
 
@@ -72,7 +72,7 @@ def test_max_distance_guard_drifted_terminates():
     term = MaxDistanceTermination(max_distance_m=10000.0)
     # Guard at 12km, bandit nearby.
     s = _state([[12000.0, 0.0, 0.0]], [[1000.0, 0.0, 0.0]])
-    done = term(state=s, params=_Cfg(), t=jnp.asarray(0.0))
+    done = term(prev_state=s, state=s, params=_Cfg(), t=jnp.asarray(0.0))
     assert bool(done)
 
 
@@ -84,15 +84,21 @@ def test_max_distance_any_of_composition_with_max_steps():
 
     # Both quiet — no termination.
     s_quiet = _state([[0.0, 0.0, 0.0]], [[1000.0, 0.0, 0.0]], step=3)
-    assert not bool(term(state=s_quiet, params=_Cfg(max_steps=10), t=jnp.asarray(0.0)))
+    assert not bool(
+        term(prev_state=s_quiet, state=s_quiet, params=_Cfg(max_steps=10), t=jnp.asarray(0.0))
+    )
 
     # Step cap fires.
     s_steps = _state([[0.0, 0.0, 0.0]], [[1000.0, 0.0, 0.0]], step=10)
-    assert bool(term(state=s_steps, params=_Cfg(max_steps=10), t=jnp.asarray(0.0)))
+    assert bool(
+        term(prev_state=s_steps, state=s_steps, params=_Cfg(max_steps=10), t=jnp.asarray(0.0))
+    )
 
     # Drift fires (steps still under).
     s_drift = _state([[0.0, 0.0, 0.0]], [[20000.0, 0.0, 0.0]], step=3)
-    assert bool(term(state=s_drift, params=_Cfg(max_steps=10), t=jnp.asarray(0.0)))
+    assert bool(
+        term(prev_state=s_drift, state=s_drift, params=_Cfg(max_steps=10), t=jnp.asarray(0.0))
+    )
 
 
 def test_max_distance_rt_side_state_supported():
@@ -101,5 +107,5 @@ def test_max_distance_rt_side_state_supported():
     g = jnp.asarray([[0.0, 0.0, 0.0, 0.0]], dtype=jnp.float32)
     b = jnp.asarray([[6000.0, 0.0, 0.0, 0.0]], dtype=jnp.float32)
     state = _State(_RtSide(g), _RtSide(b))
-    done = term(state=state, params=_Cfg(), t=jnp.asarray(0.0))
+    done = term(prev_state=state, state=state, params=_Cfg(), t=jnp.asarray(0.0))
     assert bool(done)

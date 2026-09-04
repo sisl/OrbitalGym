@@ -17,6 +17,7 @@ class TerminationFn(Protocol):
 
     def __call__(
         self,
+        prev_state: Any,
         state: Any,
         params: Any,
         t: jax.Array,

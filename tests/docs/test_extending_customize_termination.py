@@ -34,8 +34,11 @@ def test_customize_termination_walkthrough():
         first: object
         second: object
 
-        def __call__(self, state, params, t):
-            return jnp.logical_and(self.first(state, params, t), self.second(state, params, t))
+        def __call__(self, prev_state, state, params, t):
+            return jnp.logical_and(
+                self.first(prev_state, state, params, t),
+                self.second(prev_state, state, params, t),
+            )
 
     # --8<-- [end:and-composite]
 
@@ -55,6 +58,6 @@ def test_customize_termination_walkthrough():
         jax.random.PRNGKey(1), state, controlled_cmd, opp_ps
     )
     del next_state, next_obs, reward, next_opp_ps, info
-    composite_done = cfg.termination_fn(state, cfg, state.t)
+    composite_done = cfg.termination_fn(state, state, cfg, state.t)
     assert composite_done.shape == ()
     assert done.shape == ()

@@ -278,8 +278,8 @@ class GetOffMyLawnTermination:
     catch_radius_m: float
     keep_out_radius_m: float
 
-    def __call__(self, state, params, t) -> jax.Array:
-        del t
+    def __call__(self, prev_state, state, params, t) -> jax.Array:
+        del prev_state, t
         if not isinstance(params.game, GetOffMyLawn):
             raise TypeError(
                 f"GetOffMyLawnTermination requires cfg.game: GetOffMyLawn; "

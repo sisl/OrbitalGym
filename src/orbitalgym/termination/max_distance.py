@@ -25,8 +25,8 @@ from orbitalgym.registry import TerminationFnKey, register
 def _positions(side_state):
     """Return per-vehicle (N, d) positions in whichever planar frame the side carries.
 
-    Mirrors the helper in :mod:`orbitalgym.termination.lbg_events` so the
-    two terminations agree on which slice of state counts as "position".
+    Mirrors the helper in :mod:`orbitalgym.games.proximity` so the
+    terminations agree on which slice of state counts as "position".
     """
     if hasattr(side_state, "rtn"):
         return side_state.rtn[:, :3]
@@ -46,8 +46,8 @@ class MaxDistanceTermination:
 
     max_distance_m: float = 10000.0
 
-    def __call__(self, state, params, t) -> jax.Array:
-        del params, t
+    def __call__(self, prev_state, state, params, t) -> jax.Array:
+        del prev_state, params, t
         guard_pos = _positions(state.guards)
         bandit_pos = _positions(state.bandits)
         all_pos = jnp.concatenate([guard_pos, bandit_pos], axis=0)
@@ -75,8 +75,8 @@ class AnyOfTermination:
         # so we can normalise list/tuple inputs into a tuple.
         object.__setattr__(self, "terminations", tuple(terminations))
 
-    def __call__(self, state, params, t) -> jax.Array:
+    def __call__(self, prev_state, state, params, t) -> jax.Array:
         result = jnp.asarray(False)
         for term in self.terminations:
-            result = jnp.logical_or(result, term(state, params, t))
+            result = jnp.logical_or(result, term(prev_state, state, params, t))
         return result
