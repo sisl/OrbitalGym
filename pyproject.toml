@@ -23,6 +23,7 @@ dependencies = [
     "brahe>=1.5.0",
     "h5py>=3.16",
     "matplotlib>=3.10",
+    "scipy>=1.16",
     "scienceplots>=2.2",
 ]
 
