@@ -174,8 +174,9 @@ channel. It is configured with:
   sensors) or a `(k,)` array / tuple for per-sensor half-angles.
 - `sigma_floor` — measurement-noise standard deviation at zero range.
 - `sigma_range_frac` — growth of that std per metre of observer-target
-  range. A zero std produces a near-noiseless `R = 1e-12 I` instead of
-  `R = 0` so Kalman updates remain numerically valid.
+  range. Leaving it at `0.0` reproduces a constant per-pair sigma equal to
+  `sigma_floor`. A zero std produces a near-noiseless `R = 1e-12 I` instead
+  of `R = 0` so Kalman updates remain numerically valid.
 
 **Visibility logic:** For each (observer, target) pair, `ConicalObservation`
 rotates every body-fixed boresight into the world frame using the observer's
@@ -189,7 +190,10 @@ deviation `σ_ij = sigma_floor + sigma_range_frac * range_ij`. `H = I_d` and
 `R[i, j] = σ_ij² I_d`, so `obs_noise` carries the per-pair shape
 `(N_obs, N_total, m, m)`. The same `σ_ij` scales every measurement row, so
 velocity rows are noised in proportion to range exactly as position rows
-are. This is the full-state measurement model used by the bundled belief
+are. The `range_ij` driving `σ_ij` is the **true** range read from
+ground-truth state — a benchmark convention that avoids modelling a range
+estimator. The filter is handed only the resulting `R`, never the range.
+This is the full-state measurement model used by the bundled belief
 updater — no bearing-only or range-only reduction.
 
 **Multi-sensor vmap:** Multiple sensors per agent are handled entirely inside

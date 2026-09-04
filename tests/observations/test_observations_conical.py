@@ -1,8 +1,12 @@
 import jax
 import jax.numpy as jnp
 
+from orbitalgym.belief.kf import KFBelief, KFBeliefUpdater
+from orbitalgym.belief.pf import ParticleFilterBelief, ParticleFilterBeliefUpdater
 from orbitalgym.env.types import Side
+from orbitalgym.observations.composite import CompositeObservation
 from orbitalgym.observations.conical import ConicalObservation
+from orbitalgym.observations.onboard_gps import OnboardGPSObservation
 
 
 def _layout_rtn(n_self=1, n_tgt=1):
@@ -297,7 +301,7 @@ def _state_rtn_f64(self_pos, target_pos, self_quat=None):
 
 
 def test_dtype_preserved_float64_sigma_floor_nonzero():
-    """obs, obs_matrix, obs_noise must all be float64 when state is float64 (Fix 2)."""
+    """obs, obs_matrix and obs_noise must all be float64 when state is float64."""
     layout = _layout_rtn()
     obs_fn = ConicalObservation(
         layout=layout,
@@ -622,3 +626,115 @@ def test_obs_noise_is_per_pair():
     assert jnp.allclose(jnp.diag(obs.obs_noise[0, 1]), 2.0**2, rtol=1e-4)
     assert jnp.allclose(jnp.diag(obs.obs_noise[0, 2]), 31.0**2, rtol=1e-4)
     assert jnp.allclose(obs.noise_for(0, 2), obs.obs_noise[0, 2])
+
+
+def test_zero_range_fraction_gives_constant_per_pair_noise():
+    """sigma_range_frac=0 reproduces a constant sigma_floor**2 * I for every pair."""
+    obs_fn = _conical_two_targets(3.0, 0.0)
+    env_state = _two_target_state_on_boresight()
+    obs = obs_fn(
+        env_state,
+        None,
+        Side.GUARD,
+        None,
+        jax.random.PRNGKey(0),
+        jnp.asarray(0.0, dtype=jnp.float32),
+    )[0]
+    expected = jnp.broadcast_to(jnp.eye(6, dtype=jnp.float32) * 9.0, (1, 3, 6, 6))
+    assert obs.obs_noise.shape == (1, 3, 6, 6)
+    assert jnp.allclose(obs.obs_noise, expected, rtol=1e-5)
+
+
+# ---- mixed noise shapes through a composite channel ---------------------
+
+
+def _mixed_shape_channels():
+    """(m, m) GPS noise plus per-pair conical noise, one observer, two targets."""
+    layout = _layout_rtn(n_self=1, n_tgt=2)
+    cone = ConicalObservation(
+        layout=layout,
+        sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float32),
+        half_angle_rad=jnp.deg2rad(jnp.float32(30.0)),
+        sigma_floor=1.0,
+        sigma_range_frac=0.01,
+    )
+    gps = OnboardGPSObservation(layout=layout, sigma_gps=0.1)
+    comp = CompositeObservation(constituents=(gps, cone))
+    channels = comp(
+        _two_target_state_on_boresight(),
+        None,
+        Side.GUARD,
+        None,
+        jax.random.PRNGKey(3),
+        jnp.asarray(0.0, dtype=jnp.float32),
+    )
+    assert channels[0].obs_noise.shape == (6, 6)
+    assert channels[1].obs_noise.shape == (1, 3, 6, 6)
+    return channels
+
+
+def test_mixed_noise_shapes_through_jitted_kf_update():
+    """A composite of shared-R and per-pair-R channels updates under jit."""
+    channels = _mixed_shape_channels()
+    d = 6
+    upd = KFBeliefUpdater(
+        stm=jnp.eye(d, dtype=jnp.float32),
+        control_matrix=jnp.zeros((d, 3), dtype=jnp.float32),
+        process_noise=jnp.eye(d, dtype=jnp.float32) * 1e-6,
+    )
+    belief = KFBelief(
+        mean=jnp.zeros((1, 3, d), dtype=jnp.float32),
+        cov=jnp.broadcast_to(jnp.eye(d, dtype=jnp.float32) * 1e4, (1, 3, d, d)),
+    )
+
+    @jax.jit
+    def step(b, chans):
+        return upd(b, chans, jnp.zeros((1, 3), dtype=jnp.float32), Side.GUARD, None)
+
+    out = step(belief, channels)
+    trace_close = float(jnp.trace(out.cov[0, 1]))
+    trace_far = float(jnp.trace(out.cov[0, 2]))
+    assert trace_close < trace_far  # tighter R at 100 m than at 3000 m
+    # The shared-R GPS channel still corrects the observer's own slot.
+    assert float(jnp.trace(out.cov[0, 0])) < trace_close
+
+
+def test_mixed_noise_shapes_through_pf_update():
+    """The same composite drives a PF update with the same per-pair asymmetry."""
+    channels = _mixed_shape_channels()
+    d = 6
+    k = 512
+    cloud = jax.random.normal(jax.random.PRNGKey(5), (k, d), dtype=jnp.float32) * 50.0
+    truth = jnp.array(
+        [
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            [100.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            [3000.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        ],
+        dtype=jnp.float32,
+    )
+    particles = truth[None, :, None, :] + cloud[None, None, :, :]
+    log_w = jnp.full((1, 3, k), -jnp.log(float(k)), dtype=jnp.float32)
+    belief = ParticleFilterBelief(
+        particles=particles,
+        log_weights=log_w,
+        n_eff=jnp.full((1, 3), float(k)),
+        weight_entropy=jnp.full((1, 3), float(jnp.log(k))),
+        resampled=jnp.zeros((1, 3), dtype=bool),
+    )
+    upd = ParticleFilterBeliefUpdater(
+        dynamics_fn=lambda x, u, dt: x,
+        process_noise=jnp.zeros((d, d), dtype=jnp.float32),
+        dt=1.0,
+        n_eff_threshold=0.0,
+    )
+    out = upd(
+        belief,
+        observations=channels,
+        action=jnp.zeros((1, 3), dtype=jnp.float32),
+        side=Side.GUARD,
+        key=jax.random.PRNGKey(7),
+    )
+    err_close = float(jnp.linalg.norm(out.mean[0, 1, :3] - truth[1, :3]))
+    err_far = float(jnp.linalg.norm(out.mean[0, 2, :3] - truth[2, :3]))
+    assert err_close < err_far

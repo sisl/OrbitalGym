@@ -243,9 +243,9 @@ bandit_attitude_sampler = FixedAttitude(
 # beam sweeps the sky once per spin period.
 #
 # `GUARD_SIGMA_FULLSTATE` is the zero-range measurement-noise floor;
-# ConicalObservation
-# returns a full-state measurement (position AND velocity in one
-# vector), so this σ applies to all 4 components in the RT-plane state.
+# ConicalObservation returns a full-state measurement (position AND
+# velocity in one vector), so this σ applies to all 4 components in
+# the RT-plane state.
 
 # %%
 GUARD_SENSOR_BORESIGHTS_BODY = jnp.array(

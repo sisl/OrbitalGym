@@ -135,6 +135,16 @@ exactly as position rows are. A zero std produces `R = 1e-12 I`
 (near-noiseless) rather than `R = 0` so that Kalman updates remain
 numerically stable and correctly weight near-perfect measurements.
 
+`sigma_range_frac=0.0` (the default) reproduces a constant per-pair sigma
+equal to `sigma_floor`: every pair then gets `R[i, j] = sigma_floor² I_d`,
+matching an isotropic sensor with no range dependence.
+
+**`range_ij` is the true range**, read from ground-truth state. That is a
+benchmark convention: it lets a scenario dial in a realistic degradation
+with range without modelling a range estimator. The filter never sees this
+range on its own — it only receives the resulting `R` — so a policy cannot
+back out truth from the noise level any more precisely than `R` reveals.
+
 **2D / 3D handling:** Works in both RT and RTN scenarios. For RT (2D),
 positions are zero-padded to 3D internally before the cone math. The
 `layout.dynamics_state_dim` attribute drives the padding automatically.
