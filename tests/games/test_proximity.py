@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
-from orbitalgym.dynamics.hcw import hcw_rtn_stm
 from orbitalgym.games.proximity import (
     ballistic_breach_possible,
     closest_approach,
     proximity_event,
+    stm_power_stack,
 )
 from orbitalgym.reference_orbit import ReferenceOrbitState, mean_motion
 
@@ -77,12 +77,12 @@ def test_batched_inputs_broadcast():
     assert bool(events[1])
 
 
-def _phi(dt: float = 10.0):
+def _powers(max_steps: int = 200, dt: float = 10.0):
     ref = ReferenceOrbitState(
         position_eci=jnp.array([7000e3, 0.0, 0.0]),
         velocity_eci=jnp.array([0.0, 7.5e3, 0.0]),
     )
-    return hcw_rtn_stm(float(mean_motion(ref)), dt)
+    return stm_power_stack(float(mean_motion(ref)), dt, max_steps)
 
 
 def test_bounded_ellipse_never_reaches_the_origin():
@@ -94,7 +94,7 @@ def test_bounded_ellipse_never_reaches_the_origin():
     n = float(mean_motion(ref))
     x = jnp.array([3000.0, 0.0, 0.0, 0.0, -2.0 * n * 3000.0, 0.0])
     possible = ballistic_breach_possible(
-        x, _phi(), jnp.asarray(200), 200, 10.0, radius_m=15.0, speed_mps=jnp.inf
+        x, _powers(), jnp.asarray(200), 10.0, radius_m=15.0, speed_mps=jnp.inf
     )
     assert not bool(possible)
 
@@ -103,7 +103,7 @@ def test_inbound_drift_reaches_the_breach_sphere():
     """A 0.1 m/s radial drift from 30 m coasts inside a 15 m breach sphere."""
     x = jnp.array([30.0, 0.0, 0.0, -0.1, 0.0, 0.0])
     possible = ballistic_breach_possible(
-        x, _phi(), jnp.asarray(200), 200, 10.0, radius_m=15.0, speed_mps=jnp.inf
+        x, _powers(), jnp.asarray(200), 10.0, radius_m=15.0, speed_mps=jnp.inf
     )
     assert bool(possible)
 
@@ -112,7 +112,7 @@ def test_remaining_steps_mask_excludes_late_approach():
     """The same drift is out of reach when only ten steps remain."""
     x = jnp.array([30.0, 0.0, 0.0, -0.1, 0.0, 0.0])
     possible = ballistic_breach_possible(
-        x, _phi(), jnp.asarray(10), 200, 10.0, radius_m=15.0, speed_mps=jnp.inf
+        x, _powers(), jnp.asarray(10), 10.0, radius_m=15.0, speed_mps=jnp.inf
     )
     assert not bool(possible)
 
@@ -126,7 +126,7 @@ def test_ballistic_scan_maps_over_leading_axes():
         ]
     )
     possible = ballistic_breach_possible(
-        x, _phi(), jnp.asarray(200), 200, 10.0, radius_m=15.0, speed_mps=jnp.inf
+        x, _powers(), jnp.asarray(200), 10.0, radius_m=15.0, speed_mps=jnp.inf
     )
     assert possible.shape == (2,)
     assert bool(possible[0])

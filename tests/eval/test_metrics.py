@@ -15,6 +15,8 @@ from orbitalgym.rollout import rollout
 from orbitalgym.sampling.mass import ConstantMass
 from orbitalgym.sampling.side import RelativeEllipse
 from orbitalgym.sampling.spec import ICSpec
+from orbitalgym.termination.lbg_events import LbgEventTermination
+from orbitalgym.termination.max_distance import AnyOfTermination, MaxDistanceTermination
 
 
 @dataclass(frozen=True)
@@ -229,3 +231,20 @@ def test_timeout_is_not_repelled():
     m = lbg_episode_metrics(traj, cfg)
     assert int(m.outcome) == Outcome.TIMEOUT
     assert int(m.steps) == 5
+
+
+def test_early_stop_without_a_repel_gate_is_a_timeout():
+    """A drift cap ending the episode early is not a repulsion."""
+    traj, cfg = _run(
+        _ic(1000.0, 6000.0, jnp.pi),
+        n_steps=5,
+        termination_fn=AnyOfTermination(
+            [
+                LbgEventTermination(breach_radius_m=5.0, catch_radius_m=50.0),
+                MaxDistanceTermination(max_distance_m=5000.0),
+            ]
+        ),
+    )
+    m = lbg_episode_metrics(traj, cfg)
+    assert int(m.steps) == 1
+    assert int(m.outcome) == Outcome.TIMEOUT

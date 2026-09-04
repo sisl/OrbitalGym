@@ -66,16 +66,24 @@ class LadyBanditGuard(Game):
     def validate(self, cfg: Any) -> None:
         if not self.repel_on_empty_tank:
             return
+        if cfg.truth_dynamics is not DynamicsKey.HCW_RTN:
+            raise ValueError(
+                "repel_on_empty_tank coasts the bandit under the HCW-RTN state "
+                "transition matrix, which only models the truth dynamics when "
+                f"those are {DynamicsKey.HCW_RTN.value}; got "
+                f"{getattr(cfg.truth_dynamics, 'value', cfg.truth_dynamics)}."
+            )
         missing = [
             key.value
             for key in (StateComponentKey.RTN, StateComponentKey.MASS)
-            if key not in cfg.bandit_components
+            if key not in cfg.bandit_components_extended
         ]
         if missing:
             raise ValueError(
                 "repel_on_empty_tank reads the bandit's propellant and coasts its "
                 "RTN state to the horizon, so bandit_components must include "
-                f"{', '.join(missing)}; got {tuple(k.value for k in cfg.bandit_components)}."
+                f"{', '.join(missing)}; got "
+                f"{tuple(k.value for k in cfg.bandit_components_extended)}."
             )
 
     def default_reward_fn(self):

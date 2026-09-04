@@ -20,6 +20,8 @@ gating.
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 import jax
 import jax.numpy as jnp
 
@@ -148,49 +150,66 @@ def lbg_events(
     )
 
 
+def stm_power_stack(mean_motion: float, dt: float, max_steps: int) -> jax.Array:
+    """Powers ``phi^0 ... phi^max_steps`` of the one-step HCW-RTN STM, ``(max_steps + 1, 6, 6)``.
+
+    Coasting a state to every step of the horizon is one batched matmul
+    against this stack rather than a chain of ``max_steps`` dependent ones,
+    so :func:`ballistic_breach_possible` costs the same whichever step of the
+    episode calls it. The stack itself is built with an associative scan and
+    memoised on its three scalar arguments, which are fixed for a scenario.
+
+    Args:
+        mean_motion: Reference-orbit mean motion in rad/s.
+        dt: Step duration in seconds.
+        max_steps: Highest power to build.
+    """
+    phi = hcw_rtn_stm(mean_motion, dt)
+    powers = jax.lax.associative_scan(jnp.matmul, jnp.broadcast_to(phi, (max_steps, 6, 6)))
+    return jnp.concatenate([jnp.eye(6, dtype=phi.dtype)[None], powers])
+
+
+_stm_power_stack_cached = lru_cache(maxsize=8)(stm_power_stack)
+
+
 def ballistic_breach_possible(
     x_rtn: jax.Array,
-    phi: jax.Array,
+    phi_powers: jax.Array,
     n_remaining: jax.Array,
-    max_steps: int,
     dt: float,
     radius_m: float,
     speed_mps: float,
 ) -> jax.Array:
     """Whether a coasting RTN state can still reach the lady before the clock runs out.
 
-    Propagates ``x_rtn`` under the one-step state transition matrix ``phi``
-    for ``max_steps`` steps and tests :func:`proximity_event` against the
-    origin on each segment, keeping only the first ``n_remaining`` of them.
-    ``max_steps`` is the static scan length; ``n_remaining`` is traced, so
-    the same compiled scan serves every step of an episode.
+    Coasts ``x_rtn`` to every step of the horizon at once through
+    ``phi_powers``, then tests :func:`proximity_event` against the origin on
+    each of the resulting segments, keeping only the first ``n_remaining`` of
+    them. The horizon length is static — it is the length of ``phi_powers`` —
+    while ``n_remaining`` is traced, so one compiled evaluation serves every
+    step of an episode.
 
     Args:
         x_rtn: Coasting state ``(..., 6)`` as ``[R, T, N, Rdot, Tdot, Ndot]``.
-        phi: One-step ``(6, 6)`` state transition matrix.
+        phi_powers: Powers of the one-step STM, ``(max_steps + 1, 6, 6)``, from
+            :func:`stm_power_stack`.
         n_remaining: Steps left in the episode; segments beyond it are masked.
-        max_steps: Static upper bound on the number of segments scanned.
-        dt: Step duration in seconds, matching ``phi``.
+        dt: Step duration in seconds, matching ``phi_powers``.
         radius_m: Breach radius about the origin.
         speed_mps: Relative-speed gate for the breach.
 
     Returns:
         Boolean with the leading shape of ``x_rtn``.
     """
-
-    dtype = jnp.result_type(x_rtn, phi)
+    dtype = jnp.result_type(x_rtn, phi_powers)
     x_rtn = jnp.asarray(x_rtn, dtype=dtype)
-    phi = jnp.asarray(phi, dtype=dtype)
+    phi_powers = jnp.asarray(phi_powers, dtype=dtype)
 
-    def step(x, k):
-        x_next = x @ phi.T
-        r0 = x[..., :3]
-        v = (x_next[..., :3] - r0) / dt
-        hit = jnp.logical_and(proximity_event(r0, v, dt, radius_m, speed_mps), k < n_remaining)
-        return x_next, hit
-
-    _, hits = jax.lax.scan(step, x_rtn, jnp.arange(max_steps))
-    return jnp.any(hits, axis=0)
+    coast = jnp.einsum("kij,...j->...ki", phi_powers, x_rtn)  # (..., max_steps + 1, 6)
+    r0 = coast[..., :-1, :3]
+    v = (coast[..., 1:, :3] - r0) / dt
+    unmasked = proximity_event(r0, v, dt, radius_m, speed_mps)
+    return jnp.any(jnp.logical_and(unmasked, jnp.arange(r0.shape[-2]) < n_remaining), axis=-1)
 
 
 def lbg_repelled(
@@ -220,12 +239,13 @@ def lbg_repelled(
     if escape_radius_m > 0.0:
         repelled = jnp.linalg.norm(r_bandits, axis=-1) > escape_radius_m
     if repel_on_empty_tank:
-        phi = hcw_rtn_stm(float(mean_motion(params.reference_orbit)), params.dt)
+        powers = _stm_power_stack_cached(
+            float(mean_motion(params.reference_orbit)), float(params.dt), int(params.max_steps)
+        )
         reachable = ballistic_breach_possible(
             bandits.rtn,
-            phi,
+            powers,
             params.max_steps - state.step,
-            params.max_steps,
             params.dt,
             breach_radius_m,
             breach_speed_mps,

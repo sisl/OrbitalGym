@@ -49,7 +49,7 @@ The speed gates default to infinity, which tests the radius alone. Setting them 
 A bandit is repelled when either of two independent gates fires, and the episode ends only once *every* bandit is repelled:
 
 - **Distance**: the bandit is farther than `escape_radius_m` from the lady. `escape_radius_m=0`, the default, disables this gate.
-- **Empty tank**: with `repel_on_empty_tank=True`, the bandit has no propellant left and its ballistic coast cannot reach the breach sphere in the steps the horizon still allows. The coast is propagated with the one-step HCW state transition matrix for the reference orbit, so a bandit stranded on a bounded relative ellipse is repelled while one still drifting toward the lady is not.
+- **Empty tank**: with `repel_on_empty_tank=True`, the bandit has no propellant left and its ballistic coast cannot reach the breach sphere in the steps the horizon still allows. The coast is propagated with the powers of the one-step HCW state transition matrix for the reference orbit, so a bandit stranded on a bounded relative ellipse is repelled while one still drifting toward the lady is not. The gate therefore requires `truth_dynamics=HCW_RTN`.
 
 The empty-tank gate reads `state.bandits.propellant_mass` and coasts the bandit's RTN state, so it requires both a `MASS` and an `RTN` component on the bandit side. Setting it on a layout that has neither raises when the `ScenarioConfig` is built.
 

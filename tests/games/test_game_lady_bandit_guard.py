@@ -7,7 +7,7 @@ import pytest
 from orbitalgym.config import ScenarioConfig
 from orbitalgym.games import LadyBanditGuard, make_lady_bandit_guard
 from orbitalgym.games.base import NoGame
-from orbitalgym.registry import GameKey, StateComponentKey, resolve_game
+from orbitalgym.registry import DynamicsKey, GameKey, StateComponentKey, resolve_game
 
 
 def test_lady_bandit_guard_registered():
@@ -71,3 +71,14 @@ def test_repel_on_empty_tank_accepts_a_mass_tracked_bandit():
         bandit_components=(StateComponentKey.RTN, StateComponentKey.MASS),
     )
     assert cfg.game.repel_on_empty_tank is True
+
+
+def test_repel_on_empty_tank_rejects_non_hcw_rtn_truth_dynamics():
+    with pytest.raises(ValueError, match="HCW-RTN"):
+        make_lady_bandit_guard(
+            repel_on_empty_tank=True,
+            bandit_components=(StateComponentKey.RT, StateComponentKey.MASS),
+            guard_components=(StateComponentKey.RT, StateComponentKey.MASS),
+            truth_dynamics=DynamicsKey.HCW_RT,
+            policy_dynamics=DynamicsKey.HCW_RT,
+        )

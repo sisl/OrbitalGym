@@ -123,12 +123,19 @@ def lbg_episode_metrics(traj: Any, cfg: Any) -> EpisodeMetrics:
     post_idx = jnp.minimum(last_idx + 1, T - 1)
     caught = caught_t[last_idx]
     breached = breached_t[last_idx]
-    # An episode that stopped before the horizon without a catch or a breach
-    # was ended by the repel gate: those are the only terminal events the LBG
-    # termination function raises. An episode that used every logged step, or
-    # every step the horizon allows, timed out instead.
-    stopped_early = steps < min(T, cfg.max_steps)
-    quiet = jnp.where(stopped_early, Outcome.REPELLED, Outcome.TIMEOUT)
+    # With a repel gate armed, an episode that stopped before the horizon
+    # without a catch or a breach was ended by that gate: those are the only
+    # terminal events the LBG termination function raises. With no gate armed
+    # an early stop came from somewhere else — a composed drift cap, say — and
+    # reads as a timeout, as does any episode that used every logged step or
+    # every step the horizon allows.
+    repel_armed = float(getattr(cfg.game, "escape_radius_m", 0.0)) > 0.0 or bool(
+        getattr(cfg.game, "repel_on_empty_tank", False)
+    )
+    if repel_armed:
+        quiet = jnp.where(steps < min(T, cfg.max_steps), Outcome.REPELLED, Outcome.TIMEOUT)
+    else:
+        quiet = jnp.asarray(Outcome.TIMEOUT)
     outcome = jnp.where(
         caught & breached,
         Outcome.BOTH,

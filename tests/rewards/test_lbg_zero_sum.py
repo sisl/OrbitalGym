@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import jax.numpy as jnp
+import pytest
 
 from orbitalgym.env.types import Side
 from orbitalgym.rewards.lbg_zero_sum import LbgZeroSumReward
@@ -116,8 +117,17 @@ def test_repelled_and_termination_agree():
     """The reward pays the bonus on exactly the step the termination fires."""
     reward = LbgZeroSumReward(escape_radius_m=5000.0)
     term = LbgEventTermination(breach_radius_m=5.0, escape_radius_m=5000.0)
-    prev = _state(_FAR_GUARD, [[4000.0, 0.0, 0.0]])
-    nxt = _state(_FAR_GUARD, [[4000.0, 10.0, 0.0]], step=1)
-    guard, _ = _rewards(reward, prev, nxt, _Cfg())
+
+    inside_prev = _state(_FAR_GUARD, [[4000.0, 0.0, 0.0]])
+    inside_next = _state(_FAR_GUARD, [[4000.0, 10.0, 0.0]], step=1)
+    guard, bandit = _rewards(reward, inside_prev, inside_next, _Cfg())
     assert guard < reward.r_catch
-    assert not bool(term(prev, nxt, _Cfg(), nxt.step))
+    assert bandit > -reward.r_catch
+    assert not bool(term(inside_prev, inside_next, _Cfg(), inside_next.step))
+
+    outside_prev = _state(_FAR_GUARD, [[6000.0, 0.0, 0.0]])
+    outside_next = _state(_FAR_GUARD, [[6000.0, 10.0, 0.0]], step=1)
+    guard, bandit = _rewards(reward, outside_prev, outside_next, _Cfg())
+    assert guard == pytest.approx(reward.r_catch, abs=10.0)
+    assert bandit == pytest.approx(-reward.r_catch, abs=10.0)
+    assert bool(term(outside_prev, outside_next, _Cfg(), outside_next.step))
