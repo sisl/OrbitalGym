@@ -264,7 +264,7 @@ class POMDPAdapter:
         s_cur = s_flat
         reward = jnp.zeros((), dtype=s_flat.dtype)
         done = jnp.asarray(False)
-        substep_discount = jnp.asarray(1.0, dtype=s_flat.dtype)
+        substep_discount = 1.0
         for i, k in enumerate(keys):
             prev_state = self._unpack(s_cur)
             step_out = self.env.step(k, prev_state, actions)
@@ -273,8 +273,8 @@ class POMDPAdapter:
                 r = self.env.reward_fn(
                     prev_state, actions, step_out.state, side, self.env.config, prev_state.t
                 )
-                r = r.astype(s_flat.dtype) * substep_discount
-                reward = reward + (r if i == 0 else jnp.where(done, 0.0, r))
+                r = substep_discount * r
+                reward = r if i == 0 else reward + jnp.where(done, 0.0, r)
             s_cur = s_new if i == 0 else jnp.where(done, s_cur, s_new)
             if i + 1 < self.action_repeat:
                 done = jnp.logical_or(done, step_out.episode_done)

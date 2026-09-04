@@ -9,7 +9,10 @@ import jax.numpy as jnp
 import pytest
 
 from orbitalgym import OrbitalGymEnv, Side, make_lady_bandit_guard
+from orbitalgym.adapters._command_flatten import flatten_command
+from orbitalgym.adapters.pomdp import POMDPAdapter
 from orbitalgym.belief.pf import ParticleFilterFromTruthInitializer
+from orbitalgym.env.types import Actions, BySide
 from orbitalgym.eval.conformance import check_policy_conforms
 from orbitalgym.policies.action_repeat import ActionRepeatPolicy
 from orbitalgym.policies.zero import ZeroControl
@@ -103,3 +106,60 @@ def test_wrapper_passes_conformance():
     assert report.command_ok, report.message
     assert report.traceable, report.message
     assert report.rollout_ok, report.message
+
+
+def test_rollout_matches_the_macro_step_adapter():
+    """The flown trajectory equals the searched one at every macro boundary."""
+    repeat = 3
+    n_macro = 4
+    env = OrbitalGymEnv(make_lady_bandit_guard(max_horizon_s=600.0))
+    adapter = POMDPAdapter(env, action_repeat=repeat)
+    n_g, n_b = env.config.n_guards, env.config.n_bandits
+
+    dv_table = jnp.array(
+        [[0.02, 0.0, 0.0], [0.0, 0.03, 0.0], [-0.01, 0.0, 0.02], [0.0, -0.02, 0.0]]
+    )
+    dv_dim = int(env.guard_command_cls.zeros(n_g).dv.shape[-1])
+
+    @dataclass(frozen=True)
+    class _ScriptedInner:
+        n_vehicles: int = 0
+        command_cls: Any = None
+
+        def init_state(self):
+            return jnp.asarray(0, dtype=jnp.int32)
+
+        def __call__(self, ps, view, key, t):
+            del view, key, t
+            dv = jnp.broadcast_to(
+                dv_table[ps % dv_table.shape[0], :dv_dim], (self.n_vehicles, dv_dim)
+            )
+            return self.command_cls.zeros(self.n_vehicles).replace(dv=dv), ps + 1
+
+    inner = _ScriptedInner(n_vehicles=n_g, command_cls=env.guard_command_cls)
+    policy = ActionRepeatPolicy(
+        inner=inner, repeat=repeat, n_vehicles=n_g, command_cls=env.guard_command_cls
+    )
+
+    state, _ = env.reset(jax.random.PRNGKey(0))
+    ps = policy.init_state()
+    macro_keys = jax.random.split(jax.random.PRNGKey(7), n_macro)
+    searched = adapter.pack(state)
+
+    for j in range(n_macro):
+        substep_keys = jax.random.split(macro_keys[j], repeat)
+        macro_cmd = None
+        for k_sub in substep_keys:
+            cmd, ps = policy(ps, adapter.pack(state), jax.random.PRNGKey(0), state.t)
+            if macro_cmd is None:
+                macro_cmd = cmd
+            # The wrapper holds one command for the whole macro step.
+            assert jnp.array_equal(cmd.dv, macro_cmd.dv)
+            actions = Actions(sides=BySide(guard=cmd, bandit=env.bandit_command_cls.zeros(n_b)))
+            state = env.step(k_sub, state, actions).state
+
+        a_flat = jnp.concatenate(
+            [flatten_command(macro_cmd), flatten_command(env.bandit_command_cls.zeros(n_b))]
+        )
+        searched = adapter.transition(searched, a_flat, macro_keys[j])
+        assert jnp.allclose(searched, adapter.pack(state))

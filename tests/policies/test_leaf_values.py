@@ -96,13 +96,43 @@ def test_terminal_bonus_is_undiscounted_inside_the_radius():
     assert jnp.allclose(guard_leaf_value(adapter, **PARAMS)(s), expected)
 
 
+def _linear_weight(t_hit):
+    return max(0.0, 1.0 - t_hit / N_REMAINING)
+
+
 def test_undiscounted_horizon_uses_the_arithmetic_sum():
+    """At g == 1 the shaping is the arithmetic sum and the bonuses stay distance-aware."""
     adapter = _adapter(discount=1.0)
     assert adapter.discount() == 1.0
+    per_macro_step_m = V_CLOSE * adapter.macro_dt
     s = _state_with(adapter, guard_r=0.0, bandit_r=200.0)
     value = float(guard_leaf_value(adapter, **PARAMS)(s))
+    w_catch = _linear_weight((200.0 - CATCH_RADIUS_M) / per_macro_step_m)
+    w_breach = _linear_weight((200.0 - BREACH_RADIUS_M) / per_macro_step_m)
+    expected = -ALPHA * 200.0 * N_REMAINING + R_CATCH * w_catch - R_BREACH * w_breach
     assert jnp.isfinite(value)
-    assert jnp.allclose(value, -ALPHA * 200.0 * N_REMAINING + R_CATCH - R_BREACH)
+    assert jnp.allclose(value, expected)
+
+
+def test_undiscounted_terminal_terms_vary_with_distance():
+    """A nearer catch is worth more at g == 1, not the same constant bonus."""
+    adapter = _adapter(discount=1.0)
+    value = guard_leaf_value(adapter, **PARAMS)
+    per_macro_step_m = V_CLOSE * adapter.macro_dt
+    near = float(value(_state_with(adapter, guard_r=980.0, bandit_r=1000.0)))
+    far = float(value(_state_with(adapter, guard_r=800.0, bandit_r=1000.0)))
+    # Both catches sit inside the horizon, so only the catch weight and the
+    # shaping differ; the catch weight moves by far more than the shaping.
+    gap = (
+        R_CATCH
+        * (
+            _linear_weight(max(20.0 - CATCH_RADIUS_M, 0.0) / per_macro_step_m)
+            - _linear_weight((200.0 - CATCH_RADIUS_M) / per_macro_step_m)
+        )
+        - ALPHA * (20.0 - 200.0) * N_REMAINING
+    )
+    assert near > far
+    assert jnp.allclose(near - far, gap)
 
 
 def test_macro_step_shortens_the_estimated_time_to_an_event():
