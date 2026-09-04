@@ -1,4 +1,4 @@
-"""Finite-horizon HCW LQR toward the lady plus Gaussian repulsion from opponents."""
+"""Infinite-horizon HCW LQR toward the lady plus Gaussian repulsion from opponents."""
 
 from __future__ import annotations
 
@@ -7,37 +7,44 @@ from typing import Any
 
 import jax
 import jax.numpy as jnp
+import numpy as np
+from scipy.linalg import solve_discrete_are
 
 from orbitalgym.registry import PolicyKey, register
 
 
-def _hcw_rt_ab(mean_motion: float, dt: float) -> tuple[jax.Array, jax.Array]:
+def _hcw_rt_ab(mean_motion: float, dt: float) -> tuple[np.ndarray, np.ndarray]:
     """Discrete-time in-plane HCW (A, B) for state [r, t, r_dot, t_dot] and control [dv_r, dv_t]."""
-    n = mean_motion
-    s = jnp.sin(n * dt)
-    c = jnp.cos(n * dt)
-    phi = jnp.array(
+    n = float(mean_motion)
+    s = np.sin(n * dt)
+    c = np.cos(n * dt)
+    phi = np.array(
         [
             [4 - 3 * c, 0.0, s / n, 2 * (1 - c) / n],
             [6 * (s - n * dt), 1.0, -2 * (1 - c) / n, (4 * s - 3 * n * dt) / n],
             [3 * n * s, 0.0, c, 2 * s],
             [-6 * n * (1 - c), 0.0, -2 * s, 4 * c - 3],
-        ]
+        ],
+        dtype=np.float64,
     )
     return phi, phi[:, 2:]
 
 
-def _first_step_gain(mean_motion: float, dt: float, horizon: int, control_cost: float) -> jax.Array:
-    """Gain of the first control in the unconstrained finite-horizon LQR to the origin."""
+def _steady_state_gain(
+    mean_motion: float, dt: float, r_scale_m: float, v_scale_mps: float, dv_scale_mps: float
+) -> jax.Array:
+    """Infinite-horizon LQR gain from the float64 discrete algebraic Riccati equation."""
     a, b = _hcw_rt_ab(mean_motion, dt)
-    powers = [jnp.eye(4)]
-    for _ in range(horizon):
-        powers.append(a @ powers[-1])
-    m = jnp.concatenate([powers[horizon - 1 - k] @ b for k in range(horizon)], axis=1)
-    c = jnp.array([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]])
-    h = m.T @ c.T @ c @ m + control_cost * jnp.eye(m.shape[1])
-    k = jnp.linalg.solve(h, m.T @ c.T @ c @ powers[horizon])
-    return k[:2, :]
+    q = np.diag(
+        np.array(
+            [1.0 / r_scale_m**2, 1.0 / r_scale_m**2, 1.0 / v_scale_mps**2, 1.0 / v_scale_mps**2],
+            dtype=np.float64,
+        )
+    )
+    r = np.eye(2, dtype=np.float64) / dv_scale_mps**2
+    p = solve_discrete_are(a, b, q, r)
+    gain = np.linalg.solve(r + b.T @ p @ b, b.T @ p @ a)
+    return jnp.asarray(gain, dtype=jnp.float32)
 
 
 IN_PLANE_RTN = jnp.array([0, 1, 3, 4])
@@ -48,9 +55,17 @@ IN_PLANE_RTN = jnp.array([0, 1, 3, 4])
 class LQRGoToLadyWithAvoidance:
     """Drive to the lady with an in-plane LQR and push away from nearby opponents.
 
-    The control is ``clip(u_lqr + u_avoid, ±max_dv_mps)`` where ``u_avoid`` sums
-    ``avoidance_gain * exp(-d^2 / (2 sigma^2))`` per opponent, directed away from
-    it. The agent view is either a belief with ``mean (N_obs, N_total, d)`` or a
+    ``u_lqr = -K x`` uses the infinite-horizon gain ``K`` of the in-plane HCW
+    model, obtained at build time from the discrete algebraic Riccati equation
+    solved in float64 and stored as float32. ``Q`` penalises position by
+    ``1 / r_scale_m^2`` and velocity by ``1 / v_scale_mps^2``; ``R`` penalises
+    control by ``1 / dv_scale_mps^2``.
+
+    ``u_avoid`` sums ``avoidance_gain * exp(-d^2 / (2 sigma^2))`` per opponent,
+    directed away from it. The combined command ``u_lqr + u_avoid`` is scaled
+    down to Euclidean norm ``max_dv_mps`` when it exceeds it, preserving its
+    direction, so the command never exceeds the per-step budget the environment
+    enforces. The agent view is either a belief with ``mean (N_obs, N_total, d)`` or a
     flat observation of the same numbers; observer ``i`` reads its own state
     from cell ``(i, i)`` and opponents from columns ``N_obs`` onward. The
     flat-observation path requires either a single full-state channel (e.g.
@@ -81,14 +96,18 @@ class LQRGoToLadyWithAvoidance:
         n_opponents: int,
         state_dim: int,
         command_cls: Any,
-        horizon: int = 8,
-        control_cost: float = 1e-3,
         max_dv_mps: float = 0.5,
+        r_scale_m: float = 100.0,
+        v_scale_mps: float = 1.0,
+        dv_scale_mps: float | None = None,
         avoidance_gain: float = 1.0,
         avoidance_sigma_m: float = 300.0,
     ) -> LQRGoToLadyWithAvoidance:
+        dv_scale = float(max_dv_mps) if dv_scale_mps is None else float(dv_scale_mps)
         return cls(
-            gain=_first_step_gain(mean_motion, dt, horizon, control_cost),
+            gain=_steady_state_gain(
+                mean_motion, dt, float(r_scale_m), float(v_scale_mps), dv_scale
+            ),
             max_dv_mps=float(max_dv_mps),
             avoidance_gain=float(avoidance_gain),
             avoidance_sigma_m=float(avoidance_sigma_m),
@@ -136,7 +155,9 @@ class LQRGoToLadyWithAvoidance:
         magnitude = self.avoidance_gain * jnp.exp(-(dist**2) / (2.0 * self.avoidance_sigma_m**2))
         u_avoid = jnp.sum(magnitude * direction, axis=1)
 
-        dv_rt = jnp.clip(u_lqr + u_avoid, -self.max_dv_mps, self.max_dv_mps)
+        u = u_lqr + u_avoid
+        u_norm = jnp.linalg.norm(u, axis=-1, keepdims=True)
+        dv_rt = u * jnp.minimum(1.0, self.max_dv_mps / jnp.maximum(u_norm, 1e-12))
         template = self.command_cls.zeros(n)
         dv_dim = template.dv.shape[-1]
         if dv_dim > 2:

@@ -2612,6 +2612,7 @@ dependencies = [
     { name = "mctx" },
     { name = "pettingzoo" },
     { name = "scienceplots" },
+    { name = "scipy" },
 ]
 
 [package.optional-dependencies]
@@ -2679,6 +2680,7 @@ requires-dist = [
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.8" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15" },
     { name = "scienceplots", specifier = ">=2.2" },
+    { name = "scipy", specifier = ">=1.16" },
     { name = "zensical", marker = "extra == 'dev'", specifier = ">=0.0.39" },
 ]
 provides-extras = ["dev", "cuda12", "cuda13", "mps", "extras", "ground-stations"]
