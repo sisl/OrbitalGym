@@ -14,6 +14,13 @@ Both sides receive a per-step signal:
         - R_catch  * 1[catch event]                  (caught by guard terminal penalty)
         - R_catch  * 1[repelled]                     (repelled terminal penalty)
 
+On top of that each side pays ``dv_cost`` per m/s of delta-v *its own*
+vehicles spent over the step, recovered from the propellant drawn down by the
+rocket equation. The geometry terms remain zero-sum; the fuel terms are not
+mirrored, so each side bears only the cost of the fuel it burnt. A side whose
+state carries no MASS component has no propellant trace and pays nothing —
+the term is dropped at trace time, so the reward stays JIT-friendly.
+
 Distances and events come from
 :func:`orbitalgym.games.proximity.lbg_events` over the step from
 ``prev_state`` to ``next_state``, the same source
@@ -34,6 +41,7 @@ from dataclasses import dataclass
 
 import jax.numpy as jnp
 
+from orbitalgym.actions.components import G0
 from orbitalgym.env.types import Side
 from orbitalgym.games.proximity import lbg_events, lbg_repelled
 from orbitalgym.registry import RewardFnKey, register
@@ -48,6 +56,10 @@ class LbgZeroSumReward:
     The two sides receive mirrored signals. With the default weights, the
     dense term provides a steady gradient toward the right behavior while
     the terminal events dominate the cumulative return when triggered.
+
+    ``dv_cost`` is the price of fuel in reward units per m/s of delta-v. Each
+    side pays it on its own spend only, so raising it makes both sides thriftier
+    without handing either an advantage.
     """
 
     alpha: float = 1e-3
@@ -59,7 +71,28 @@ class LbgZeroSumReward:
     breach_speed_mps: float = float("inf")
     escape_radius_m: float = 0.0
     repel_on_empty_tank: bool = False
+    dv_cost: float = 0.0
     scope: RewardScope = RewardScope.PER_SIDE
+
+    def _fuel_cost(self, prev_state, next_state, side, params):
+        """Cost of the delta-v ``side`` spent over the step, in reward units.
+
+        Delta-v follows from the propellant consumed rather than from the
+        commanded impulse: thrust limits and an empty tank both clip a
+        command, so the commanded magnitude would overstate the spend.
+        """
+        prev_side = prev_state.guards if side is Side.GUARD else prev_state.bandits
+        if not hasattr(prev_side, "propellant_mass"):
+            return jnp.zeros(())
+        next_side = next_state.guards if side is Side.GUARD else next_state.bandits
+        vehicle = params.guard_params if side is Side.GUARD else params.bandit_params
+        dry = jnp.asarray(vehicle.dry_mass_kg, dtype=prev_side.propellant_mass.dtype)
+        dv = (
+            vehicle.isp_s
+            * G0
+            * jnp.log((dry + prev_side.propellant_mass) / (dry + next_side.propellant_mass))
+        )
+        return self.dv_cost * jnp.sum(dv)
 
     def __call__(self, prev_state, action, next_state, side, params, t):
         del action, t
@@ -87,6 +120,15 @@ class LbgZeroSumReward:
         guard_win = jnp.logical_or(caught, repelled).astype(jnp.float32)
         breach_event = breached.astype(jnp.float32)
 
+        fuel = self._fuel_cost(prev_state, next_state, side, params)
+
         if side is Side.GUARD:
-            return -self.alpha * d_gb_min + self.r_catch * guard_win - self.r_breach * breach_event
-        return -self.alpha * d_bl_min + self.r_breach * breach_event - self.r_catch * guard_win
+            return (
+                -self.alpha * d_gb_min
+                + self.r_catch * guard_win
+                - self.r_breach * breach_event
+                - fuel
+            )
+        return (
+            -self.alpha * d_bl_min + self.r_breach * breach_event - self.r_catch * guard_win - fuel
+        )

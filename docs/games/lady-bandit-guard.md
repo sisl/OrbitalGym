@@ -29,7 +29,9 @@ The guard defends the lady — a virtual point at the reference-orbit origin (th
 
 Repelling the bandits pays the guard exactly what a catch pays: either way the bandit team is out of the fight, so the guard is indifferent between intercepting a bandit and driving it off.
 
-`α=1e-3`, `R_catch=R_breach=1000.0` by default; the radii and the speed gates come from `cfg.game`, and both the reward and the termination read the same closest-approach events, so a terminal bonus is paid in exactly the step the episode ends.
+With `dv_cost > 0` each side additionally pays `dv_cost` reward units per m/s of delta-v **its own** vehicles spent over the step, recovered from the propellant drawn down through the rocket equation rather than from the commanded impulse — thrust limits and an empty tank both clip a command, so the commanded magnitude would overstate the spend. The geometry terms stay zero-sum and the fuel terms do not mirror, so each side bears only the cost of the fuel it burnt and neither gains from the other's thrift. A side whose state carries no `MASS` component has no propellant trace and pays nothing.
+
+`α=1e-3`, `R_catch=R_breach=1000.0`, `dv_cost=0.0` by default; the radii and the speed gates come from `cfg.game`, and both the reward and the termination read the same closest-approach events, so a terminal bonus is paid in exactly the step the episode ends.
 
 ## Termination
 
@@ -69,6 +71,7 @@ cfg = make_lady_bandit_guard(
     catch_speed_mps=float("inf"),
     escape_radius_m=0.0,
     repel_on_empty_tank=False,
+    dv_cost=0.0,
     max_horizon_s=2000.0,
     seed=0,
 )
@@ -98,6 +101,7 @@ cfg = ScenarioConfig(
 | `catch_radius_m` | `float` | `50.0` | Guard wins when any guard-to-bandit distance falls below this radius. |
 | `escape_radius_m` | `float` | `0.0` | Bandit counts as repelled beyond this distance from the lady. `0` disables the gate. |
 | `repel_on_empty_tank` | `bool` | `False` | Treat an out-of-propellant bandit that can no longer coast to the lady as repelled. Needs a mass-tracked bandit in an RTN frame. |
+| `dv_cost` | `float` | `0.0` | Reward units charged per m/s of delta-v. Each side pays for its own fuel only; a side without a `MASS` component pays nothing. |
 | `max_horizon_s` | `float` | `2000.0` | Total episode duration in seconds. |
 | `dt` | `float` | `10.0` | Step size in seconds. |
 | `seed` | `int` | `0` | PRNG seed for IC sampling. |

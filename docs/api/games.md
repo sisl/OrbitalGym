@@ -16,6 +16,10 @@ Typed `Game` subtypes (knob bundles) and per-game `make_<game>(...)` builders.
 
 ::: orbitalgym.games.lady_bandit_guard.make_lady_bandit_guard
 
+The reward these knobs configure, including the `dv_cost` fuel term, is
+documented under
+[Extending → Customize rewards](../extending/customize-rewards.md#orbitalgym.rewards.lbg_zero_sum.LbgZeroSumReward).
+
 ## Pursuit-Evasion
 
 ::: orbitalgym.games.pursuit_evasion.PursuitEvasion

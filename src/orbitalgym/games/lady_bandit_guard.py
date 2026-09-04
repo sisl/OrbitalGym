@@ -52,6 +52,8 @@ class LadyBanditGuard(Game):
         repel_on_empty_tank: when True, a bandit out of propellant whose
             coast cannot reach the lady before the horizon ends counts as
             repelled. Requires a mass-tracked bandit in an RTN frame.
+        dv_cost: reward units charged per m/s of delta-v. Each side pays only
+            for its own fuel; a side without a MASS component pays nothing.
 
     The episode is a guard win by repulsion once *every* bandit is repelled.
     """
@@ -62,6 +64,7 @@ class LadyBanditGuard(Game):
     catch_speed_mps: float = float("inf")
     escape_radius_m: float = 0.0
     repel_on_empty_tank: bool = False
+    dv_cost: float = 0.0
 
     def validate(self, cfg: Any) -> None:
         if not self.repel_on_empty_tank:
@@ -96,6 +99,7 @@ class LadyBanditGuard(Game):
             breach_speed_mps=self.breach_speed_mps,
             escape_radius_m=self.escape_radius_m,
             repel_on_empty_tank=self.repel_on_empty_tank,
+            dv_cost=self.dv_cost,
         )
 
     def default_termination_fn(self):
@@ -120,6 +124,7 @@ def make_lady_bandit_guard(
     catch_speed_mps: float = float("inf"),
     escape_radius_m: float = 0.0,
     repel_on_empty_tank: bool = False,
+    dv_cost: float = 0.0,
     # Fleet sizing
     n_guards: int = 1,
     n_bandits: int = 1,
@@ -248,6 +253,7 @@ def make_lady_bandit_guard(
             catch_speed_mps=catch_speed_mps,
             escape_radius_m=escape_radius_m,
             repel_on_empty_tank=repel_on_empty_tank,
+            dv_cost=dv_cost,
         ),
         **extra_kwargs,
         **config_kwargs,
