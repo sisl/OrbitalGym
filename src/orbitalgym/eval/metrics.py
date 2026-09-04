@@ -54,14 +54,15 @@ class EpisodeMetrics:
 
 
 def _side_delta_v(
-    side_traj: Any, side_state: Any, params: Any, mask: jax.Array, post_idx: jax.Array
+    side_state: Any, params: Any, applied_dv: Any, mask: jax.Array, post_idx: jax.Array
 ) -> jax.Array:
     """Team delta-v in m/s over the masked steps.
 
     With a propellant trace, delta-v follows from the rocket equation on
     the mass consumed between the first step and the post-terminal state
-    at ``post_idx``. Without one, it is the sum of commanded delta-v
-    magnitudes.
+    at ``post_idx``. Without one, it is the sum of the delta-v magnitudes
+    the env actually imparted — thrust and an empty tank both clip a
+    command, so the commanded magnitudes would overstate the spend.
     """
     if hasattr(side_state, "propellant_mass"):
         m_prop = side_state.propellant_mass  # (T, n)
@@ -70,7 +71,14 @@ def _side_delta_v(
         dry = jnp.asarray(params.dry_mass_kg, dtype=m_prop.dtype)
         per_vehicle = params.isp_s * G0 * jnp.log((dry + m0) / (dry + m1))
         return jnp.sum(per_vehicle)
-    dv_mag = jnp.linalg.norm(side_traj.action.dv, axis=-1)  # (T, n)
+    if applied_dv is None:
+        raise ValueError(
+            "delta-v accounting for a side without a propellant trace needs "
+            "traj.applied_dv, the Δv the env actually imparted each step. "
+            "Produce the trajectory with orbitalgym.rollout.rollout or "
+            "belief_rollout."
+        )
+    dv_mag = jnp.linalg.norm(applied_dv, axis=-1)  # (T, n)
     return jnp.sum(dv_mag * mask[:, None])
 
 
@@ -144,11 +152,20 @@ def lbg_episode_metrics(traj: Any, cfg: Any) -> EpisodeMetrics:
     ic_valid = traj.env_state.ic_valid[0]
     outcome = jnp.where(ic_valid, outcome, Outcome.INVALID_IC).astype(jnp.int32)
 
+    applied_dv = getattr(traj, "applied_dv", None)
     dv_guard = _side_delta_v(
-        traj.sides.guard, traj.env_state.guards, cfg.guard_params, mask, post_idx
+        traj.env_state.guards,
+        cfg.guard_params,
+        None if applied_dv is None else applied_dv.guard,
+        mask,
+        post_idx,
     )
     dv_bandit = _side_delta_v(
-        traj.sides.bandit, traj.env_state.bandits, cfg.bandit_params, mask, post_idx
+        traj.env_state.bandits,
+        cfg.bandit_params,
+        None if applied_dv is None else applied_dv.bandit,
+        mask,
+        post_idx,
     )
 
     contact = getattr(traj, "contact", None)

@@ -47,7 +47,6 @@ from orbitalgym.env.types import (
 )
 from orbitalgym.groundstations.contacts import in_contact_now
 from orbitalgym.observations.types import flatten_observations
-from orbitalgym.registry import ActionComponentKey
 
 
 def rollout(
@@ -114,6 +113,7 @@ def rollout(
         out_reward_g = jnp.where(terminated, jnp.zeros_like(reward_g), reward_g)
         out_reward_b = jnp.where(terminated, jnp.zeros_like(reward_b), reward_b)
 
+        applied_dv = step_out.info["applied_dv"]
         logged = {
             "env_state": es,
             "guard_action": action_g,
@@ -125,6 +125,8 @@ def rollout(
             "bandit_obs": view_b,
             "guard_ps": ps_g,
             "bandit_ps": ps_b,
+            "guard_applied_dv": applied_dv.guard,
+            "bandit_applied_dv": applied_dv.bandit,
         }
         return (
             advance_es,
@@ -164,6 +166,7 @@ def rollout(
             ),
         ),
         episode_done=stacked["episode_done"],
+        applied_dv=BySide(guard=stacked["guard_applied_dv"], bandit=stacked["bandit_applied_dv"]),
         controlled_side=getattr(env.config, "controlled_side", Side.GUARD),
     )
 
@@ -187,27 +190,6 @@ def rollout_single_agent(
         policies = BySide(guard=view.opponent_policy, bandit=controlled_policy)
         init_fns = BySide(guard=lambda c, s, k: None, bandit=init_controlled_ps_fn)
     return rollout(view.env, policies, init_fns, key, n_steps)
-
-
-def _require_impulsive_maneuver(config: Any, *, where: str) -> None:
-    """Fail fast if ``dv`` is not on the assembled Command pytree.
-
-    ``belief_rollout`` reads ``actions.sides.X.dv`` to predict belief means
-    under control, so both sides' action components must include
-    ``IMPULSIVE_MANEUVER``. Without this check, a comms-only side would
-    raise an opaque ``AttributeError`` deep inside the rollout's lax.scan.
-    """
-    g = tuple(config.guard_action_components)
-    b = tuple(config.bandit_action_components)
-    has_g = ActionComponentKey.IMPULSIVE_MANEUVER in g
-    has_b = ActionComponentKey.IMPULSIVE_MANEUVER in b
-    if has_g and has_b:
-        return
-    raise ValueError(
-        f"{where} requires IMPULSIVE_MANEUVER in guard_action_components and "
-        f"bandit_action_components (it reads action.sides.X.dv to predict "
-        f"belief). Got: guard={g!r}, bandit={b!r}"
-    )
 
 
 def _any_opponent_visible(obs_channels: tuple, n_self: int) -> jax.Array:
@@ -252,7 +234,10 @@ def belief_rollout(
       4. ``env.step`` advances the world.
       5. Each side's ``belief_updater`` folds the new per-side observation
          channels into the synced belief (so team fusion persists into the
-         next tick's prior).
+         next tick's prior). The control it predicts under is the Δv the
+         env actually imparted, from ``StepOutput.info["applied_dv"]``, not
+         the commanded Δv: a command clipped by thrust or an empty tank
+         would otherwise leave the own-state belief drifting off truth.
       6. Freeze-on-done as in :func:`rollout`.
 
     The synced belief — not the wrapped ``ContactAwareBelief`` — is what
@@ -267,10 +252,12 @@ def belief_rollout(
     ``initial_state`` starts the episode from a stored ``EnvState`` (see
     ``orbitalgym.eval.bank``) instead of sampling.
     """
-    _require_impulsive_maneuver(env.config, where="belief_rollout")
 
     n_g = env.config.n_guards
     n_b = env.config.n_bandits
+    # Applied Δv is stored padded to width 3; the belief dynamics take a
+    # control of the truth frame's width.
+    dv_dim = env.truth_frame.dim
 
     def _contact_mask(link: Any, network: Any, n_side: int, es: Any, side: Side) -> jax.Array:
         """Per-side link mask. A link predicate wins; else the network schedule; else all-False."""
@@ -336,11 +323,20 @@ def belief_rollout(
         )
         # Post-step update operates on the SYNCED belief (so team fusion
         # persists into the next tick's prior).
+        applied_dv = step_out.info["applied_dv"]
         next_belief_g = belief_updaters.guard(
-            synced_belief_g, guard_obs_channels, action_g.dv, Side.GUARD, k_g_upd
+            synced_belief_g,
+            guard_obs_channels,
+            applied_dv.guard[:, :dv_dim],
+            Side.GUARD,
+            k_g_upd,
         )
         next_belief_b = belief_updaters.bandit(
-            synced_belief_b, bandit_obs_channels, action_b.dv, Side.BANDIT, k_b_upd
+            synced_belief_b,
+            bandit_obs_channels,
+            applied_dv.bandit[:, :dv_dim],
+            Side.BANDIT,
+            k_b_upd,
         )
 
         # The trajectory still records the flat obs for downstream tooling
@@ -385,6 +381,8 @@ def belief_rollout(
             "bandit_contact": contact_b,
             "guard_visible": visible_g,
             "bandit_visible": visible_b,
+            "guard_applied_dv": applied_dv.guard,
+            "bandit_applied_dv": applied_dv.bandit,
         }
         return (
             advance_es,
@@ -424,6 +422,7 @@ def belief_rollout(
         episode_done=stacked["episode_done"],
         contact=BySide(guard=stacked["guard_contact"], bandit=stacked["bandit_contact"]),
         visible=BySide(guard=stacked["guard_visible"], bandit=stacked["bandit_visible"]),
+        applied_dv=BySide(guard=stacked["guard_applied_dv"], bandit=stacked["bandit_applied_dv"]),
         controlled_side=getattr(env.config, "controlled_side", Side.GUARD),
     )
     belief_history = BySide(guard=stacked["guard_belief"], bandit=stacked["bandit_belief"])

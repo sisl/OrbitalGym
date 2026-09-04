@@ -73,7 +73,13 @@ class SideOutput:
 class StepOutput:
     """Result of `env.step`. `outputs.guard` and `outputs.bandit` are
     `SideOutput`s. `episode_done` is the scalar termination signal —
-    per-side `done` fields are this scalar broadcast for shape uniformity."""
+    per-side `done` fields are this scalar broadcast for shape uniformity.
+
+    `info["applied_dv"]` is a `BySide` of `(n_side, 3)` arrays: the Δv the
+    step actually imparted, in the truth frame, zero-padded to width 3. It
+    differs from the commanded Δv whenever thrust or propellant clipped the
+    command, so anything predicting the ego motion must read it rather than
+    the command."""
 
     state: Any  # EnvState — kept Any to avoid circular import
     outputs: BySide
@@ -101,12 +107,17 @@ class Trajectory:
 
     `env_state` at index k is the state *entering* step k, so the state
     leaving the last step has no slot in it. `final_state` carries that one
-    state, which is what closes the last step into a real transition."""
+    state, which is what closes the last step into a real transition.
+
+    `applied_dv` is the truth-frame Δv each step actually imparted, which
+    is what delta-v accounting must sum: a command clipped by thrust or an
+    empty tank never reaches the vehicle."""
 
     env_state: Any  # EnvState
     sides: BySide
     episode_done: jax.Array
     contact: Any = None  # BySide of (T, n_side) bool link masks; None for obs-only rollouts
     visible: Any = None  # BySide of (T, n_side) bool: any opposing target visible; None if unlogged
+    applied_dv: Any = None  # BySide of (T, n_side, 3) truth-frame Δv imparted; None if unlogged
     final_state: Any = None  # EnvState leaving the last step; None if the rollout did not log it
     controlled_side: Side = flax.struct.field(pytree_node=False, default=Side.GUARD)

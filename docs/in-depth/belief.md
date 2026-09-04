@@ -39,6 +39,13 @@ state vector. For the self-pair (observer i tracking itself), add the
 control offset `B @ action[i]`. Process noise `Q` is added to every
 covariance.
 
+The `action` an updater receives is the Δv the env actually imparted,
+not the Δv the policy commanded — `belief_rollout` reads it from
+`StepOutput.info["applied_dv"]`, sliced to the truth frame's width. A
+policy is free to command more than its thruster or its tank can
+deliver, and a belief that predicted under the command would walk its
+own-state estimate off truth every step the command was clipped.
+
 **Correct.** For each `Observation` channel returned by the
 observation function, run the per-pair correction
 `x ← x + K(z − Hx)` gated by the channel's `visible` mask. Pairs with

@@ -565,7 +565,8 @@ class OrbitalGymEnv:
         # ImpulsiveManeuver) have applied_dv=0, giving pure free-drift. Sides
         # with an ImpulsiveManeuver had their applied_dv written by the fold
         # above. After propagation, applied_dv is zeroed so it does not
-        # accumulate across steps.
+        # accumulate across steps; the value that was propagated is returned
+        # alongside the new side state and surfaced in StepOutput.info.
         truth_field_name = _truth_field(self.truth_frame)
 
         def _propagate_translation(side_state, params):
@@ -574,13 +575,14 @@ class OrbitalGymEnv:
             # Slice to truth-frame width (2 for RT, 3 for RTN/ECI).
             dv = applied_dv[:, : self.truth_frame.dim]
             new_truth = self.truth_dynamics(truth_arr, dv, params, self.config.dt)
-            return side_state.replace(
+            propagated = side_state.replace(
                 **{truth_field_name: new_truth},
                 applied_dv=jnp.zeros_like(applied_dv),
             )
+            return propagated, applied_dv
 
-        next_guards = _propagate_translation(next_guards, self.guard_params)
-        next_bandits = _propagate_translation(next_bandits, self.bandit_params)
+        next_guards, applied_dv_g = _propagate_translation(next_guards, self.guard_params)
+        next_bandits, applied_dv_b = _propagate_translation(next_bandits, self.bandit_params)
 
         # Attitude dynamics — runs iff configured. Free precession is the zero-torque path;
         # AttitudeControl actions populate applied_torque earlier in the step.
@@ -664,5 +666,5 @@ class OrbitalGymEnv:
                 bandit=SideOutput(obs=obs_b, reward=reward_b, done=episode_done),
             ),
             episode_done=episode_done,
-            info={},
+            info={"applied_dv": BySide(guard=applied_dv_g, bandit=applied_dv_b)},
         )
