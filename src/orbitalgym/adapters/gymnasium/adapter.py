@@ -28,7 +28,7 @@ from gymnasium import spaces
 from orbitalgym.adapters._command_flatten import command_flat_dim, unflatten_command
 from orbitalgym.env.core import OrbitalGymEnv
 from orbitalgym.env.single_agent import SingleAgentView
-from orbitalgym.env.types import Side
+from orbitalgym.env.types import BySide, Side
 
 
 class GymnasiumAdapter(gym.Env):
@@ -102,5 +102,20 @@ class GymnasiumAdapter(gym.Env):
             float(reward),
             terminated,
             truncated,
-            dict(info) if info else {},
+            self._project_info(info),
         )
+
+    def _project_info(self, info: dict) -> dict:
+        """Narrow a symmetric ``StepOutput.info`` to the controlled side.
+
+        A single-agent env reports only its own vehicles, and gymnasium
+        consumers expect numpy leaves, so per-side entries are picked for
+        the controlled side and materialized.
+        """
+        projected = {}
+        for name, value in info.items():
+            if isinstance(value, BySide):
+                projected[name] = np.asarray(value.get(self.view.controlled_side))
+            else:
+                projected[name] = value
+        return projected
