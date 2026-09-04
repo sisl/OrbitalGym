@@ -12,6 +12,18 @@ the env's own per-step delta-v limit).
 policy's own state; ``init_state(config, env_state, key)`` follows the
 rollout's ``init_policy_state_fns`` convention, and every argument has a
 default so the conformance check can resolve it with a zero-argument call.
+Only the ``dv`` field of the inner command is cached: every other field of
+the side's Command is re-emitted at its zero value, so a side whose action
+components carry pointing or communication fields needs a wrapper of its own.
+
+The replan gate is a ``jax.lax.cond``, which preserves semantics everywhere
+but saves compute only outside ``jax.vmap``. Under ``vmap`` a ``cond``
+becomes a select: both branches execute for every batch element, so the
+inner planner runs on every tick of every episode and the wrapper buys
+nothing. A batched evaluator should instead let the planner replan every
+tick against a macro-step adapter
+(``POMDPAdapter(env, action_repeat=k)``), which searches the same macro
+horizon at full cadence.
 """
 
 from __future__ import annotations

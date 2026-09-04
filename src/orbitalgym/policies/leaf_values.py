@@ -21,15 +21,25 @@ ordering it induces over states is what the search consumes.
 With ``g`` the per-macro-step discount, ``N`` the remaining macro steps, and
 ``d`` the shaped distance, the guard's estimate is::
 
-    V = -alpha * d_gb * (1 - g^N) / (1 - g) + r_catch * g^t_catch
-        - r_breach * g^t_breach
+    V = -alpha * d_gb * (1 - g^N) / (1 - g) + r_catch * w(t_catch)
+        - r_breach * w(t_breach)
 
 and the bandit's is the mirror image::
 
-    V = -alpha * d_bl * (1 - g^N) / (1 - g) + r_breach * g^t_breach
-        - r_catch * g^t_catch
+    V = -alpha * d_bl * (1 - g^N) / (1 - g) + r_breach * w(t_breach)
+        - r_catch * w(t_catch)
 
-The geometric factor becomes the arithmetic sum ``N`` when ``g == 1``.
+``w`` is the weight the terminal bonus carries at an event ``t_hit`` macro
+steps away. For ``g < 1`` it is the discount factor ``g^t_hit``. For
+``g == 1`` discounting cannot express distance, so ``w`` is the linear
+time-to-go weight of an undiscounted finite-horizon reach estimate::
+
+    w(t_hit) = max(0, 1 - t_hit / N)
+
+which pays the bonus in full at the radius, falls off linearly as the event
+recedes, and pays nothing for an event beyond the horizon. The shaping
+factor ``(1 - g^N) / (1 - g)`` likewise becomes the arithmetic sum ``N``
+when ``g == 1``.
 """
 
 from __future__ import annotations
@@ -73,6 +83,18 @@ def _time_to_radius(
     return jnp.maximum(d - radius_m, 0.0) / (v_close_mps * macro_dt)
 
 
+def _event_weight(t_hit: jax.Array, discount: float, n_remaining: int) -> jax.Array:
+    """Weight a terminal bonus carries when the event is ``t_hit`` macro steps away.
+
+    ``g^t_hit`` while discounting, and the linear time-to-go weight
+    ``max(0, 1 - t_hit / N)`` at ``g == 1``, where a discount factor would
+    be 1 everywhere and the estimate would lose its distance dependence.
+    """
+    if discount == 1.0:
+        return jnp.maximum(1.0 - t_hit / n_remaining, 0.0)
+    return discount**t_hit
+
+
 def guard_leaf_value(
     adapter: Any,
     *,
@@ -88,8 +110,8 @@ def guard_leaf_value(
 ) -> Callable[[jax.Array], jax.Array]:
     """Guard-side value estimate in reward units.
 
-    Sums the remaining guard-bandit shaping, ``r_catch`` discounted by the
-    estimated macro steps to a catch, and ``-r_breach`` discounted by the
+    Sums the remaining guard-bandit shaping, ``r_catch`` weighted by the
+    estimated macro steps to a catch, and ``-r_breach`` weighted by the
     estimated macro steps to a breach. ``discount`` defaults to
     ``adapter.discount()``, the per-macro-step discount.
     """
@@ -101,7 +123,9 @@ def guard_leaf_value(
         d_gb, d_bl = _distances(adapter, s_flat)
         t_catch = _time_to_radius(d_gb, catch_radius_m, v_close_guard_mps, macro_dt)
         t_breach = _time_to_radius(d_bl, breach_radius_m, v_close_bandit_mps, macro_dt)
-        v = -alpha * d_gb * horizon + r_catch * g**t_catch - r_breach * g**t_breach
+        w_catch = _event_weight(t_catch, g, n_remaining)
+        w_breach = _event_weight(t_breach, g, n_remaining)
+        v = -alpha * d_gb * horizon + r_catch * w_catch - r_breach * w_breach
         return v.astype(s_flat.dtype)
 
     return value
@@ -123,8 +147,8 @@ def bandit_leaf_value(
     """Bandit-side value estimate in reward units.
 
     The mirror of :func:`guard_leaf_value`: remaining bandit-lady shaping,
-    ``r_breach`` discounted by the estimated macro steps to a breach, and
-    ``-r_catch`` discounted by the estimated macro steps to a catch.
+    ``r_breach`` weighted by the estimated macro steps to a breach, and
+    ``-r_catch`` weighted by the estimated macro steps to a catch.
     """
     g = adapter.discount() if discount is None else discount
     horizon = _shaping_horizon(g, n_remaining)
@@ -134,7 +158,9 @@ def bandit_leaf_value(
         d_gb, d_bl = _distances(adapter, s_flat)
         t_catch = _time_to_radius(d_gb, catch_radius_m, v_close_guard_mps, macro_dt)
         t_breach = _time_to_radius(d_bl, breach_radius_m, v_close_bandit_mps, macro_dt)
-        v = -alpha * d_bl * horizon + r_breach * g**t_breach - r_catch * g**t_catch
+        w_catch = _event_weight(t_catch, g, n_remaining)
+        w_breach = _event_weight(t_breach, g, n_remaining)
+        v = -alpha * d_bl * horizon + r_breach * w_breach - r_catch * w_catch
         return v.astype(s_flat.dtype)
 
     return value
