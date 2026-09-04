@@ -107,14 +107,15 @@ bandit's perspective.
 
 ## When to override discount
 
-`POMDPAdapter.discount()` returns `1.0` because the bundled games
-(`make_pursuit_evasion`, `make_lady_bandit_guard`, `make_sun_blocking`)
-are episode-bounded — terminal conditions and `max_horizon_s` cap
-the trajectory, so undiscounted cumulative reward is well-defined.
-If you wire the adapter into an unbounded MDP or want to emphasise
-near-term reward, subclass `POMDPAdapter` and override `discount()`
-to return your `γ`. The planner above ignores discount; a serious
-search loop should multiply it into the inner-loop accumulator.
+`POMDPAdapter.discount()` returns `1.0` by default because the bundled
+games (`make_pursuit_evasion`, `make_lady_bandit_guard`,
+`make_sun_blocking`) are episode-bounded — terminal conditions and
+`max_horizon_s` cap the trajectory, so undiscounted cumulative reward is
+well-defined. Pass `POMDPAdapter(env, discount=γ)` when you wire the
+adapter into an unbounded MDP or want to emphasise near-term reward;
+`discount()` then reports `γ ** action_repeat`, the per-macro-step
+discount. The planner above ignores discount; a serious search loop
+should multiply it into the inner-loop accumulator.
 
 ## Going further
 

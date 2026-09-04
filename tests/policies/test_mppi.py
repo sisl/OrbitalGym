@@ -41,7 +41,11 @@ def _build(n_samples=256, horizon=8, temperature=0.05, noise_sigma=0.3, dv_max=0
         temperature=temperature,
         noise_sigma=noise_sigma,
         dv_max=dv_max,
-        terminal_value_fn=bandit_leaf_value(adapter, scale_m=100.0),
+        terminal_value_fn=bandit_leaf_value(
+            adapter,
+            v_close_guard_mps=dv_max / cfg.dt,
+            v_close_bandit_mps=dv_max / cfg.dt,
+        ),
         n_vehicles=1,
         command_cls=env.bandit_command_cls,
     )

@@ -4,9 +4,18 @@ Exposes a duck-typed protocol matching POMDPPlanners (Python POMDPs.jl-shape):
     transition(s_flat, a_flat, key)   → s_flat'
     observation(s, a, s', side)       → obs (per-side)
     reward(s, a, s', side)            → scalar
+    step(s_flat, a_flat, key, side)   → (s_flat', reward)
     discount()                        → float
     initialstate(key)                 → s_flat (sampled)
     states_dim, action_dim_per_side   → properties
+
+``action_repeat = k`` makes one planner action a *macro step*: the same
+``a_flat`` is applied for k consecutive env steps, so the planner searches
+``k * dt`` seconds per tree edge while the env still applies its own
+per-step delta-v cap on every substep. ``reward`` returns the discounted
+sum of the k per-substep rewards and ``discount()`` returns the
+per-macro-step discount, which keeps the planner's returns on the same
+scale as the env's own accumulated reward.
 
 State is exposed as a flat JAX vector. The vector packs `StateLayout.flatten`
 (per-side guard/bandit truth) followed by two scalar tail entries: ``t`` and
@@ -44,9 +53,18 @@ class POMDPAdapter:
     to drive under ``jax.vmap`` / ``jax.lax.scan`` / ``jax.jit``.
     """
 
-    def __init__(self, env: OrbitalGymEnv):
+    def __init__(self, env: OrbitalGymEnv, action_repeat: int = 1, discount: float = 1.0):
+        if action_repeat < 1:
+            raise ValueError(f"action_repeat must be >= 1, got {action_repeat}")
+        if not 0.0 < discount <= 1.0:
+            raise ValueError(f"discount must lie in (0, 1], got {discount}")
         self.env = env
         self.layout = env.layout
+        # A planner action spans `action_repeat` env steps. `discount` is the
+        # per-env-step discount; `discount()` reports the per-macro-step one.
+        self.action_repeat = int(action_repeat)
+        self.step_discount = float(discount)
+        self.macro_dt = env.config.dt * action_repeat
         # Per-side Command pytree classes — built by env from the configured
         # action components. Each side's flat-action width is the sum of
         # every component field's per-agent size, multiplied by n_agents.
@@ -100,8 +118,8 @@ class POMDPAdapter:
         return self._bandit_flat_dim
 
     def discount(self) -> float:
-        """Episode-bounded → 1.0. Override per-game if needed."""
-        return 1.0
+        """Per-macro-step discount: ``step_discount ** action_repeat``."""
+        return self.step_discount**self.action_repeat
 
     # ---- pack / unpack ----
 
@@ -154,11 +172,17 @@ class POMDPAdapter:
         a_flat: jax.Array,
         key: jax.Array,
     ) -> jax.Array:
-        """Apply one env step. ``a_flat`` is the concatenated guard+bandit actions."""
-        state = self._unpack(s_flat)
-        actions = self._make_actions(a_flat)
-        step_out = self.env.step(key, state, actions)
-        return self._pack(step_out.state)
+        """Apply ``action_repeat`` env steps of ``a_flat``.
+
+        ``a_flat`` is the concatenated guard+bandit action. Every substep
+        goes through the env, so each one applies the env's own per-step
+        delta-v cap: a macro action is k capped burns in one direction,
+        exactly what the env executes when a policy repeats the command.
+        Substep keys are splits of ``key``. Once a substep reports
+        ``episode_done`` the state is frozen for the remaining substeps.
+        """
+        s_next, _reward = self._macro_step(s_flat, a_flat, key, None)
+        return s_next
 
     def observation(
         self,
@@ -184,13 +208,78 @@ class POMDPAdapter:
         s_next_flat: jax.Array,
         side: Side,
     ) -> jax.Array:
-        """Return the side's per-step reward."""
-        prev_state = self._unpack(s_flat)
-        next_state = self._unpack(s_next_flat)
+        """Return the side's reward for the macro step.
+
+        With ``action_repeat = 1`` this is the single-step reward over the
+        supplied ``(s, a, s')`` triple. With ``action_repeat = k`` it is the
+        sum of the k per-substep rewards discounted by ``step_discount`` per
+        substep, zero after a terminal substep; the intermediate states are
+        not available from this signature, so the substeps are re-simulated
+        from ``s_flat`` and ``s_next_flat`` is ignored. Re-simulation is
+        exact: translational and attitude dynamics are deterministic given
+        the state and action, and observation noise keys never enter the
+        reward. Prefer :meth:`step`, which returns the next state and the
+        reward from one rollout.
+        """
+        if self.action_repeat == 1:
+            prev_state = self._unpack(s_flat)
+            next_state = self._unpack(s_next_flat)
+            actions = self._make_actions(a_flat)
+            return self.env.reward_fn(
+                prev_state, actions, next_state, side, self.env.config, prev_state.t
+            )
+        _s_next, reward = self._macro_step(s_flat, a_flat, key=jax.random.PRNGKey(0), side=side)
+        return reward
+
+    def step(
+        self,
+        s_flat: jax.Array,
+        a_flat: jax.Array,
+        key: jax.Array,
+        side: Side,
+    ) -> tuple[jax.Array, jax.Array]:
+        """Advance one macro step and return ``(s_next_flat, reward)``.
+
+        The planner-facing entry point: one rollout serves both the next
+        state and the side's discounted macro-step reward, so a search does
+        not simulate the substeps twice.
+        """
+        return self._macro_step(s_flat, a_flat, key, side)
+
+    def _macro_step(
+        self,
+        s_flat: jax.Array,
+        a_flat: jax.Array,
+        key: jax.Array,
+        side: Side | None,
+    ) -> tuple[jax.Array, jax.Array]:
+        """Roll ``action_repeat`` substeps of ``a_flat``, freezing on termination.
+
+        Returns the flat state after the last substep and, when ``side`` is
+        given, the discounted sum of the per-substep rewards. The substep
+        count is a Python int, so the loop unrolls under trace.
+        """
         actions = self._make_actions(a_flat)
-        return self.env.reward_fn(
-            prev_state, actions, next_state, side, self.env.config, prev_state.t
-        )
+        keys = [key] if self.action_repeat == 1 else list(jax.random.split(key, self.action_repeat))
+        s_cur = s_flat
+        reward = jnp.zeros((), dtype=s_flat.dtype)
+        done = jnp.asarray(False)
+        substep_discount = jnp.asarray(1.0, dtype=s_flat.dtype)
+        for i, k in enumerate(keys):
+            prev_state = self._unpack(s_cur)
+            step_out = self.env.step(k, prev_state, actions)
+            s_new = self._pack(step_out.state)
+            if side is not None:
+                r = self.env.reward_fn(
+                    prev_state, actions, step_out.state, side, self.env.config, prev_state.t
+                )
+                r = r.astype(s_flat.dtype) * substep_discount
+                reward = reward + (r if i == 0 else jnp.where(done, 0.0, r))
+            s_cur = s_new if i == 0 else jnp.where(done, s_cur, s_new)
+            if i + 1 < self.action_repeat:
+                done = jnp.logical_or(done, step_out.episode_done)
+                substep_discount = substep_discount * self.step_discount
+        return s_cur, reward
 
     # ---- helpers ----
 
