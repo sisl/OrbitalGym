@@ -179,7 +179,7 @@ _stm_power_stack_cached = lru_cache(maxsize=8)(stm_power_stack)
 
 def ballistic_breach_possible(
     x_rtn: jax.Array,
-    phi_powers: jax.Array,
+    phi_powers: jax.Array | np.ndarray,
     n_remaining: jax.Array,
     dt: float,
     radius_m: float,
