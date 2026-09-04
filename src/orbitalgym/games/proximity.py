@@ -24,6 +24,7 @@ from functools import lru_cache
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from orbitalgym.dynamics.hcw import hcw_rtn_stm
 from orbitalgym.reference_orbit import mean_motion_host
@@ -150,23 +151,27 @@ def lbg_events(
     )
 
 
-def stm_power_stack(mean_motion: float, dt: float, max_steps: int) -> jax.Array:
+def stm_power_stack(mean_motion: float, dt: float, max_steps: int) -> np.ndarray:
     """Powers ``phi^0 ... phi^max_steps`` of the one-step HCW-RTN STM, ``(max_steps + 1, 6, 6)``.
 
     Coasting a state to every step of the horizon is one batched matmul
     against this stack rather than a chain of ``max_steps`` dependent ones,
     so :func:`ballistic_breach_possible` costs the same whichever step of the
-    episode calls it. The stack itself is built with an associative scan and
-    memoised on its three scalar arguments, which are fixed for a scenario.
+    episode calls it. The stack is built with an associative scan under
+    compile-time evaluation and returned as a concrete NumPy array, so it is
+    memoised on its three scalar arguments (fixed for a scenario) and is safe
+    to build from inside a ``jax.jit`` trace without leaking a tracer.
 
     Args:
         mean_motion: Reference-orbit mean motion in rad/s.
         dt: Step duration in seconds.
         max_steps: Highest power to build.
     """
-    phi = hcw_rtn_stm(mean_motion, dt)
-    powers = jax.lax.associative_scan(jnp.matmul, jnp.broadcast_to(phi, (max_steps, 6, 6)))
-    return jnp.concatenate([jnp.eye(6, dtype=phi.dtype)[None], powers])
+    with jax.ensure_compile_time_eval():
+        phi = hcw_rtn_stm(mean_motion, dt)
+        powers = jax.lax.associative_scan(jnp.matmul, jnp.broadcast_to(phi, (max_steps, 6, 6)))
+        stack = jnp.concatenate([jnp.eye(6, dtype=phi.dtype)[None], powers])
+    return np.asarray(stack)
 
 
 _stm_power_stack_cached = lru_cache(maxsize=8)(stm_power_stack)

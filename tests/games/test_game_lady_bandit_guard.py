@@ -111,5 +111,9 @@ def test_repel_on_empty_tank_steps_under_jit():
             bandit=env.bandit_command_cls.zeros(cfg.n_bandits),
         )
     )
-    out = jax.jit(env.step)(jax.random.PRNGKey(1), state, actions)
-    assert bool(out.episode_done) is False
+    jitted = jax.jit(env.step)(jax.random.PRNGKey(1), state, actions)
+    eager = env.step(jax.random.PRNGKey(1), state, actions)
+    rejitted = jax.jit(env.step)(jax.random.PRNGKey(1), state, actions)
+    assert bool(jitted.episode_done) is False
+    assert bool(eager.episode_done) is False
+    assert bool(rejitted.episode_done) is False
