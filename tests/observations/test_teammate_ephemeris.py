@@ -154,9 +154,7 @@ def test_particle_filter_converges_on_teammate_via_ephemeris_observation():
         k_step, k_obs, k_upd, key = jax.random.split(key, 4)
         step_out = env.step(k_step, cur_state, actions)
         cur_state = step_out.state
-        obs_channels = obs_fn(
-            cur_state, actions, Side.GUARD, env.config, k_obs, cur_state.t
-        )
+        obs_channels = obs_fn(cur_state, actions, Side.GUARD, env.config, k_obs, cur_state.t)
         belief = updater(belief, obs_channels, zero_dv, Side.GUARD, k_upd)
 
     est_pos = belief.mean[0, 1, :3]

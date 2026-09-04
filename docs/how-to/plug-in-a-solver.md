@@ -187,8 +187,6 @@ Each scenario gets its own callback invocation.
 
 ## See also
 
-- [API → eval.conformance](../api/eval-conformance.md) —
-  `check_policy_conforms` and `ConformanceReport` reference.
-- [API → rollout](../api/rollout.md) — `belief_rollout` internals.
-- [API → belief.pf](../api/belief-pf.md) — `ParticleFilterBelief`,
-  `ParticleFilterBeliefUpdater`.
+- [Belief representations](../in-depth/belief.md) for `ParticleFilterBelief` and its updater.
+- [Ground stations and links](../in-depth/ground-stations.md) for contact-gated fusion.
+- [API reference](../api/index.md).
