@@ -341,6 +341,18 @@ Two underlying glyphs are used:
 - `draw_cone_3d` — 3D RTN scenarios. Draws a cone surface in 3D using
   `mpl_toolkits.mplot3d`.
 
+## Visualizing communication-link cones
+
+Set `RolloutScene.show_link_cones=True` and pass `guard_link` / `bandit_link`
+(a `PointingConeLink` instance) to overlay each vehicle's communication cone
+in a second colour (`link_cone_color`, default `"limegreen"`). The cone is
+drawn solid (`link_cone_alpha_closed`) on frames where the link is closed and
+translucent (`link_cone_alpha_open`) otherwise. The per-frame open/closed
+state comes from `link_mask` (a `BySide` or `dict[Side, ...]` of `(T, n)`
+bool arrays) if given, else from the trajectory's logged `contact` field
+(populated by `belief_rollout` when a link predicate is passed). Link kinds
+other than `PointingConeLink` carry no cone geometry and are skipped.
+
 ## Pointers
 
 - API reference: [attitude dynamics and action components](../api/components.md#attitude-dynamics)
