@@ -84,7 +84,10 @@ class MCTSPolicy:
     num_simulations: int = 32
     max_depth: int | None = None
     leaf_value_fn: Callable[[jax.Array], jax.Array] | None = None
-    discount: float = 1.0
+    # Per-tree-edge discount. ``None`` reads ``env_model.discount()``, which
+    # is the adapter's per-macro-step discount, so a search over macro steps
+    # backs up terminal reward on the same scale the env accumulates it.
+    discount: float | None = None
     variant: Literal["muzero", "gumbel_muzero"] = "gumbel_muzero"
 
     n_vehicles: int = 0
@@ -209,7 +212,10 @@ class MCTSPolicy:
         else:
             identity_actions = Actions(sides=BySide(guard=identity_opp, bandit=identity_self))
 
-        discount = jnp.asarray(self.discount, dtype=s_flat.dtype)
+        discount = jnp.asarray(
+            adapter.discount() if self.discount is None else self.discount,
+            dtype=s_flat.dtype,
+        )
         self_dv_dim = int(self.command_cls.zeros(n_self).dv.shape[-1])
 
         def _per_v_dv(per_v_idx: jax.Array) -> jax.Array:
@@ -256,8 +262,7 @@ class MCTSPolicy:
             else:
                 a_flat = jnp.concatenate([opp_flat, self_flat])
 
-            s_next = adapter.transition(s, a_flat, k_step)
-            r = adapter.reward(s, a_flat, s_next, side)
+            s_next, r = adapter.step(s, a_flat, k_step, side)
             return s_next, r
 
         def _step_one_with_schedule(
@@ -299,8 +304,7 @@ class MCTSPolicy:
             else:
                 a_flat = jnp.concatenate([opp_flat, self_flat])
 
-            s_next = adapter.transition(s, a_flat, k_step)
-            r = adapter.reward(s, a_flat, s_next, side)
+            s_next, r = adapter.step(s, a_flat, k_step, side)
             return s_next, new_opp_cached_dv, r
 
         if use_schedule:
@@ -438,7 +442,10 @@ class MCTSPolicy:
         else:
             identity_actions = Actions(sides=BySide(guard=identity_opp, bandit=identity_self))
 
-        discount = jnp.asarray(self.discount, dtype=s_flat.dtype)
+        discount = jnp.asarray(
+            adapter.discount() if self.discount is None else self.discount,
+            dtype=s_flat.dtype,
+        )
         self_dv_dim = int(self.command_cls.zeros(n_self).dv.shape[-1])
 
         def _self_dv_for_action(action_idx: jax.Array) -> jax.Array:
@@ -493,8 +500,7 @@ class MCTSPolicy:
             else:
                 a_flat = jnp.concatenate([opp_flat, self_flat])
 
-            s_next = adapter.transition(s, a_flat, k_step)
-            r = adapter.reward(s, a_flat, s_next, side)
+            s_next, r = adapter.step(s, a_flat, k_step, side)
             return s_next, r
 
         def _step_one_with_schedule(
@@ -530,8 +536,7 @@ class MCTSPolicy:
             else:
                 a_flat = jnp.concatenate([opp_flat, self_flat])
 
-            s_next = adapter.transition(s, a_flat, k_step)
-            r = adapter.reward(s, a_flat, s_next, side)
+            s_next, r = adapter.step(s, a_flat, k_step, side)
             return s_next, new_opp_cached_dv, r
 
         if use_schedule:

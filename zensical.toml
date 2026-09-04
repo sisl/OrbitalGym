@@ -87,6 +87,7 @@ nav = [
     { "Policies, observations, rewards" = "api/components.md" },
     { "Ground stations" = "api/groundstations.md" },
     { "Plan-cache policy" = "api/policies-plan-cache.md" },
+    { "Action-repeat policy" = "api/policies-action-repeat.md" },
     { "Belief sync & contact-aware belief" = "api/belief-sync.md" },
   ] },
 ]

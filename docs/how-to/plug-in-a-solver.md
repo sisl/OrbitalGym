@@ -150,7 +150,35 @@ using the particle filter updater. The `team_sync_fns` fuse particle
 beliefs across vehicles on the same side (e.g., guards share detection
 windows via the provided link).
 
-## 4. Non-traceable solvers
+## 4. Planning on macro steps
+
+A solver that searches at the env's tick rate covers `dt` seconds per
+decision, which is far short of an intercept. Build the adapter with
+`action_repeat = k` so one planner action spans `k * dt` seconds, and
+wrap the solver in `ActionRepeatPolicy` with the same `repeat` so the
+executed trajectory matches the searched one:
+
+```python
+from orbitalgym.adapters.pomdp import POMDPAdapter
+from orbitalgym.policies.action_repeat import ActionRepeatPolicy
+
+adapter = POMDPAdapter(env, action_repeat=8, discount=0.99)
+solver = my_solver_using(adapter)          # sees macro_dt = cfg.dt * 8
+
+policy = ActionRepeatPolicy(
+    inner=solver,
+    repeat=adapter.action_repeat,
+    n_vehicles=cfg.n_guards,
+    command_cls=env.guard_command_cls,
+)
+```
+
+`ActionRepeatPolicy.init_state(config, env_state, key)` follows the
+`init_policy_state_fns` convention, so it can be passed straight into
+`evaluate_bank`, and every argument has a default so
+`check_policy_conforms` resolves it without an override.
+
+## 5. Non-traceable solvers
 
 If your solver uses host callbacks, data-dependent loops, or other
 non-traceable constructs, wrap it in `jax.pure_callback` to run on the

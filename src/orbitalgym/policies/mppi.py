@@ -1,8 +1,8 @@
 """MPPIPolicy: model-predictive path integral control over continuous delta-v.
 
 Samples ``n_samples`` control sequences around a warm-started mean, rolls each
-through the adapter's transition with the opponent modeled by ``opponent_model``,
-scores them by negative cumulative side reward (plus an optional terminal
+through the adapter with the opponent modeled by ``opponent_model``, scores
+them by negative discounted side reward (plus an optional discounted terminal
 value), standardizes the costs by their spread, and updates the mean with
 softmax weights at ``temperature`` applied to the standardized costs. The mean
 sequence is the policy state, shifted by one step after each call.
@@ -45,6 +45,9 @@ class MPPIPolicy:
     noise_sigma: float = 0.1
     dv_max: float = 0.5
     terminal_value_fn: Callable[[jax.Array], jax.Array] | None = None
+    # Per-planning-step discount. ``None`` reads ``env_model.discount()``,
+    # the adapter's per-macro-step discount.
+    discount: float | None = None
     n_vehicles: int = 0
     command_cls: Any = None
     template_env_state: Any = None
@@ -105,15 +108,18 @@ class MPPIPolicy:
                 if self.side is Side.GUARD
                 else jnp.concatenate([opp_flat, own_flat])
             )
-            s_next = adapter.transition(s, a_flat, k_step)
-            r = adapter.reward(s, a_flat, s_next, self.side)
+            s_next, r = adapter.step(s, a_flat, k_step, self.side)
             return (s_next,), r
 
         keys = jax.random.split(key, self.horizon)
         (s_h,), rewards = jax.lax.scan(step, (s0,), (u_seq, keys))
-        cost = -jnp.sum(rewards)
+        gamma = adapter.discount() if self.discount is None else self.discount
+        weights = jnp.asarray(gamma, rewards.dtype) ** jnp.arange(self.horizon, dtype=rewards.dtype)
+        cost = -jnp.sum(weights * rewards)
         if self.terminal_value_fn is not None:
-            cost = cost - self.terminal_value_fn(s_h)
+            cost = cost - jnp.asarray(
+                gamma, rewards.dtype
+            ) ** self.horizon * self.terminal_value_fn(s_h)
         return cost
 
     def __call__(self, policy_state: Any, agent_view: Any, key: jax.Array, t: jax.Array):

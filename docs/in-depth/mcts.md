@@ -98,8 +98,8 @@ trusts the truth). Real `KFBelief`/`EKFBelief` whose `mean` is per-pair
 |------|---------|----------------|
 | `num_simulations` | 32 | Larger = sharper choices, longer per-call cost. The CPU/MPS speedup widens with this. |
 | `variant` | `"gumbel_muzero"` | Sequential halving + Gumbel noise — better at small budgets with a uniform prior. Use `"muzero"` if you supply a learned prior. |
-| `max_depth` | None | Cap planning horizon; useful when `discount=1.0` and trajectories are long. |
-| `discount` | 1.0 | Episode-bounded → 1.0. Set <1 for long-horizon stability. |
+| `max_depth` | None | Cap planning horizon; useful when the discount is 1.0 and trajectories are long. |
+| `discount` | `None` | `None` reads `env_model.discount()`, the adapter's per-macro-step discount. Set a float to override. |
 | `leaf_value_fn` | zero | Cheap heuristic estimate at leaves often beats pure rollouts. |
 | `opponent_model` | uniform-random | Wire e.g. `LQRBanditPolicy` for adversary-aware search. |
 
