@@ -103,7 +103,7 @@ def test_conical_sensor_pointed_away_gives_in_cone_fraction_zero():
         layout=cfg.layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]]),
         half_angle_rad=_HALF_ANGLE_RAD,
-        sigma=0.1,
+        sigma_floor=0.1,
     )
     cfg = dataclasses.replace(cfg, guard_observation_fn=obs_fn)
     env = OrbitalGymEnv(cfg)

@@ -4,7 +4,10 @@ Per (observer, target) pair, visibility is True iff the target's relative
 position vector lies inside ANY of the observer's body-fixed cones, after
 rotation into the world frame by the observer's quaternion. When visible,
 the measurement is the target's full dynamics state plus additive Gaussian
-noise; H = I_d, R = sigma^2 * I_d.
+noise whose standard deviation grows with the observer-target range:
+sigma_ij = sigma_floor + sigma_range_frac * range_ij. H = I_d and
+R[i, j] = sigma_ij^2 * I_d, so `obs_noise` is per-pair with shape
+(N_obs, N_total, m, m).
 
 Multi-sensor agents are handled internally via a vmap over the sensor axis
 — a single Observation channel is returned regardless of sensor count, so
@@ -43,17 +46,22 @@ class ConicalObservation:
     half_angle_rad:
         Half-angle (radians) of each cone — either a scalar (same for all
         sensors) or a ``(k,)`` array / tuple of per-sensor half-angles.
-    sigma:
-        Standard deviation of additive Gaussian measurement noise. Set to 0.0
-        for noiseless (ground-truth) measurements.
+    sigma_floor:
+        Measurement-noise standard deviation at zero range. With
+        ``sigma_range_frac=0.0`` this is the noise std for every pair. Set
+        both to 0.0 for noiseless (ground-truth) measurements.
+    sigma_range_frac:
+        Growth of the noise std per metre of observer-target range:
+        ``sigma_ij = sigma_floor + sigma_range_frac * range_ij``. The same
+        ``sigma_ij`` scales every measurement row, so velocity rows are
+        noised in proportion to range exactly as position rows are.
     """
 
     layout: Any
     sensor_boresights_body: jax.Array  # (k, 3) unit vectors
     half_angle_rad: float | jax.Array | tuple[float, ...]  # scalar or (k,)
-    sigma: float = (
-        1.0  # std on full-state measurement; sigma=0 produces R = 1e-12 * I (near-noiseless)
-    )
+    sigma_floor: float = 1.0
+    sigma_range_frac: float = 0.0
 
     def __call__(self, env_state, actions, side, params, key, t):
         del actions, params, t
@@ -111,22 +119,21 @@ class ConicalObservation:
         opposing_mask = jnp.broadcast_to(opposing_mask[None, :], (n_self, n_total))
         visible = jnp.logical_and(any_sensor, opposing_mask)
 
-        # Measurement: full target state + Gaussian noise.
+        # Measurement: full target state + range-conditioned Gaussian noise.
         target_states = jnp.broadcast_to(stacked[None, :, :], (n_self, n_total, d))
-        if self.sigma > 0:
-            noise = jnp.asarray(self.sigma, dtype=dtype) * jax.random.normal(
-                key, (n_self, n_total, m), dtype=dtype
-            )
-        else:
-            noise = jnp.zeros((n_self, n_total, m), dtype=dtype)
+        range_ij = dist[..., 0]  # (n_self, n_total) observer-target range
+        sigma_ij = jnp.asarray(self.sigma_floor, dtype=dtype) + jnp.asarray(
+            self.sigma_range_frac, dtype=dtype
+        ) * range_ij.astype(dtype)  # (n_self, n_total)
+        noise = sigma_ij[:, :, None] * jax.random.normal(key, (n_self, n_total, m), dtype=dtype)
         obs = target_states + noise
 
         H = jnp.eye(m, dtype=dtype)  # noqa: N806
-        # sigma=0 produces R = 1e-12 * I (near-noiseless) rather than I so that
-        # Kalman filter updates remain numerically valid and correctly weight
-        # near-perfect measurements instead of treating them as unit-noise.
-        sigma_sq = self.sigma**2 if self.sigma > 0 else 1e-12
-        R_mat = jnp.eye(m, dtype=dtype) * jnp.asarray(sigma_sq, dtype=dtype)  # noqa: N806
+        # A zero sigma yields R = 1e-12 * I (near-noiseless) rather than a
+        # singular R so that Kalman filter updates remain numerically valid
+        # and correctly weight near-perfect measurements.
+        sigma_sq = jnp.maximum(sigma_ij**2, jnp.asarray(1e-12, dtype=dtype))
+        R_mat = sigma_sq[:, :, None, None] * jnp.eye(m, dtype=dtype)  # noqa: N806
 
         # Closure for negative-information updates: signed-distance score
         # in radians to the *best-margin* sensor cone. Closes over the

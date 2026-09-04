@@ -79,7 +79,7 @@ def test_show_sensor_cones_renders_one_wedge_per_sensor_per_guard(rng_float64):
         layout=layout,
         sensor_boresights_body=boresights,
         half_angle_rad=math.radians(30.0),
-        sigma=0.0,
+        sigma_floor=0.0,
     )
     cfg = ScenarioConfig(
         **{

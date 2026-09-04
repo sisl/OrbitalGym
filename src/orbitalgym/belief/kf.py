@@ -118,11 +118,16 @@ class KFBeliefUpdater:
         cov: jax.Array,  # (N_obs, N_total, d, d)
         ch: Observation,
     ) -> tuple[jax.Array, jax.Array]:
-        def _pair(m: jax.Array, c: jax.Array, o: jax.Array) -> tuple[jax.Array, jax.Array]:
-            return _single_pair_correct(m, c, o, ch.obs_matrix, ch.obs_noise, self.use_joseph_form)
+        def _pair(
+            m: jax.Array, c: jax.Array, o: jax.Array, i: jax.Array, j: jax.Array
+        ) -> tuple[jax.Array, jax.Array]:
+            return _single_pair_correct(
+                m, c, o, ch.obs_matrix, ch.noise_for(i, j), self.use_joseph_form
+            )
 
-        per_pair = jax.vmap(jax.vmap(_pair, in_axes=(0, 0, 0)), in_axes=(0, 0, 0))
-        new_mean, new_cov = per_pair(mean, cov, ch.obs)
+        n_obs, n_total = ch.visible.shape
+        per_pair = jax.vmap(jax.vmap(_pair, in_axes=(0, 0, 0, None, 0)), in_axes=(0, 0, 0, 0, None))
+        new_mean, new_cov = per_pair(mean, cov, ch.obs, jnp.arange(n_obs), jnp.arange(n_total))
         visible_mean = ch.visible[:, :, None]  # (N_obs, N_total, 1)
         visible_cov = ch.visible[:, :, None, None]  # (N_obs, N_total, 1, 1)
         out_mean = jnp.where(visible_mean, new_mean, mean)

@@ -172,9 +172,10 @@ channel. It is configured with:
   observer's body frame. Each row is one sensor's pointing direction.
 - `half_angle_rad` — half-angle of each cone. Either a scalar (same for all
   sensors) or a `(k,)` array / tuple for per-sensor half-angles.
-- `sigma` — standard deviation of additive Gaussian measurement noise
-  (`sigma=0` produces a near-noiseless `R = 1e-12 I` instead of `R = 0` so
-  Kalman updates remain numerically valid).
+- `sigma_floor` — measurement-noise standard deviation at zero range.
+- `sigma_range_frac` — growth of that std per metre of observer-target
+  range. A zero std produces a near-noiseless `R = 1e-12 I` instead of
+  `R = 0` so Kalman updates remain numerically valid.
 
 **Visibility logic:** For each (observer, target) pair, `ConicalObservation`
 rotates every body-fixed boresight into the world frame using the observer's
@@ -183,9 +184,13 @@ any cone. A pair is visible iff it passes the cone test AND the target is on
 the opposing side (own-side pairs are always masked out).
 
 **Measurement model:** When visible, the measurement is the target's full
-dynamics state plus additive Gaussian noise. `H = I_d`, `R = σ² I_d`. This
-is the full-state measurement model used by the bundled belief updater — no
-bearing-only or range-only reduction.
+dynamics state plus additive Gaussian noise with per-pair standard
+deviation `σ_ij = sigma_floor + sigma_range_frac * range_ij`. `H = I_d` and
+`R[i, j] = σ_ij² I_d`, so `obs_noise` carries the per-pair shape
+`(N_obs, N_total, m, m)`. The same `σ_ij` scales every measurement row, so
+velocity rows are noised in proportion to range exactly as position rows
+are. This is the full-state measurement model used by the bundled belief
+updater — no bearing-only or range-only reduction.
 
 **Multi-sensor vmap:** Multiple sensors per agent are handled entirely inside
 `ConicalObservation` via `jnp.any` over the sensor axis. A single
@@ -224,8 +229,9 @@ from orbitalgym.observations.conical import ConicalObservation
 obs_fn = ConicalObservation(
     layout=cfg.layout,
     sensor_boresights_body=boresights_4,
-    half_angle_rad=0.5236,   # 30 degrees
-    sigma=10.0,              # 10 m / (m/s) noise std
+    half_angle_rad=0.5236,      # 30 degrees
+    sigma_floor=10.0,           # 10 m / (m/s) noise std at zero range
+    sigma_range_frac=0.01,      # + 1 cm of std per metre of range
 )
 ```
 
@@ -282,7 +288,8 @@ cfg = ScenarioConfig(
         layout=None,   # filled by __post_init__; pass cfg.layout after creation
         sensor_boresights_body=boresights,
         half_angle_rad=0.5236,
-        sigma=10.0,
+        sigma_floor=10.0,
+        sigma_range_frac=0.01,
     ),
 )
 ```

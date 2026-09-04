@@ -94,7 +94,7 @@ def test_composes_inside_composite_with_conical():
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]]),
         half_angle_rad=float(jnp.deg2rad(30.0)),
-        sigma=1.0,
+        sigma_floor=1.0,
     )
     comp = CompositeObservation(constituents=(teammate, cone))
     out = comp(

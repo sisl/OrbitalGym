@@ -84,3 +84,25 @@ def test_observation_accepts_visibility_score_fn():
         visibility_score_fn=score,
     )
     assert o.visibility_score_fn is score
+
+
+def test_noise_for_handles_shared_and_per_pair_noise():
+    shared = Observation(
+        obs=jnp.zeros((1, 2, 3)),
+        visible=jnp.ones((1, 2), dtype=bool),
+        obs_matrix=jnp.eye(3),
+        obs_noise=jnp.eye(3) * 4.0,
+    )
+    assert shared.noise_for(0, 1).shape == (3, 3)
+    assert jnp.allclose(shared.noise_for(0, 1), jnp.eye(3) * 4.0)
+
+    per_pair_noise = jnp.stack([jnp.stack([jnp.eye(3), jnp.eye(3) * 9.0])])  # (1, 2, 3, 3)
+    per_pair = Observation(
+        obs=jnp.zeros((1, 2, 3)),
+        visible=jnp.ones((1, 2), dtype=bool),
+        obs_matrix=jnp.eye(3),
+        obs_noise=per_pair_noise,
+    )
+    assert per_pair.noise_for(0, 1).shape == (3, 3)
+    assert jnp.allclose(per_pair.noise_for(0, 1), jnp.eye(3) * 9.0)
+    assert jnp.allclose(per_pair.noise_for(0, 0), jnp.eye(3))

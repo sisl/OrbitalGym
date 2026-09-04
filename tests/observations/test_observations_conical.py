@@ -74,7 +74,7 @@ def test_target_on_boresight_visible():
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float32),
         half_angle_rad=jnp.deg2rad(jnp.float32(30.0)),
-        sigma=0.0,
+        sigma_floor=0.0,
     )
     env_state = _state_rtn(
         jnp.zeros((1, 3), dtype=jnp.float32),
@@ -99,7 +99,7 @@ def test_target_outside_cone_invisible():
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float32),
         half_angle_rad=jnp.deg2rad(jnp.float32(30.0)),
-        sigma=0.0,
+        sigma_floor=0.0,
     )
     # 45° off boresight: outside 30° cone.
     env_state = _state_rtn(
@@ -124,7 +124,7 @@ def test_two_opposing_sensors_cover_both_sides():
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]], dtype=jnp.float32),
         half_angle_rad=jnp.deg2rad(jnp.float32(30.0)),
-        sigma=0.0,
+        sigma_floor=0.0,
     )
     cases = [
         (jnp.array([[10.0, 0.0, 0.0]], dtype=jnp.float32), True),
@@ -152,7 +152,7 @@ def test_boundary_inclusive():
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float32),
         half_angle_rad=half,
-        sigma=0.0,
+        sigma_floor=0.0,
     )
     target = jnp.array([[float(jnp.cos(half)), float(jnp.sin(half)), 0.0]], dtype=jnp.float32)
     env_state = _state_rtn(jnp.zeros((1, 3), dtype=jnp.float32), target)
@@ -167,14 +167,14 @@ def test_boundary_inclusive():
     assert bool(out[0].visible[0, 1])
 
 
-def test_sigma_zero_returns_ground_truth_state():
-    """sigma=0 + visible target ⇒ obs[i, j] equals target's full 6-D state."""
+def test_zero_sigma_floor_returns_ground_truth_state():
+    """Zero sigma + visible target ⇒ obs[i, j] equals target's full 6-D state."""
     layout = _layout_rtn()
     obs_fn = ConicalObservation(
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float32),
         half_angle_rad=jnp.deg2rad(jnp.float32(30.0)),
-        sigma=0.0,
+        sigma_floor=0.0,
     )
     own_full = jnp.zeros((1, 6), dtype=jnp.float32)
     target_full = jnp.array([[10.0, 0.0, 0.0, 0.5, -0.5, 0.1]], dtype=jnp.float32)
@@ -201,7 +201,7 @@ def test_obs_matrix_is_identity():
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float32),
         half_angle_rad=jnp.deg2rad(jnp.float32(30.0)),
-        sigma=1.0,
+        sigma_floor=1.0,
     )
     env_state = _state_rtn(
         jnp.zeros((1, 3), dtype=jnp.float32),
@@ -218,7 +218,7 @@ def test_obs_matrix_is_identity():
     obs = out[0]
     assert obs.obs_matrix.shape == (6, 6)
     assert jnp.allclose(obs.obs_matrix, jnp.eye(6))
-    assert obs.obs_noise.shape == (6, 6)
+    assert obs.obs_noise.shape == (1, 2, 6, 6)
     assert jnp.allclose(obs.obs_noise, jnp.eye(6))
 
 
@@ -229,7 +229,7 @@ def test_rt_2d_planar_wedge():
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float32),
         half_angle_rad=jnp.deg2rad(jnp.float32(30.0)),
-        sigma=0.0,
+        sigma_floor=0.0,
     )
     own = jnp.array([[0.0, 0.0, 0.0, 0.0]], dtype=jnp.float32)
     opp = jnp.array([[10.0, 0.0, 0.0, 0.0]], dtype=jnp.float32)
@@ -245,14 +245,14 @@ def test_rt_2d_planar_wedge():
     assert bool(out[0].visible[0, 1])
 
 
-def test_sigma_zero_r_mat_is_epsilon_identity():
-    """sigma=0 must return R_mat = 1e-12 * I, not I (Fix 3)."""
+def test_zero_sigma_floor_r_mat_is_epsilon_identity():
+    """Zero sigma must return R = 1e-12 * I, not I."""
     layout = _layout_rtn()
     obs_fn = ConicalObservation(
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float32),
         half_angle_rad=jnp.deg2rad(jnp.float32(30.0)),
-        sigma=0.0,
+        sigma_floor=0.0,
     )
     env_state = _state_rtn(
         jnp.zeros((1, 3), dtype=jnp.float32),
@@ -267,9 +267,9 @@ def test_sigma_zero_r_mat_is_epsilon_identity():
         jnp.asarray(0.0, dtype=jnp.float32),
     )
     obs = out[0]
-    expected_r = jnp.eye(6, dtype=jnp.float32) * jnp.float32(1e-12)
+    expected_r = jnp.broadcast_to(jnp.eye(6, dtype=jnp.float32) * jnp.float32(1e-12), (1, 2, 6, 6))
     assert jnp.allclose(obs.obs_noise, expected_r, atol=0.0, rtol=0.0), (
-        f"sigma=0 R_mat should be 1e-12*I, got diagonal={jnp.diag(obs.obs_noise)}"
+        f"zero-sigma R should be 1e-12*I, got diagonal={jnp.diag(obs.obs_noise[0, 1])}"
     )
 
 
@@ -296,14 +296,14 @@ def _state_rtn_f64(self_pos, target_pos, self_quat=None):
     return _State()
 
 
-def test_dtype_preserved_float64_sigma_nonzero():
+def test_dtype_preserved_float64_sigma_floor_nonzero():
     """obs, obs_matrix, obs_noise must all be float64 when state is float64 (Fix 2)."""
     layout = _layout_rtn()
     obs_fn = ConicalObservation(
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float64),
         half_angle_rad=jnp.deg2rad(jnp.float64(30.0)),
-        sigma=1.0,
+        sigma_floor=1.0,
     )
     env_state = _state_rtn_f64(
         jnp.zeros((1, 3), dtype=jnp.float64),
@@ -323,14 +323,14 @@ def test_dtype_preserved_float64_sigma_nonzero():
     assert obs.obs_noise.dtype == jnp.float64, f"obs_noise dtype={obs.obs_noise.dtype}"
 
 
-def test_dtype_preserved_float64_sigma_zero():
-    """sigma=0 path must also return float64 when state is float64 (Fix 2+3)."""
+def test_dtype_preserved_float64_sigma_floor_zero():
+    """The zero-sigma path must also return float64 when state is float64."""
     layout = _layout_rtn()
     obs_fn = ConicalObservation(
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float64),
         half_angle_rad=jnp.deg2rad(jnp.float64(30.0)),
-        sigma=0.0,
+        sigma_floor=0.0,
     )
     env_state = _state_rtn_f64(
         jnp.zeros((1, 3), dtype=jnp.float64),
@@ -349,7 +349,7 @@ def test_dtype_preserved_float64_sigma_zero():
     assert obs.obs_matrix.dtype == jnp.float64, f"obs_matrix dtype={obs.obs_matrix.dtype}"
     assert obs.obs_noise.dtype == jnp.float64, f"obs_noise dtype={obs.obs_noise.dtype}"
     # R should be 1e-12 * I in float64
-    expected_r = jnp.eye(6, dtype=jnp.float64) * jnp.float64(1e-12)
+    expected_r = jnp.broadcast_to(jnp.eye(6, dtype=jnp.float64) * jnp.float64(1e-12), (1, 2, 6, 6))
     assert jnp.allclose(obs.obs_noise, expected_r, atol=0.0, rtol=0.0)
 
 
@@ -362,7 +362,7 @@ def test_conical_attaches_visibility_score_fn():
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float32),
         half_angle_rad=half,
-        sigma=1.0,
+        sigma_floor=1.0,
     )
     env_state = _state_rtn(
         jnp.zeros((1, 3), dtype=jnp.float32),
@@ -417,7 +417,7 @@ def test_conical_visibility_score_fn_rt_layout():
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float32),
         half_angle_rad=half,
-        sigma=1.0,
+        sigma_floor=1.0,
     )
     own = jnp.array([[0.0, 0.0, 0.0, 0.0]], dtype=jnp.float32)
     opp = jnp.array([[10.0, 0.0, 0.0, 0.0]], dtype=jnp.float32)
@@ -470,7 +470,7 @@ def test_conical_visibility_score_fn_max_over_sensors():
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]], dtype=jnp.float32),
         half_angle_rad=half,
-        sigma=1.0,
+        sigma_floor=1.0,
     )
     env_state = _state_rtn(
         jnp.zeros((1, 3), dtype=jnp.float32),
@@ -509,7 +509,7 @@ def test_rotated_attitude_changes_visibility():
         layout=layout,
         sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float32),
         half_angle_rad=jnp.deg2rad(jnp.float32(30.0)),
-        sigma=0.0,
+        sigma_floor=0.0,
     )
     target = jnp.array([[10.0, 0.0, 0.0]], dtype=jnp.float32)
 
@@ -538,3 +538,87 @@ def test_rotated_attitude_changes_visibility():
         jnp.asarray(0.0, dtype=jnp.float32),
     )
     assert not bool(out_rot[0].visible[0, 1])
+
+
+# ---- range-conditioned noise -------------------------------------------
+
+
+def _two_target_state_on_boresight():
+    """One observer at the origin, targets at 100 m and 3000 m on +R."""
+    return _state_rtn(
+        jnp.zeros((1, 3), dtype=jnp.float32),
+        jnp.array([[100.0, 0.0, 0.0], [3000.0, 0.0, 0.0]], dtype=jnp.float32),
+    )
+
+
+def _conical_two_targets(sigma_floor: float, sigma_range_frac: float):
+    return ConicalObservation(
+        layout=_layout_rtn(n_self=1, n_tgt=2),
+        sensor_boresights_body=jnp.array([[1.0, 0.0, 0.0]], dtype=jnp.float32),
+        half_angle_rad=jnp.deg2rad(jnp.float32(30.0)),
+        sigma_floor=sigma_floor,
+        sigma_range_frac=sigma_range_frac,
+    )
+
+
+def test_noise_std_scales_with_range():
+    """Monte-Carlo noise std must follow sigma_floor + sigma_range_frac * range."""
+    sigma_floor = 1.0
+    sigma_range_frac = 0.01
+    obs_fn = _conical_two_targets(sigma_floor, sigma_range_frac)
+    env_state = _two_target_state_on_boresight()
+    keys = jax.random.split(jax.random.PRNGKey(0), 2000)
+
+    def one(k):
+        return obs_fn(env_state, None, Side.GUARD, None, k, jnp.asarray(0.0, dtype=jnp.float32))[
+            0
+        ].obs
+
+    samples = jax.vmap(one)(keys)  # (2000, 1, 3, 6)
+    truth = jnp.array([[100.0, 0.0, 0.0], [3000.0, 0.0, 0.0]], dtype=jnp.float32)
+    residual_close = samples[:, 0, 1, :3] - truth[0]
+    residual_far = samples[:, 0, 2, :3] - truth[1]
+
+    expected_close = sigma_floor + sigma_range_frac * 100.0
+    expected_far = sigma_floor + sigma_range_frac * 3000.0
+    std_close = float(jnp.std(residual_close))
+    std_far = float(jnp.std(residual_far))
+
+    assert abs(std_close - expected_close) / expected_close < 0.10, std_close
+    assert abs(std_far - expected_far) / expected_far < 0.10, std_far
+    expected_ratio = expected_far / expected_close
+    assert abs(std_far / std_close - expected_ratio) / expected_ratio < 0.10
+
+
+def test_velocity_rows_use_the_same_per_pair_sigma():
+    """Velocity noise scales with range identically to position noise."""
+    obs_fn = _conical_two_targets(1.0, 0.01)
+    env_state = _two_target_state_on_boresight()
+    keys = jax.random.split(jax.random.PRNGKey(1), 2000)
+
+    def one(k):
+        return obs_fn(env_state, None, Side.GUARD, None, k, jnp.asarray(0.0, dtype=jnp.float32))[
+            0
+        ].obs
+
+    samples = jax.vmap(one)(keys)
+    vel_std_far = float(jnp.std(samples[:, 0, 2, 3:]))
+    assert abs(vel_std_far - 31.0) / 31.0 < 0.10, vel_std_far
+
+
+def test_obs_noise_is_per_pair():
+    """obs_noise has shape (N_obs, N_total, m, m) with per-pair variances."""
+    obs_fn = _conical_two_targets(1.0, 0.01)
+    env_state = _two_target_state_on_boresight()
+    obs = obs_fn(
+        env_state,
+        None,
+        Side.GUARD,
+        None,
+        jax.random.PRNGKey(0),
+        jnp.asarray(0.0, dtype=jnp.float32),
+    )[0]
+    assert obs.obs_noise.shape == (1, 3, 6, 6)
+    assert jnp.allclose(jnp.diag(obs.obs_noise[0, 1]), 2.0**2, rtol=1e-4)
+    assert jnp.allclose(jnp.diag(obs.obs_noise[0, 2]), 31.0**2, rtol=1e-4)
+    assert jnp.allclose(obs.noise_for(0, 2), obs.obs_noise[0, 2])

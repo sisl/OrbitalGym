@@ -551,3 +551,53 @@ def test_initializers_trace_under_jit_and_vmap():
     )
     _run_init(truth_init)
     _run_init(ring_init)
+
+
+# ---- per-pair measurement noise ----------------------------------------
+
+
+def test_per_pair_noise_sharpens_close_pair_more_than_far_pair():
+    """A tighter per-pair R must pull the posterior mean closer to truth."""
+    k = 64
+    key = jax.random.PRNGKey(0)
+    cloud = jax.random.normal(key, (k, 2)) * 5.0  # shared prior for both pairs
+    truth = jnp.array([0.0, 0.0])
+    particles = jnp.broadcast_to(cloud, (1, 2, k, 2))
+    log_w = jnp.full((1, 2, k), -jnp.log(float(k)))
+    n_eff, weight_entropy, resampled = _trivial_metrics(1, 2, k)
+    b = ParticleFilterBelief(
+        particles=particles,
+        log_weights=log_w,
+        n_eff=n_eff,
+        weight_entropy=weight_entropy,
+        resampled=resampled,
+    )
+
+    upd = ParticleFilterBeliefUpdater(
+        dynamics_fn=_identity_dynamics,
+        process_noise=jnp.zeros((2, 2)),
+        dt=1.0,
+        n_eff_threshold=0.0,
+    )
+    R_close = jnp.eye(2) * 0.25  # noqa: N806
+    R_far = jnp.eye(2) * 400.0  # noqa: N806
+    chan = Observation(
+        obs=jnp.zeros((1, 2, 2)),
+        visible=jnp.array([[True, True]]),
+        obs_matrix=jnp.eye(2),
+        obs_noise=jnp.stack([jnp.stack([R_close, R_far])]),  # (1, 2, 2, 2)
+    )
+    assert chan.obs_noise.shape == (1, 2, 2, 2)
+
+    out = upd(
+        b,
+        observations=(chan,),
+        action=jnp.zeros((1, 2)),
+        side=Side.GUARD,
+        key=jax.random.PRNGKey(1),
+    )
+    err_close = float(jnp.linalg.norm(out.mean[0, 0] - truth))
+    err_far = float(jnp.linalg.norm(out.mean[0, 1] - truth))
+    prior_err = float(jnp.linalg.norm(jnp.mean(cloud, axis=0) - truth))
+    assert err_close < err_far
+    assert err_close < prior_err
