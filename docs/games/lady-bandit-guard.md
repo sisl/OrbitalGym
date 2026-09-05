@@ -108,6 +108,23 @@ cfg = ScenarioConfig(
 
 For the full field list see [API → `LadyBanditGuard`](../api/games.md).
 
+## Communication variant
+
+`make_lady_bandit_guard(with_communication=True)` gives the guard side the
+`COMMUNICATE` action component and installs `LbgWithCommsReward`, which
+scores distance to the reference orbit plus a charge of `comm_cost` per
+active broadcast. That reward carries none of the LBG event geometry: no
+catch or breach radius, no speed gate, no repel gate, no `dv_cost`. The
+termination still enforces all of it, so a scenario that tuned those knobs
+would be terminated on one set of rules and rewarded on another.
+
+The builder therefore rejects `with_communication=True` together with any
+of `breach_radius_m`, `catch_radius_m`, `breach_speed_mps`,
+`catch_speed_mps`, `escape_radius_m`, `repel_on_empty_tank`, or `dv_cost`
+set away from its default. To combine communication with tuned event
+geometry, build the scenario with `with_communication=False` and pass an
+explicit `reward_fn` that scores both.
+
 ## Suggested experiments
 
 - **Sanity baseline.** Run with zero control on both sides — neither side wins, the episode ends at `max_steps` and cumulative return is dominated by the dense distance terms.

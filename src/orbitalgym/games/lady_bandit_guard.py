@@ -221,6 +221,30 @@ def make_lady_bandit_guard(
         from orbitalgym.registry import ActionComponentKey
         from orbitalgym.rewards.lbg_with_comms import LbgWithCommsReward
 
+        # LbgWithCommsReward scores distance to the reference orbit plus a
+        # per-broadcast charge. It reads none of the LBG event geometry, so a
+        # scenario that tunes that geometry would get a reward that ignores it
+        # while the termination still enforces it.
+        unsupported = {
+            "breach_radius_m": (breach_radius_m, 5.0),
+            "catch_radius_m": (catch_radius_m, 50.0),
+            "breach_speed_mps": (breach_speed_mps, float("inf")),
+            "catch_speed_mps": (catch_speed_mps, float("inf")),
+            "escape_radius_m": (escape_radius_m, 0.0),
+            "repel_on_empty_tank": (repel_on_empty_tank, False),
+            "dv_cost": (dv_cost, 0.0),
+        }
+        for name, (value, default) in unsupported.items():
+            if value != default:
+                raise ValueError(
+                    f"with_communication=True installs LbgWithCommsReward, which "
+                    f"scores distance to the reference orbit plus a per-broadcast "
+                    f"charge and carries no LBG event geometry, so {name}={value!r} "
+                    f"would shape the termination but not the reward. Leave {name} "
+                    f"at its default {default!r}, or build the scenario with "
+                    f"with_communication=False and pass an explicit reward_fn."
+                )
+
         extra_kwargs["guard_action_components"] = (
             ActionComponentKey.IMPULSIVE_MANEUVER,
             ActionComponentKey.COMMUNICATE,

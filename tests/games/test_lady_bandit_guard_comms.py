@@ -2,6 +2,7 @@
 
 import jax
 import jax.numpy as jnp
+import pytest
 
 from orbitalgym.env.core import OrbitalGymEnv
 from orbitalgym.env.types import Actions, BySide
@@ -33,3 +34,20 @@ def test_lbg_comms_charges_cost_when_active():
 
     diff = out_silent.outputs.guard.reward - out_talking.outputs.guard.reward
     assert jnp.isclose(diff, 5.0)
+
+
+@pytest.mark.parametrize(
+    ("knob", "value"),
+    [
+        ("breach_radius_m", 10.0),
+        ("catch_radius_m", 25.0),
+        ("breach_speed_mps", 1.0),
+        ("catch_speed_mps", 1.0),
+        ("escape_radius_m", 5000.0),
+        ("repel_on_empty_tank", True),
+        ("dv_cost", 0.1),
+    ],
+)
+def test_lbg_comms_rejects_event_geometry_knobs(knob, value):
+    with pytest.raises(ValueError, match=knob):
+        make_lady_bandit_guard(with_communication=True, **{knob: value})
