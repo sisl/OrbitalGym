@@ -91,11 +91,9 @@ KF / EKF / PF.
 `ParticleFilterBeliefUpdater` runs propagate → measurement-conditioned
 proposal → per-channel weight update → pre-resample metrics →
 systematic resampling per pair when `N_eff / K < n_eff_threshold`
-(default `0.5`). Visible-pair updates use the same
-`obs_matrix`/`obs_noise` (linear) or `obs_fn` (nonlinear) as EKF;
-non-visible pairs leave weights unchanged unless a gated channel
-supplies negative information. Resampled particles get uniform
-log-weights and an optional jitter draw to combat sample
+(default `0.5`). Non-visible pairs leave weights unchanged unless a
+gated channel supplies negative information. Resampled particles get
+uniform log-weights and an optional jitter draw to combat sample
 impoverishment.
 
 The proposal is what keeps a directly measured cell on its

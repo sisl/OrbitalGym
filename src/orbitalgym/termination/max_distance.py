@@ -19,18 +19,8 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 
+from orbitalgym.games.proximity import positions
 from orbitalgym.registry import TerminationFnKey, register
-
-
-def _positions(side_state):
-    """Return per-vehicle (N, d) positions in whichever planar frame the side carries.
-
-    Mirrors the helper in :mod:`orbitalgym.games.proximity` so the
-    terminations agree on which slice of state counts as "position".
-    """
-    if hasattr(side_state, "rtn"):
-        return side_state.rtn[:, :3]
-    return side_state.rt[:, :2]
 
 
 @register(TerminationFnKey.MAX_DISTANCE)
@@ -48,8 +38,8 @@ class MaxDistanceTermination:
 
     def __call__(self, prev_state, state, params, t) -> jax.Array:
         del prev_state, params, t
-        guard_pos = _positions(state.guards)
-        bandit_pos = _positions(state.bandits)
+        guard_pos = positions(state.guards)
+        bandit_pos = positions(state.bandits)
         all_pos = jnp.concatenate([guard_pos, bandit_pos], axis=0)
         distances = jnp.linalg.norm(all_pos, axis=-1)
         return jnp.any(distances > self.max_distance_m)

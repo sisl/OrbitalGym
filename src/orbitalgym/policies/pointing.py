@@ -59,7 +59,8 @@ def opponent_spread(agent_view: Any, n_self: int) -> jax.Array:
     """Positional uncertainty (metres) about the nearest opponent, per observer.
 
     Particle beliefs report the RMS distance of that opponent's particle
-    cloud from its own mean position; Gaussian beliefs report the square
+    cloud from the belief mean, which is the weight-carrying estimate the
+    rest of the policy points at; Gaussian beliefs report the square
     root of the trace of the position block of its covariance; a belief
     carrying only a mean reports zero. Belief wrappers are followed
     through their ``inner`` field. The branch is taken on Python
@@ -72,7 +73,8 @@ def opponent_spread(agent_view: Any, n_self: int) -> jax.Array:
     particles = _belief_attr(agent_view, "particles")
     if particles is not None:
         cloud = particles[:, n_self:, :, :pos_dim][idx, nearest]  # (n_self, K, pos_dim)
-        centered = cloud - jnp.mean(cloud, axis=1, keepdims=True)
+        centre = mean[:, n_self:, :pos_dim][idx, nearest]  # (n_self, pos_dim)
+        centered = cloud - centre[:, None, :]
         return jnp.sqrt(jnp.mean(jnp.sum(centered**2, axis=-1), axis=-1))
 
     cov = _belief_attr(agent_view, "cov")

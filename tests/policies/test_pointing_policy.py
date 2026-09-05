@@ -4,7 +4,7 @@ import flax
 import jax
 import jax.numpy as jnp
 
-from orbitalgym.policies.pointing import PointingPolicy, PointingTarget
+from orbitalgym.policies.pointing import PointingPolicy, PointingTarget, opponent_spread
 
 
 @flax.struct.dataclass
@@ -120,3 +120,13 @@ def test_scan_staggers_two_observers_by_pi():
     belief = _ring_belief(n_self=2, ring_radius_m=2000.0)
     cmd, _ = policy(None, belief, None, 61.0)
     assert jnp.allclose(cmd.target_dir[0], -cmd.target_dir[1], atol=1e-5)
+
+
+def test_spread_is_measured_about_the_belief_mean_not_the_particle_centroid():
+    belief = _ring_belief(n_self=1, ring_radius_m=2000.0)
+    # The weighted mean has collapsed onto one edge of the ring; the spread
+    # about it must exceed the spread about the unweighted centroid.
+    shifted = belief.replace(mean=belief.mean.at[:, 1, 0].set(2000.0))
+    assert float(opponent_spread(shifted, n_self=1)[0]) > float(
+        opponent_spread(belief, n_self=1)[0]
+    )

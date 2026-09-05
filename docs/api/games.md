@@ -61,11 +61,15 @@ documented under
 Closest-approach geometry shared by the Lady-Bandit-Guard reward and
 termination, so both resolve catch and breach over the whole step.
 
+::: orbitalgym.games.proximity.positions
+
 ::: orbitalgym.games.proximity.closest_approach
 
 ::: orbitalgym.games.proximity.proximity_event
 
 ::: orbitalgym.games.proximity.lbg_events
+
+::: orbitalgym.games.proximity.lbg_events_from_positions
 
 ::: orbitalgym.games.proximity.stm_power_stack
 
