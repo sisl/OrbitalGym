@@ -119,7 +119,10 @@ def test_predict_only_with_zero_process_noise_is_identity():
 
 def test_visible_observation_concentrates_weights_near_truth():
     """Two particles, one near the true measurement, one far away. Visible
-    update should put nearly all weight on the nearer particle."""
+    update should put the bulk of the weight on the nearer particle.
+
+    A two-particle cloud carries a wide kernel, so the far particle keeps a
+    small share of the weight rather than being ruled out outright."""
     # 1 obs, 1 target, 2 particles, d=2.
     particles = jnp.array([[[[1.0, 0.0], [-100.0, 0.0]]]])  # (1, 1, 2, 2)
     log_w = jnp.full((1, 1, 2), -jnp.log(2.0))
@@ -154,8 +157,8 @@ def test_visible_observation_concentrates_weights_near_truth():
         key=jax.random.PRNGKey(0),
     )
     weights = jax.nn.softmax(out.log_weights, axis=-1)
-    assert weights[0, 0, 0] > 0.999  # nearer particle dominates
-    assert weights[0, 0, 1] < 1e-3
+    assert weights[0, 0, 0] > 0.9  # nearer particle dominates
+    assert weights[0, 0, 1] < 0.1
 
 
 def test_non_visible_observation_leaves_weights_unchanged():
@@ -412,10 +415,13 @@ def test_initial_belief_has_max_n_eff_and_no_resample():
     assert not bool(jnp.any(b2.resampled))
 
 
-def test_visible_observation_drops_n_eff_and_records_resample():
-    """A sharp likelihood pushes most weight onto one particle. N_eff
-    should drop sharply, weight_entropy should drop, and `resampled`
-    should be True for the visible pair (since N_eff/K < 0.5)."""
+def test_visible_observation_drops_n_eff_and_moves_cloud_onto_measurement():
+    """A measurement sharper than the cloud both skews the weights and
+    repositions the particles.
+
+    N_eff and weight_entropy fall below their uniform values, and the
+    posterior mean lands on the measurement rather than on whichever
+    particle happened to sit closest to it."""
     # 1 obs, 1 target, 16 particles spread over a wide range; truth at 0.
     k_particles = 16
     particles = jnp.linspace(-30.0, 30.0, k_particles).reshape(1, 1, k_particles, 1)
@@ -449,12 +455,9 @@ def test_visible_observation_drops_n_eff_and_records_resample():
         key=jax.random.PRNGKey(7),
     )
 
-    # N_eff dropped from K to a small value (most particles are far from
-    # the measurement and get near-zero weight).
-    assert float(out.n_eff[0, 0]) < float(k_particles) / 2
+    assert float(out.n_eff[0, 0]) < 0.8 * float(k_particles)
     assert float(out.weight_entropy[0, 0]) < float(jnp.log(k_particles))
-    # Resample fired for this pair.
-    assert bool(out.resampled[0, 0])
+    assert abs(float(out.mean[0, 0, 0])) < 1.0
 
 
 def test_no_observations_keeps_n_eff_at_max():

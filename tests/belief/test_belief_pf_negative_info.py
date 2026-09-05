@@ -194,7 +194,8 @@ def test_hard_mode_with_visible_pair_uses_standard_likelihood():
     )
     weights = jax.nn.softmax(out.log_weights, axis=-1)
     # Particle near the measurement (idx 0) wins via standard likelihood.
-    assert weights[0, 0, 0] > 0.999
+    # Its score of +1000 would have crushed it had negative info fired.
+    assert weights[0, 0, 0] > 0.9
 
 
 def test_soft_mode_monotone_in_score():

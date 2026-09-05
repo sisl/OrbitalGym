@@ -13,7 +13,7 @@ import jax
 import jax.numpy as jnp
 
 from orbitalgym.belief._common import _truth_arrays_for_side
-from orbitalgym.observations.types import Observation
+from orbitalgym.observations.types import OUT_OF_SCOPE_SCORE, Observation
 from orbitalgym.registry import ObservationFnKey, register
 
 
@@ -59,13 +59,15 @@ class RangeLimitedObservation:
         # to the range gate, in meters. Closes over observer_pos so the
         # PF only needs to pass the particle tensor.
         sensor_range_m = self.sensor_range_m
+        detectable = opposing_mask
 
         def visibility_score_fn(particles: jax.Array) -> jax.Array:
             # particles: (N_obs, N_total, K, d)
             particle_pos = particles[..., :3]
             diff = particle_pos - observer_pos[:, None, None, :]
             distance = jnp.linalg.norm(diff, axis=-1)
-            return sensor_range_m - distance
+            score = sensor_range_m - distance
+            return jnp.where(detectable[:, :, None], score, OUT_OF_SCOPE_SCORE)
 
         return (
             Observation(

@@ -31,23 +31,35 @@ once the range-limited sensor produces a real measurement.
 
 Updater pipeline per step:
 
-  1. PREDICT — propagate every particle via the user's
-     ``dynamics_fn(x, u, dt)`` and add Gaussian process noise drawn from
-     ``N(0, process_noise)``. Self-pair particles get the ego action
+  1. PROPAGATE — push every particle through the user's
+     ``dynamics_fn(x, u, dt)``. Self-pair particles get the ego action
      (k == i, via the same ``eye[i, k]`` mask used by KF / EKF);
      cross-pairs get zero action since we do not know what the
      opponent is commanding.
-  2. UPDATE — for each Observation channel, accumulate per-particle
-     log-likelihoods on visible pairs (linear ``log N(z; H x, R)`` if
-     ``obs_fn=None``, nonlinear ``log N(z; obs_fn(x), R)`` otherwise).
-     Non-visible pairs leave weights unchanged (no negative-information
-     weighting in this version).
-  3. METRICS — compute pre-resample ``n_eff`` and ``weight_entropy``.
-  4. RESAMPLE — per-pair systematic resampling fires when
+  2. PROPOSE — draw the new particle cloud from the measurement-
+     conditioned proposal ``p(x_t | f(x_{t-1}), z_t)``, formed from the
+     pair's prior covariance ``P`` and the linear (``obs_fn=None``)
+     channels visible for the pair, and accumulate the matching
+     importance weight ``log N(z; H f(x), H P Hᵀ + R)``. With no
+     visible linear channel the proposal collapses to ``N(f(x), Q)``
+     and the weight increment to zero, i.e. a plain bootstrap predict.
+  3. UPDATE — fold each nonlinear channel's ``log N(z; obs_fn(x), R)``
+     on its visible pairs, then each gated channel's negative-
+     information term on its non-visible pairs.
+  4. METRICS — compute pre-resample ``n_eff`` and ``weight_entropy``.
+  5. RESAMPLE — per-pair systematic resampling fires when
      ``N_eff / K < n_eff_threshold``. Resampled particles get uniform
      log-weights and an optional jitter draw to combat sample
-     impoverishment. Self-pairs (delta-like with N_eff = K) never trip
-     the threshold and stay anchored to truth.
+     impoverishment.
+
+Step 2 is what keeps a directly measured cell — an onboard-GPS own
+state, or an opponent inside a narrow cone — pinned to its measurement.
+A bootstrap proposal only reaches a few ``sqrt(Q)`` per step, so once a
+cell's error grows past that the measurement lands in the tail of every
+particle, one arbitrary particle takes all the weight, and the cell runs
+away instead of recovering. Sampling from the conditioned proposal
+places the cloud on the measurement in one step no matter how far the
+prior had drifted.
 """
 
 from __future__ import annotations
@@ -120,6 +132,32 @@ def _gaussian_log_likelihood(residual: jax.Array, R: jax.Array) -> jax.Array:  #
     """
     solved = jnp.linalg.solve(R, residual)
     return -0.5 * residual @ solved
+
+
+def _stack_linear_channels(
+    channels: tuple[Observation, ...], i: jax.Array, j: jax.Array
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+    """Stacked ``(H, z, R, any_visible)`` for one (observer, target) pair.
+
+    A channel that is not visible for the pair contributes a zero ``H``
+    block, a zero measurement and an identity ``R`` block, which leaves
+    both the conditioned proposal and its importance weight untouched.
+    ``any_visible`` is True when at least one channel is visible.
+    """
+    matrices, measurements, noises, visibilities = [], [], [], []
+    for ch in channels:
+        m = ch.obs.shape[-1]
+        visible = ch.visible[i, j]
+        visibilities.append(visible)
+        matrices.append(jnp.where(visible, ch.obs_matrix, jnp.zeros_like(ch.obs_matrix)))
+        measurements.append(jnp.where(visible, ch.obs[i, j], jnp.zeros((m,), dtype=ch.obs.dtype)))
+        noises.append(jnp.where(visible, ch.noise_for(i, j), jnp.eye(m, dtype=ch.obs_matrix.dtype)))
+    return (
+        jnp.concatenate(matrices, axis=0),
+        jnp.concatenate(measurements, axis=0),
+        jax.scipy.linalg.block_diag(*noises),
+        jnp.any(jnp.stack(visibilities)),
+    )
 
 
 @register(BeliefUpdaterKey.PF)
@@ -209,13 +247,19 @@ class ParticleFilterBeliefUpdater:
         step_per_particle = jax.vmap(jax.vmap(jax.vmap(step_one)))
         propagated = step_per_particle(belief.particles, u_per_particle)
 
-        # Cholesky of Q + tiny jitter for numerical stability with zero Q.
-        chol_q = jnp.linalg.cholesky(self.process_noise + 1e-12 * jnp.eye(d))
-        process_noise_draw = jax.random.normal(k_predict, propagated.shape) @ chol_q.T
-        predicted = propagated + process_noise_draw
+        # Regularized Q keeps the proposal covariance factorizable with a zero
+        # process noise, where the proposal degenerates to the deterministic
+        # propagation.
+        q_reg = self.process_noise + 1e-12 * jnp.eye(d)
+        chol_q = jnp.linalg.cholesky(q_reg)
+
+        # ---- PROPOSE ----
+        predicted, log_w = self._propose(
+            propagated, belief.log_weights, observations, q_reg, chol_q, k_predict
+        )
+        log_w = belief.log_weights + log_w
 
         # ---- UPDATE (sequential per channel) ----
-        log_w = belief.log_weights
         for i, ch in enumerate(observations):
             log_w = self._apply_channel(predicted, log_w, ch, i)
 
@@ -246,6 +290,77 @@ class ParticleFilterBeliefUpdater:
             resampled=resampled_mask,
         )
 
+    def _propose(
+        self,
+        propagated: jax.Array,  # (N_obs, N_total, K, d)
+        prior_log_w: jax.Array,  # (N_obs, N_total, K)
+        observations: tuple[Observation, ...],
+        q_reg: jax.Array,  # (d, d)
+        chol_q: jax.Array,  # (d, d)
+        key: jax.Array,
+    ) -> tuple[jax.Array, jax.Array]:
+        """Draw the new cloud from ``p(x | f(x_prev), z)`` and weight it.
+
+        Stacks every linear channel into one measurement per pair, with
+        invisible channels neutralized to a zero ``H`` row block, a zero
+        residual and an identity ``R`` block so they move neither the
+        proposal mean nor the weight.
+
+        The prior each pair is conditioned on is the kernel-density view
+        of its predicted cloud: every particle carries covariance ``P =
+        h² C + Q``, where ``C`` is the cloud's weighted covariance and
+        ``h`` is Silverman's bandwidth for ``K`` samples in ``d``
+        dimensions. Conditioning on ``Q`` alone would move each particle
+        by at most a fraction of one step's process noise, so a
+        measurement sharper than a cloud that is broad for any other
+        reason — a ring prior, drift accumulated while unseen — lands in
+        the tail of every particle, one arbitrary particle takes the
+        whole weight, and the resample throws the remaining spread away.
+        Conditioning on ``P`` repositions the cloud onto such a
+        measurement instead, and leaves a tight cloud (where ``C`` is
+        already of order ``Q``) essentially unchanged.
+
+        Pairs with nothing visible keep the plain ``N(f(x), Q)`` draw and
+        a zero weight increment: kernel-smoothing an unmeasured cloud
+        would inflate it every step.
+
+        Returns the drawn particles and the per-particle log-weight
+        increment, both shaped like the inputs.
+        """
+        n_obs, n_total, k_particles, d = propagated.shape
+        linear = tuple(ch for ch in observations if ch.obs_fn is None)
+        if not linear:
+            draw = jax.random.normal(key, propagated.shape) @ chol_q.T
+            return propagated + draw, jnp.zeros((n_obs, n_total, k_particles))
+
+        bandwidth_sq = (4.0 / (k_particles * (d + 2))) ** (2.0 / (d + 4))
+        prior_w = jax.nn.softmax(prior_log_w, axis=-1)
+
+        def one_pair(
+            xf: jax.Array, w: jax.Array, i: jax.Array, j: jax.Array, pair_key: jax.Array
+        ) -> tuple[jax.Array, jax.Array]:
+            H, z, R, any_visible = _stack_linear_channels(linear, i, j)  # noqa: N806
+            centered = xf - w @ xf
+            cloud_cov = (w[:, None] * centered).T @ centered
+            P = bandwidth_sq * cloud_cov + q_reg  # noqa: N806
+            S = H @ P @ H.T + R  # noqa: N806
+            gain = jnp.linalg.solve(S, H @ P).T  # (d, M) — P Hᵀ S⁻¹
+            sigma = jnp.where(any_visible, P - gain @ (H @ P), q_reg)
+            sigma = 0.5 * (sigma + sigma.T) + 1e-12 * jnp.eye(d, dtype=sigma.dtype)
+            residual = z[None, :] - xf @ H.T  # (K, M)
+            shifted = xf + residual @ gain.T  # (K, d)
+            eps = jax.random.normal(pair_key, (k_particles, d), dtype=xf.dtype)
+            drawn = shifted + eps @ jnp.linalg.cholesky(sigma).T
+            # Mahalanobis term only: log det S is constant across the
+            # particles the per-pair log-softmax normalizes over.
+            log_inc = -0.5 * jnp.sum(residual * jnp.linalg.solve(S, residual.T).T, axis=-1)
+            return drawn, log_inc
+
+        keys = jax.random.split(key, n_obs * n_total).reshape(n_obs, n_total, 2)
+        per_target = jax.vmap(one_pair, in_axes=(0, 0, None, 0, 0))
+        per_observer = jax.vmap(per_target, in_axes=(0, 0, 0, None, 0))
+        return per_observer(propagated, prior_w, jnp.arange(n_obs), jnp.arange(n_total), keys)
+
     def _apply_channel(
         self,
         particles: jax.Array,  # (N_obs, N_total, K, d)
@@ -253,50 +368,44 @@ class ParticleFilterBeliefUpdater:
         ch: Observation,
         channel_index: int,
     ) -> jax.Array:
-        if ch.obs_fn is None:
-            H = ch.obs_matrix  # noqa: N806
+        """Fold one channel's nonlinear likelihood and negative information.
 
-            def lik_one_linear(p: jax.Array, z: jax.Array, R: jax.Array) -> jax.Array:  # noqa: N803
-                return _gaussian_log_likelihood(z - H @ p, R)
+        Linear channels are already accounted for by the proposal, so only
+        their negative-information term is left to apply here.
+        """
+        visible = ch.visible[:, :, None]
 
-            base = lik_one_linear
-        else:
+        if ch.obs_fn is not None:
             obs_fn = ch.obs_fn
 
-            def lik_one_nonlinear(p: jax.Array, z: jax.Array, R: jax.Array) -> jax.Array:  # noqa: N803
+            def lik_one(p: jax.Array, z: jax.Array, R: jax.Array) -> jax.Array:  # noqa: N803
                 return _gaussian_log_likelihood(z - obs_fn(p), R)
 
-            base = lik_one_nonlinear
+            per_particle = jax.vmap(lik_one, in_axes=(0, None, None))
 
-        per_particle = jax.vmap(base, in_axes=(0, None, None))
+            def lik_one_pair(p: jax.Array, z: jax.Array, i: jax.Array, j: jax.Array) -> jax.Array:
+                return per_particle(p, z, ch.noise_for(i, j))
 
-        def lik_one_pair(p: jax.Array, z: jax.Array, i: jax.Array, j: jax.Array) -> jax.Array:
-            return per_particle(p, z, ch.noise_for(i, j))
+            n_obs_axis, n_total_axis = ch.visible.shape
+            per_target = jax.vmap(lik_one_pair, in_axes=(0, 0, None, 0))
+            per_observer = jax.vmap(per_target, in_axes=(0, 0, 0, None))
+            log_lik = per_observer(
+                particles, ch.obs, jnp.arange(n_obs_axis), jnp.arange(n_total_axis)
+            )  # (N_obs, N_total, K)
+            log_w = log_w + jnp.where(visible, log_lik, 0.0)
 
-        n_obs_axis, n_total_axis = ch.visible.shape
-        per_target = jax.vmap(lik_one_pair, in_axes=(0, 0, None, 0))
-        per_observer = jax.vmap(per_target, in_axes=(0, 0, 0, None))
-        log_lik = per_observer(
-            particles, ch.obs, jnp.arange(n_obs_axis), jnp.arange(n_total_axis)
-        )  # (N_obs, N_total, K)
-
-        # Negative-information branch (only when channel is gated and mode != Off).
         if ch.visibility_score_fn is None or isinstance(self.negative_info, Off):
-            log_p_no_detect = jnp.zeros_like(log_w)
-        else:
-            score = ch.visibility_score_fn(particles)  # (N_obs, N_total, K)
-            if isinstance(self.negative_info, Hard):
-                log_p_no_detect = jnp.where(score > 0, LOG_EPS, 0.0)
-            elif isinstance(self.negative_info, Soft):
-                softness = self.negative_info.softness_per_channel[channel_index]
-                log_p_no_detect = jax.nn.log_sigmoid(-score / softness)
-            else:
-                raise TypeError(
-                    f"Unsupported NegativeInfoMode: {type(self.negative_info).__name__}"
-                )
+            return log_w
 
-        visible = ch.visible[:, :, None]
-        return jnp.where(visible, log_w + log_lik, log_w + log_p_no_detect)
+        score = ch.visibility_score_fn(particles)  # (N_obs, N_total, K)
+        if isinstance(self.negative_info, Hard):
+            log_p_no_detect = jnp.where(score > 0, LOG_EPS, 0.0)
+        elif isinstance(self.negative_info, Soft):
+            softness = self.negative_info.softness_per_channel[channel_index]
+            log_p_no_detect = jax.nn.log_sigmoid(-score / softness)
+        else:
+            raise TypeError(f"Unsupported NegativeInfoMode: {type(self.negative_info).__name__}")
+        return log_w + jnp.where(visible, 0.0, log_p_no_detect)
 
     def _apply_resample(
         self,

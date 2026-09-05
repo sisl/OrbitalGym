@@ -7,6 +7,7 @@ import jax.numpy as jnp
 
 from orbitalgym.env.types import Side
 from orbitalgym.observations.range_limited import RangeLimitedObservation
+from orbitalgym.observations.types import OUT_OF_SCOPE_SCORE
 
 
 class _Layout:
@@ -139,5 +140,6 @@ def test_range_limited_attaches_visibility_score_fn():
     assert scores.shape == (1, 2, 1)
     # Bandit-pair particle at distance 1500 m -> score = 1000 - 1500 = -500.
     assert jnp.allclose(scores[0, 1, 0], -500.0, atol=1e-6)
-    # Self-pair particle at origin -> score = 1000 - 0 = +1000.
-    assert jnp.allclose(scores[0, 0, 0], 1000.0, atol=1e-6)
+    # The self pair is outside the channel's reach, not inside its gate:
+    # a non-detection there says nothing about the observer's own state.
+    assert jnp.allclose(scores[0, 0, 0], OUT_OF_SCOPE_SCORE)

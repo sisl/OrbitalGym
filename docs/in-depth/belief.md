@@ -88,13 +88,26 @@ KF / EKF / PF.
 --8<-- "tests/docs/test_indepth_belief.py:pf-belief-shape"
 ```
 
-`ParticleFilterBeliefUpdater` runs predict → per-channel weight update
-→ pre-resample metrics → systematic resampling per pair when
-`N_eff / K < n_eff_threshold` (default `0.5`). Visible-pair updates use
-the same `obs_matrix`/`obs_noise` (linear) or `obs_fn` (nonlinear) as
-EKF; non-visible pairs leave weights unchanged. Resampled particles
-get uniform log-weights and an optional jitter draw to combat sample
+`ParticleFilterBeliefUpdater` runs propagate → measurement-conditioned
+proposal → per-channel weight update → pre-resample metrics →
+systematic resampling per pair when `N_eff / K < n_eff_threshold`
+(default `0.5`). Visible-pair updates use the same
+`obs_matrix`/`obs_noise` (linear) or `obs_fn` (nonlinear) as EKF;
+non-visible pairs leave weights unchanged unless a gated channel
+supplies negative information. Resampled particles get uniform
+log-weights and an optional jitter draw to combat sample
 impoverishment.
+
+The proposal is what keeps a directly measured cell on its
+measurement. Every linear channel visible for a pair is stacked into
+one measurement, and the new particles are drawn from that pair's
+prior conditioned on it, with the importance weight
+`log N(z; H f(x), H P Hᵀ + R)` to match. The prior `P` is the pair's
+own predicted spread, kernel-smoothed, plus the process noise, so a
+measurement sharper than a broad cloud — a ring prior meeting its
+first detection, a cell that drifted while unseen — repositions the
+cloud instead of collapsing it onto whichever particle happened to sit
+closest. Pairs with nothing visible keep the plain `N(f(x), Q)` draw.
 
 The three pair-level metrics are recorded **pre-resample** — N_eff and
 entropy describe the posterior produced by the latest measurement, so

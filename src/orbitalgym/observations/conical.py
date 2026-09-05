@@ -26,7 +26,7 @@ from orbitalgym.belief._common import _truth_arrays_for_side
 from orbitalgym.dynamics.quaternion import (
     quat_to_rotation_matrix as _quat_wxyz_to_rotation_matrix_jax,
 )
-from orbitalgym.observations.types import Observation
+from orbitalgym.observations.types import OUT_OF_SCOPE_SCORE, Observation
 from orbitalgym.registry import ObservationFnKey, register
 
 
@@ -141,6 +141,8 @@ class ConicalObservation:
         boresights_world = b_world  # (n_self, k, 3)
         observer_pos_3d = observer_pos  # (n_self, 3) — already padded to 3D above
 
+        detectable = opposing_mask
+
         def visibility_score_fn(particles: jax.Array) -> jax.Array:
             # particles: (N_obs, N_total, K, d)
             particle_pos = particles[..., :pos_dim]
@@ -155,7 +157,8 @@ class ConicalObservation:
             cos_theta = jnp.einsum("osi,otki->ostk", boresights_world, los)
             angle = jnp.arccos(jnp.clip(cos_theta, -1.0, 1.0))
             score_per_sensor = half_angles[None, :, None, None] - angle
-            return jnp.max(score_per_sensor, axis=1)
+            score = jnp.max(score_per_sensor, axis=1)
+            return jnp.where(detectable[:, :, None], score, OUT_OF_SCOPE_SCORE)
 
         return (
             Observation(

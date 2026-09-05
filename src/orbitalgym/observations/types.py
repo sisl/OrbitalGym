@@ -16,6 +16,12 @@ import flax.struct
 import jax
 import jax.numpy as jnp
 
+# Score returned by a `visibility_score_fn` for pairs the channel cannot
+# detect at all (self pairs, same-side pairs). Strongly negative so every
+# negative-information mode reads them as far outside the gate and leaves
+# their particle weights untouched.
+OUT_OF_SCOPE_SCORE = -1e30
+
 
 @flax.struct.dataclass
 class Observation:
@@ -43,6 +49,13 @@ class Observation:
     native units — positive inside, negative outside. Consumed by the
     particle filter for negative-information updates on non-detections.
     Non-gated channels (e.g. GPS) leave it None.
+
+    A gated channel must return `OUT_OF_SCOPE_SCORE` for every pair its
+    `visible` mask can never set — self pairs and same-side pairs. Those
+    pairs are outside the sensor's reach rather than inside its gate and
+    undetected, so a non-detection says nothing about them; scoring them
+    normally would let the negative-information update crush the
+    observer's own-state particles.
     """
 
     obs: jax.Array
