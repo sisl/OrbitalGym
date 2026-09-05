@@ -327,6 +327,71 @@ on any violation — no silent defaulting:
 - If `ATTITUDE_CONTROL` is in a side's action components, that side must have
   `ATTITUDE+BODY_RATES`.
 
+## Pointing policies
+
+`PointingPolicy` wraps a delta-v policy and overwrites the `PointAt`
+command's `target_dir` from the wrapped agent's belief, so pointing is
+driven by what the agent thinks it knows rather than by ground truth. The
+belief mean has shape `(N_obs, N_total, d)` — rows are this side's
+observers, columns are own-side vehicles first and then the opposing
+side, and observer `i` reads its own position from cell `(i, i)`.
+
+`PointingTarget` selects the rule:
+
+- `HOLD` — zero vector, which `PointAt` reads as "keep the current attitude".
+- `LADY` — point at the origin.
+- `TEAMMATE` — point at the nearest own-side vehicle.
+- `OPPONENT_BELIEF` — point at the nearest opposing vehicle's belief mean.
+- `OPPONENT_SCAN` — sweep until the opponent belief is tight enough to track.
+
+### The scan rule
+
+`OPPONENT_BELIEF` fails badly when the prior is multi-modal. A ring prior
+over a bandit somewhere on a 3 km natural-motion ellipse has its *mean* at
+the lady, so a guard that points at the mean holds its cone on empty space
+and never gets the detection that would collapse the prior.
+
+`OPPONENT_SCAN` breaks that deadlock. Per observer it measures the
+positional spread of the nearest opponent's belief:
+
+- a particle belief reports the RMS distance of that opponent's particle
+  cloud from its mean position;
+- a Gaussian belief reports the square root of the trace of the position
+  block of its covariance;
+- a belief carrying only a mean reports zero.
+
+While the spread exceeds `scan_spread_m` the observer sweeps its boresight
+around the radial/along-track plane, `(cos(az), sin(az), 0)` with
+`az = scan_rate_rad_s * t + 2*pi*i/n_self`. The per-observer phase term
+staggers teammates so an `n`-guard team covers `n` bearings at once. Once
+the spread drops below `scan_spread_m` — which a single in-cone detection
+is normally enough to do — the observer reverts to `OPPONENT_BELIEF` and
+tracks.
+
+Two knobs on `PointingPolicy` control it:
+
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| `scan_spread_m` | `200.0` | Spread above which the observer scans instead of tracking |
+| `scan_rate_rad_s` | `0.0175` | Sweep rate, about 1 degree per second |
+
+Set `scan_rate_rad_s` so a full sweep is slower than the cone crossing
+time: with a half-angle `h` the target stays in the cone for about
+`2h / scan_rate_rad_s` seconds, which must cover at least one step of
+`dt`. Set `scan_spread_m` above the tracking accuracy the filter reaches
+after a detection and below the width of the prior, so the rule latches.
+
+```python
+from orbitalgym.policies.pointing import PointingPolicy, PointingTarget
+
+guard_policy = PointingPolicy(
+    inner=guard_dv_policy,
+    target=PointingTarget.OPPONENT_SCAN,
+    scan_spread_m=200.0,
+    scan_rate_rad_s=0.0175,
+)
+```
+
 ## Visualizing cones
 
 Set `RolloutScene.show_sensor_cones=True` when animating a rollout to overlay
