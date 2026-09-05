@@ -134,6 +134,45 @@ def _gaussian_log_likelihood(residual: jax.Array, R: jax.Array) -> jax.Array:  #
     return -0.5 * residual @ solved
 
 
+# Relative floor added to the unit-diagonal form of a covariance before it is
+# factorized or solved. Sized for float32: the scenarios that drive this filter
+# mix position and velocity in one state, so a covariance can span seven orders
+# of magnitude and an absolute floor is either negligible at the top of that
+# range or dominant at the bottom.
+_PSD_FLOOR = 1e-6
+_DIAG_FLOOR = 1e-30
+
+
+def _diag_scale(a: jax.Array) -> jax.Array:
+    """Per-dimension scale ``sqrt(diag(a))``, floored away from zero."""
+    return jnp.sqrt(jnp.clip(jnp.diagonal(a), _DIAG_FLOOR))
+
+
+def _psd_cholesky(a: jax.Array) -> jax.Array:
+    """Lower Cholesky factor of a symmetric PSD matrix.
+
+    Factorizes the unit-diagonal (correlation) form and rescales, so the
+    relative floor is meaningful in every dimension whatever the spread
+    of scales along the diagonal. Factorizing the raw matrix in float32
+    fails outright once its condition number passes ``1/eps``: the
+    smallest pivot rounds negative and the factorization returns NaN.
+    """
+    scale = _diag_scale(a)
+    outer = scale[:, None] * scale[None, :]
+    unit = a / outer
+    unit = 0.5 * (unit + unit.T) + _PSD_FLOOR * jnp.eye(a.shape[0], dtype=a.dtype)
+    return scale[:, None] * jnp.linalg.cholesky(unit)
+
+
+def _psd_solve(a: jax.Array, b: jax.Array) -> jax.Array:
+    """Solve ``a x = b`` for a symmetric PSD ``a``, preconditioned by its diagonal."""
+    scale = _diag_scale(a)
+    outer = scale[:, None] * scale[None, :]
+    unit = a / outer
+    unit = 0.5 * (unit + unit.T) + _PSD_FLOOR * jnp.eye(a.shape[0], dtype=a.dtype)
+    return jnp.linalg.solve(unit, b / scale[:, None]) / scale[:, None]
+
+
 def _stack_linear_channels(
     channels: tuple[Observation, ...], i: jax.Array, j: jax.Array
 ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
@@ -342,18 +381,31 @@ class ParticleFilterBeliefUpdater:
             H, z, R, any_visible = _stack_linear_channels(linear, i, j)  # noqa: N806
             centered = xf - w @ xf
             cloud_cov = (w[:, None] * centered).T @ centered
-            P = bandwidth_sq * cloud_cov + q_reg  # noqa: N806
+            P = jnp.where(any_visible, bandwidth_sq * cloud_cov + q_reg, q_reg)  # noqa: N806
             S = H @ P @ H.T + R  # noqa: N806
-            gain = jnp.linalg.solve(S, H @ P).T  # (d, M) — P Hᵀ S⁻¹
-            sigma = jnp.where(any_visible, P - gain @ (H @ P), q_reg)
-            sigma = 0.5 * (sigma + sigma.T) + 1e-12 * jnp.eye(d, dtype=sigma.dtype)
+            gain = _psd_solve(S, H @ P).T  # (d, M) — P Hᵀ S⁻¹
             residual = z[None, :] - xf @ H.T  # (K, M)
             shifted = xf + residual @ gain.T  # (K, d)
-            eps = jax.random.normal(pair_key, (k_particles, d), dtype=xf.dtype)
-            drawn = shifted + eps @ jnp.linalg.cholesky(sigma).T
+
+            # Sample the conditioned covariance as ``u - gain (H u + v)``
+            # for ``u ~ N(0, P)`` and ``v ~ N(0, R)``. That has exactly the
+            # conditioned covariance ``(I - gain H) P (I - gain H)ᵀ +
+            # gain R gainᵀ`` without ever forming it: subtracting the
+            # measurement's information from ``P`` cancels away most of the
+            # significant digits when the cloud is broad relative to the
+            # measurement, and the difference is then as likely to
+            # factorize as not.
+            k_state, k_meas = jax.random.split(pair_key, 2)
+            u = jax.random.normal(k_state, (k_particles, d), dtype=xf.dtype) @ _psd_cholesky(P).T
+            v = (
+                jax.random.normal(k_meas, (k_particles, R.shape[0]), dtype=xf.dtype)
+                @ _psd_cholesky(R).T
+            )
+            drawn = shifted + u - (u @ H.T + v) @ gain.T
+
             # Mahalanobis term only: log det S is constant across the
             # particles the per-pair log-softmax normalizes over.
-            log_inc = -0.5 * jnp.sum(residual * jnp.linalg.solve(S, residual.T).T, axis=-1)
+            log_inc = -0.5 * jnp.sum(residual * _psd_solve(S, residual.T).T, axis=-1)
             return drawn, log_inc
 
         keys = jax.random.split(key, n_obs * n_total).reshape(n_obs, n_total, 2)
