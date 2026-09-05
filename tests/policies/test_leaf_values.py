@@ -5,7 +5,17 @@ import jax.numpy as jnp
 
 from orbitalgym import OrbitalGymEnv, make_lady_bandit_guard
 from orbitalgym.adapters.pomdp import POMDPAdapter
-from orbitalgym.policies.leaf_values import bandit_leaf_value, guard_leaf_value
+import dataclasses
+
+import pytest
+
+from orbitalgym.policies.leaf_values import (
+    bandit_leaf_value,
+    bandit_leaf_value_from_game,
+    guard_leaf_value,
+    guard_leaf_value_from_game,
+)
+from orbitalgym.rewards.reference import DistanceToReferenceOrbit
 
 ALPHA = 1e-3
 R_CATCH = 1000.0
@@ -143,3 +153,47 @@ def test_macro_step_shortens_the_estimated_time_to_an_event():
     v_fine = float(bandit_leaf_value(fine, **params)(_state_with(fine, 0.0, 500.0)))
     v_coarse = float(bandit_leaf_value(coarse, **params)(_state_with(coarse, 0.0, 500.0)))
     assert v_coarse > v_fine
+
+
+def test_from_game_matches_explicit_reward_weights():
+    cfg = make_lady_bandit_guard()
+    env = OrbitalGymEnv(cfg)
+    adapter = POMDPAdapter(env)
+    s = _state_with(adapter, guard_r=800.0, bandit_r=400.0)
+    speeds = dict(v_close_guard_mps=V_CLOSE, v_close_bandit_mps=V_CLOSE, n_remaining=N_REMAINING)
+    explicit = dict(
+        alpha=cfg.reward_fn.alpha,
+        r_catch=cfg.reward_fn.r_catch,
+        r_breach=cfg.reward_fn.r_breach,
+        catch_radius_m=cfg.reward_fn.catch_radius_m,
+        breach_radius_m=cfg.reward_fn.breach_radius_m,
+    )
+    assert float(guard_leaf_value_from_game(adapter, cfg, **speeds)(s)) == float(
+        guard_leaf_value(adapter, **explicit, **speeds)(s)
+    )
+    assert float(bandit_leaf_value_from_game(adapter, cfg, **speeds)(s)) == float(
+        bandit_leaf_value(adapter, **explicit, **speeds)(s)
+    )
+
+
+def test_from_game_tracks_a_retuned_reward():
+    cfg = make_lady_bandit_guard()
+    retuned = dataclasses.replace(
+        cfg, reward_fn=dataclasses.replace(cfg.reward_fn, alpha=1.0)
+    )
+    adapter = POMDPAdapter(OrbitalGymEnv(cfg))
+    s = _state_with(adapter, guard_r=800.0, bandit_r=400.0)
+    speeds = dict(v_close_guard_mps=V_CLOSE, v_close_bandit_mps=V_CLOSE, n_remaining=N_REMAINING)
+    assert float(guard_leaf_value_from_game(adapter, retuned, **speeds)(s)) != float(
+        guard_leaf_value_from_game(adapter, cfg, **speeds)(s)
+    )
+
+
+def test_from_game_rejects_a_reward_it_cannot_read():
+    cfg = make_lady_bandit_guard()
+    adapter = POMDPAdapter(OrbitalGymEnv(cfg))
+    other = dataclasses.replace(cfg, reward_fn=DistanceToReferenceOrbit())
+    with pytest.raises(TypeError, match="LbgZeroSumReward"):
+        guard_leaf_value_from_game(
+            adapter, other, v_close_guard_mps=V_CLOSE, v_close_bandit_mps=V_CLOSE
+        )

@@ -6,6 +6,11 @@ the reward scale: they predict the shaping the side accrues over the
 remaining macro steps plus the discounted terminal events, using the same
 ``alpha`` / ``r_catch`` / ``r_breach`` / radii the reward function uses.
 
+Those five terms are required arguments, because a leaf value built on
+weights the reward does not use orders states by a different game.
+:func:`guard_leaf_value_from_game` and :func:`bandit_leaf_value_from_game`
+read them off a scenario's ``cfg.reward_fn`` so the two cannot drift apart.
+
 Time to an event is estimated in macro steps by a straight-line closing
 approximation::
 
@@ -49,6 +54,8 @@ from typing import Any
 
 import jax
 import jax.numpy as jnp
+
+from orbitalgym.rewards.lbg_zero_sum import LbgZeroSumReward
 
 
 def _positions(side_state: Any) -> jax.Array:
@@ -98,11 +105,11 @@ def _event_weight(t_hit: jax.Array, discount: float, n_remaining: int) -> jax.Ar
 def guard_leaf_value(
     adapter: Any,
     *,
-    alpha: float = 1e-3,
-    r_catch: float = 1000.0,
-    r_breach: float = 1000.0,
-    catch_radius_m: float = 50.0,
-    breach_radius_m: float = 5.0,
+    alpha: float,
+    r_catch: float,
+    r_breach: float,
+    catch_radius_m: float,
+    breach_radius_m: float,
     v_close_guard_mps: float,
     v_close_bandit_mps: float,
     discount: float | None = None,
@@ -114,6 +121,10 @@ def guard_leaf_value(
     estimated macro steps to a catch, and ``-r_breach`` weighted by the
     estimated macro steps to a breach. ``discount`` defaults to
     ``adapter.discount()``, the per-macro-step discount.
+
+    The reward weights and radii are required: an estimate built on
+    weights the reward does not use orders states by a game nobody is
+    playing. :func:`guard_leaf_value_from_game` reads them off a scenario.
     """
     g = adapter.discount() if discount is None else discount
     horizon = _shaping_horizon(g, n_remaining)
@@ -134,11 +145,11 @@ def guard_leaf_value(
 def bandit_leaf_value(
     adapter: Any,
     *,
-    alpha: float = 1e-3,
-    r_catch: float = 1000.0,
-    r_breach: float = 1000.0,
-    catch_radius_m: float = 50.0,
-    breach_radius_m: float = 5.0,
+    alpha: float,
+    r_catch: float,
+    r_breach: float,
+    catch_radius_m: float,
+    breach_radius_m: float,
     v_close_guard_mps: float,
     v_close_bandit_mps: float,
     discount: float | None = None,
@@ -148,7 +159,9 @@ def bandit_leaf_value(
 
     The mirror of :func:`guard_leaf_value`: remaining bandit-lady shaping,
     ``r_breach`` weighted by the estimated macro steps to a breach, and
-    ``-r_catch`` weighted by the estimated macro steps to a catch.
+    ``-r_catch`` weighted by the estimated macro steps to a catch. The
+    reward weights and radii are required; :func:`bandit_leaf_value_from_game`
+    reads them off a scenario.
     """
     g = adapter.discount() if discount is None else discount
     horizon = _shaping_horizon(g, n_remaining)
@@ -164,3 +177,68 @@ def bandit_leaf_value(
         return v.astype(s_flat.dtype)
 
     return value
+
+
+def _reward_terms(cfg: Any) -> dict[str, float]:
+    """The reward weights and radii a leaf value has to agree with.
+
+    Reads them off ``cfg.reward_fn``, which must be an
+    :class:`~orbitalgym.rewards.lbg_zero_sum.LbgZeroSumReward`: the leaf
+    values are written in that reward's units and no other reward exposes
+    the same terms.
+    """
+    reward_fn = getattr(cfg, "reward_fn", None)
+    if not isinstance(reward_fn, LbgZeroSumReward):
+        raise TypeError(
+            "leaf values are expressed in the units of LbgZeroSumReward, so "
+            "cfg.reward_fn must be one; got "
+            f"{type(reward_fn).__name__}. Call guard_leaf_value or "
+            "bandit_leaf_value with explicit weights and radii instead."
+        )
+    return {
+        "alpha": reward_fn.alpha,
+        "r_catch": reward_fn.r_catch,
+        "r_breach": reward_fn.r_breach,
+        "catch_radius_m": reward_fn.catch_radius_m,
+        "breach_radius_m": reward_fn.breach_radius_m,
+    }
+
+
+def guard_leaf_value_from_game(
+    adapter: Any,
+    cfg: Any,
+    *,
+    v_close_guard_mps: float,
+    v_close_bandit_mps: float,
+    discount: float | None = None,
+    n_remaining: int = 32,
+) -> Callable[[jax.Array], jax.Array]:
+    """:func:`guard_leaf_value` with the weights and radii read off ``cfg``."""
+    return guard_leaf_value(
+        adapter,
+        **_reward_terms(cfg),
+        v_close_guard_mps=v_close_guard_mps,
+        v_close_bandit_mps=v_close_bandit_mps,
+        discount=discount,
+        n_remaining=n_remaining,
+    )
+
+
+def bandit_leaf_value_from_game(
+    adapter: Any,
+    cfg: Any,
+    *,
+    v_close_guard_mps: float,
+    v_close_bandit_mps: float,
+    discount: float | None = None,
+    n_remaining: int = 32,
+) -> Callable[[jax.Array], jax.Array]:
+    """:func:`bandit_leaf_value` with the weights and radii read off ``cfg``."""
+    return bandit_leaf_value(
+        adapter,
+        **_reward_terms(cfg),
+        v_close_guard_mps=v_close_guard_mps,
+        v_close_bandit_mps=v_close_bandit_mps,
+        discount=discount,
+        n_remaining=n_remaining,
+    )

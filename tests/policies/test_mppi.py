@@ -8,7 +8,7 @@ from orbitalgym.adapters.pomdp import POMDPAdapter
 from orbitalgym.belief.pf import ParticleFilterFromTruthInitializer
 from orbitalgym.env.types import Actions, BySide
 from orbitalgym.eval.conformance import check_policy_conforms
-from orbitalgym.policies.leaf_values import bandit_leaf_value
+from orbitalgym.policies.leaf_values import bandit_leaf_value_from_game
 from orbitalgym.policies.mppi import MPPIPolicy
 from orbitalgym.policies.zero import ZeroControl
 from orbitalgym.sampling.mass import ConstantMass
@@ -41,8 +41,9 @@ def _build(n_samples=256, horizon=8, temperature=0.05, noise_sigma=0.3, dv_max=0
         temperature=temperature,
         noise_sigma=noise_sigma,
         dv_max=dv_max,
-        terminal_value_fn=bandit_leaf_value(
+        terminal_value_fn=bandit_leaf_value_from_game(
             adapter,
+            cfg,
             v_close_guard_mps=dv_max / cfg.dt,
             v_close_bandit_mps=dv_max / cfg.dt,
         ),
