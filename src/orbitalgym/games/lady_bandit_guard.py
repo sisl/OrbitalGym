@@ -115,6 +115,19 @@ class LadyBanditGuard(Game):
         )
 
 
+# LBG event geometry the comms reward does not read, with the builder defaults
+# that leave it inert. Kept beside the builder signature they mirror.
+_COMMS_UNSUPPORTED_DEFAULTS = {
+    "breach_radius_m": 5.0,
+    "catch_radius_m": 50.0,
+    "breach_speed_mps": float("inf"),
+    "catch_speed_mps": float("inf"),
+    "escape_radius_m": 0.0,
+    "repel_on_empty_tank": False,
+    "dv_cost": 0.0,
+}
+
+
 def make_lady_bandit_guard(
     *,
     # Game-specific knobs
@@ -225,16 +238,17 @@ def make_lady_bandit_guard(
         # per-broadcast charge. It reads none of the LBG event geometry, so a
         # scenario that tunes that geometry would get a reward that ignores it
         # while the termination still enforces it.
-        unsupported = {
-            "breach_radius_m": (breach_radius_m, 5.0),
-            "catch_radius_m": (catch_radius_m, 50.0),
-            "breach_speed_mps": (breach_speed_mps, float("inf")),
-            "catch_speed_mps": (catch_speed_mps, float("inf")),
-            "escape_radius_m": (escape_radius_m, 0.0),
-            "repel_on_empty_tank": (repel_on_empty_tank, False),
-            "dv_cost": (dv_cost, 0.0),
+        passed = {
+            "breach_radius_m": breach_radius_m,
+            "catch_radius_m": catch_radius_m,
+            "breach_speed_mps": breach_speed_mps,
+            "catch_speed_mps": catch_speed_mps,
+            "escape_radius_m": escape_radius_m,
+            "repel_on_empty_tank": repel_on_empty_tank,
+            "dv_cost": dv_cost,
         }
-        for name, (value, default) in unsupported.items():
+        for name, default in _COMMS_UNSUPPORTED_DEFAULTS.items():
+            value = passed[name]
             if value != default:
                 raise ValueError(
                     f"with_communication=True installs LbgWithCommsReward, which "

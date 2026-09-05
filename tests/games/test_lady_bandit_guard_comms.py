@@ -1,12 +1,14 @@
 """LBG with comms: guard pays a per-broadcast cost; bandit sees the leak."""
 
+import inspect
+
 import jax
 import jax.numpy as jnp
 import pytest
 
 from orbitalgym.env.core import OrbitalGymEnv
 from orbitalgym.env.types import Actions, BySide
-from orbitalgym.games.lady_bandit_guard import make_lady_bandit_guard
+from orbitalgym.games.lady_bandit_guard import _COMMS_UNSUPPORTED_DEFAULTS, make_lady_bandit_guard
 from orbitalgym.registry import ActionComponentKey
 
 
@@ -51,3 +53,9 @@ def test_lbg_comms_charges_cost_when_active():
 def test_lbg_comms_rejects_event_geometry_knobs(knob, value):
     with pytest.raises(ValueError, match=knob):
         make_lady_bandit_guard(with_communication=True, **{knob: value})
+
+
+def test_lbg_comms_rejected_knobs_match_the_builder_defaults():
+    signature = inspect.signature(make_lady_bandit_guard)
+    for knob, default in _COMMS_UNSUPPORTED_DEFAULTS.items():
+        assert signature.parameters[knob].default == default
