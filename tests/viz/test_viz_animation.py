@@ -428,9 +428,7 @@ def test_thrust_quivers_fall_back_to_the_commanded_dv(basic_cfg_and_traj):
     commanded = jnp.full_like(guard.action.dv, 2.0)
     traj = traj.replace(
         applied_dv=None,
-        sides=traj.sides.replace(
-            guard=guard.replace(action=guard.action.replace(dv=commanded))
-        ),
+        sides=traj.sides.replace(guard=guard.replace(action=guard.action.replace(dv=commanded))),
     )
     scene = RolloutScene(traj=traj, dt=10.0, show_thrust=True)
     assert float(jnp.min(jnp.abs(jnp.asarray(scene._g_action)))) == 2.0

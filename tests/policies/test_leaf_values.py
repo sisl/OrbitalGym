@@ -1,14 +1,13 @@
 """Reward-scale leaf values for search on LBG."""
 
+import dataclasses
+
 import jax
 import jax.numpy as jnp
+import pytest
 
 from orbitalgym import OrbitalGymEnv, make_lady_bandit_guard
 from orbitalgym.adapters.pomdp import POMDPAdapter
-import dataclasses
-
-import pytest
-
 from orbitalgym.policies.leaf_values import (
     bandit_leaf_value,
     bandit_leaf_value_from_game,
@@ -178,9 +177,7 @@ def test_from_game_matches_explicit_reward_weights():
 
 def test_from_game_tracks_a_retuned_reward():
     cfg = make_lady_bandit_guard()
-    retuned = dataclasses.replace(
-        cfg, reward_fn=dataclasses.replace(cfg.reward_fn, alpha=1.0)
-    )
+    retuned = dataclasses.replace(cfg, reward_fn=dataclasses.replace(cfg.reward_fn, alpha=1.0))
     adapter = POMDPAdapter(OrbitalGymEnv(cfg))
     s = _state_with(adapter, guard_r=800.0, bandit_r=400.0)
     speeds = dict(v_close_guard_mps=V_CLOSE, v_close_bandit_mps=V_CLOSE, n_remaining=N_REMAINING)
