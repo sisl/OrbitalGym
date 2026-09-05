@@ -13,6 +13,8 @@ class directly, or read its source as a starting point for your own.
 | [`LeadInterceptPursuer`](#leadinterceptpursuer) | Heuristic | PE, LBG | Closes on opponent's predicted next-step position. |
 | [`OrthogonalEvader`](#orthogonalevader) | Heuristic | PE | Thrusts perpendicular to relative velocity. |
 | [`SunTrackerBlocker`](#suntrackerblocker) | Heuristic | SB | Maintains Sun-line geometry vs. opponent. |
+| [`LQRGoToLadyWithAvoidance`](#lqrgotoladywithavoidance) | Heuristic | LBG | In-plane HCW LQR to the lady plus Gaussian repulsion from opponents. |
+| [`LQRIntercept`](#lqrintercept) | Heuristic | LBG, PE | In-plane HCW LQR driving the relative state to the nearest opponent to zero. |
 | [`JitteredPolicy`](#jitteredpolicy) | Heuristic (wrapper) | All | Wraps any policy and adds Gaussian jitter. |
 | [`HeuristicWithFallbackPolicy`](#heuristicwithfallbackpolicy) | Controlled (wrapper) | All | Confidence-gated routing between primary and fallback. |
 | [`CompositeActionPolicy`](#compositeactionpolicy) | Controlled (wrapper) | All | Sums actions from a base and offset policy. |
@@ -24,6 +26,8 @@ from orbitalgym.policies import UniformRandomDiscretePolicy, ZeroControl
 from orbitalgym.policies.mcts import MCTSPolicy
 from orbitalgym.policies.heuristic import (
     LeadInterceptPursuer,
+    LQRGoToLadyWithAvoidance,
+    LQRIntercept,
     OrthogonalEvader,
     SunTrackerBlocker,
     JitteredPolicy,
@@ -62,6 +66,14 @@ walkthrough; the API entry below is the bare class reference.
 ### SunTrackerBlocker
 
 ::: orbitalgym.policies.heuristic.sun_tracker.SunTrackerBlocker
+
+### LQRGoToLadyWithAvoidance
+
+::: orbitalgym.policies.heuristic.lqr_avoid.LQRGoToLadyWithAvoidance
+
+### LQRIntercept
+
+::: orbitalgym.policies.heuristic.lqr_intercept.LQRIntercept
 
 ### JitteredPolicy
 
