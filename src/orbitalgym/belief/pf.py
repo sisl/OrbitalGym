@@ -59,6 +59,7 @@ a kernel-widened transition rather than the exact posterior, and a
 measured pair's update is Gaussian-approximate. It is what keeps a
 directly measured cell — an onboard-GPS own state, or an opponent
 inside a narrow cone — pinned to its measurement.
+
 A bootstrap proposal only reaches a few ``sqrt(Q)`` per step, so once a
 cell's error grows past that the measurement lands in the tail of every
 particle, one arbitrary particle takes all the weight, and the cell runs
@@ -368,19 +369,23 @@ class ParticleFilterBeliefUpdater:
         a zero weight increment: kernel-smoothing an unmeasured cloud
         would inflate it every step.
 
-        What this targets. Inflating the transition kernel by ``h² C``
-        makes this the Gaussian optimal proposal for a *smoothed* model,
-        not for the model as written — a regularized particle filter,
-        whose stationary distribution is the posterior under a
-        kernel-widened transition rather than the exact posterior. On a
-        pair with a visible linear channel the per-pair update is
-        therefore Gaussian-approximate: every particle is moved by the
-        same gain, and whatever multimodality the cloud carried in the
-        subspace the measurement does not resolve is smoothed along with
-        it. That is the trade the filter makes to keep a cell reachable
-        by a measurement much sharper than its cloud; an unmeasured pair
-        keeps the exact bootstrap kernel and its multimodality intact,
-        which is what a ring prior needs until the sensor first fires.
+        What this targets. Inflating the transition kernel to ``h² C +
+        Q`` makes this the Gaussian optimal proposal for that *smoothed*
+        model, not for the model as written: the estimator is a
+        regularized particle filter, targeting the posterior under a
+        kernel-widened transition rather than the exact posterior. The
+        importance weight that goes with it is
+        ``N(z; H f(x), H P Hᵀ + R)`` — the predictive likelihood of the
+        measurement under the same inflated kernel, which is why the
+        weight uses ``P`` and not ``Q``. On a pair with a visible linear
+        channel the per-pair update is therefore Gaussian-approximate:
+        one shared gain moves every particle, and whatever multimodality
+        the cloud carried in the subspace the measurement does not
+        resolve is smoothed along with it. That is the trade the filter
+        makes to keep a cell reachable by a measurement much sharper than
+        its cloud; an unmeasured pair keeps the exact bootstrap kernel
+        and its multimodality intact, which is what a ring prior needs
+        until the sensor first fires.
 
         The conditioned covariance is never formed. The draw is sampled
         as ``u - gain (H u + v)`` for ``u ~ N(0, P)`` and ``v ~ N(0, R)``,
