@@ -109,18 +109,40 @@ def _intercept_rollout(bandit_policy_kind: str):
     )
     separation = jnp.linalg.norm(
         traj.env_state.guards.rtn[:, :, :3] - traj.env_state.bandits.rtn[:, :, :3], axis=-1
-    )
-    return traj, float(jnp.min(separation)), guard_cap
+    ).reshape(-1)
+    return traj, separation, guard_cap
 
 
 def test_intercepts_a_coasting_bandit_within_one_orbit():
-    _, closest_m, _ = _intercept_rollout("coast")
+    _, separation, _ = _intercept_rollout("coast")
+    closest_m = float(jnp.min(separation))
     assert closest_m < 5.0, f"closest approach {closest_m:.3f} m"
 
 
 def test_closes_on_an_lqr_bandit_heading_for_the_lady():
-    _, closest_m, _ = _intercept_rollout("lqr")
-    assert closest_m < 50.0, f"closest approach {closest_m:.3f} m"
+    """The bandit and guard both converge on the lady, so a whole-orbit minimum
+    separation is trivially small. The guard cannot outrun a bandit that closes
+    3 km in 730 s from a 300 m ring, so this checks two properties instead of a
+    single-episode intercept-before-arrival: the guard's closest approach over
+    the steps before the bandit itself first comes within 50 m of the lady is
+    the measured pursuit capability at this geometry (203 m in float64, well
+    under the 250 m bound); and once the bandit has passed the lady, the guard
+    still rendezvouses with it, holding under 5 m at under 0.5 m/s relative
+    speed for the trajectory's last 50 steps.
+    """
+    traj, separation, _ = _intercept_rollout("lqr")
+    lady_dist = jnp.linalg.norm(traj.env_state.bandits.rtn[:, :, :3], axis=-1).reshape(-1)
+    within_50m = lady_dist < 50.0
+    cutoff = int(jnp.argmax(within_50m)) if bool(jnp.any(within_50m)) else separation.shape[0]
+    assert cutoff > 0, "bandit starts within 50 m of the lady"
+    closest_m = float(jnp.min(separation[:cutoff]))
+    assert closest_m < 250.0, f"closest approach before breach {closest_m:.3f} m"
+
+    relative_speed = jnp.linalg.norm(
+        traj.env_state.guards.rtn[:, :, 3:6] - traj.env_state.bandits.rtn[:, :, 3:6], axis=-1
+    ).reshape(-1)
+    rendezvoused = (separation < 5.0) & (relative_speed < 0.5)
+    assert bool(jnp.all(rendezvoused[-50:])), "guard did not hold rendezvous for the final 50 steps"
 
 
 def test_commanded_norm_never_exceeds_the_cap():
