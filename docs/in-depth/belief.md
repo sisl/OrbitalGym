@@ -102,18 +102,45 @@ The proposal is what keeps a directly measured cell on its
 measurement. Every linear channel visible for a pair is stacked into
 one measurement, and the new particles are drawn from that pair's
 prior conditioned on it, with the importance weight
-`log N(z; H f(x), H P Hᵀ + R)` to match. The prior `P` is the pair's
-own predicted spread, kernel-smoothed, plus the process noise, so a
-measurement sharper than a broad cloud — a ring prior meeting its
-first detection, a cell that drifted while unseen — repositions the
-cloud instead of collapsing it onto whichever particle happened to sit
-closest. Pairs with nothing visible keep the plain `N(f(x), Q)` draw.
+`log N(z; H f(x), H P Hᵀ + R)` to match. The prior `P = h² C + Q` is
+the pair's own predicted spread `C`, kernel-smoothed by Silverman's
+bandwidth `h`, plus the process noise, so a measurement sharper than a
+broad cloud — a ring prior meeting its first detection, a cell that
+drifted while unseen — repositions the cloud instead of collapsing it
+onto whichever particle happened to sit closest.
+
+Inflating the transition kernel that way makes this a **regularized**
+particle filter: it targets the posterior under a kernel-widened
+transition, not the exact posterior. On a pair with a visible linear
+channel the update is Gaussian-approximate — one shared gain moves
+every particle, and multimodality in the subspace the measurement does
+not resolve is smoothed away with it. Pairs with nothing visible keep
+the plain `N(f(x), Q)` draw and the exact bootstrap kernel, which is
+what a ring prior needs until the sensor first fires.
 
 The three pair-level metrics are recorded **pre-resample** — N_eff and
 entropy describe the posterior produced by the latest measurement, so
 the *collapse signal* survives in `belief_history` rather than being
-masked by the post-resample uniform reset. `resampled` flags the steps
-that fired so plots can mark detection events.
+masked by the post-resample uniform reset. Read `resampled` as what it
+says: the pairs whose weights had degenerated far enough to be redrawn.
+It is not a detection marker — the conditioned proposal keeps weights
+well conditioned through a detection, so a pair can be measured every
+step and rarely resample.
+
+### Negative information
+
+A gated channel (`ConicalObservation`, `RangeLimitedObservation`) can
+supply a `visibility_score_fn`, and the PF's `negative_info` mode then
+reads a non-detection as evidence: `Hard` crushes particles inside the
+gate, `Soft` tapers them across the boundary, `Off` leaves them alone.
+
+A channel must score every pair its `visible` mask can never set — self
+pairs, same-side pairs — as `OUT_OF_SCOPE_SCORE`. Those pairs are
+outside the sensor's reach rather than inside its gate and undetected,
+so a non-detection carries no information about them. Scoring them on
+their geometry instead lets the update crush the observer's own-state
+particles: the cone would truncate the own-state cloud along the
+boresight every step and push the estimate away without bound.
 
 ### Initializers
 

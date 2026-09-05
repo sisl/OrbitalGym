@@ -52,8 +52,13 @@ Updater pipeline per step:
      log-weights and an optional jitter draw to combat sample
      impoverishment.
 
-Step 2 is what keeps a directly measured cell — an onboard-GPS own
-state, or an opponent inside a narrow cone — pinned to its measurement.
+Step 2 makes this a *regularized* particle filter: the prior it
+conditions on is the pair's cloud kernel-smoothed by Silverman's
+bandwidth plus ``Q``, so what the filter targets is the posterior under
+a kernel-widened transition rather than the exact posterior, and a
+measured pair's update is Gaussian-approximate. It is what keeps a
+directly measured cell — an onboard-GPS own state, or an opponent
+inside a narrow cone — pinned to its measurement.
 A bootstrap proposal only reaches a few ``sqrt(Q)`` per step, so once a
 cell's error grows past that the measurement lands in the tail of every
 particle, one arbitrary particle takes all the weight, and the cell runs
@@ -362,6 +367,28 @@ class ParticleFilterBeliefUpdater:
         Pairs with nothing visible keep the plain ``N(f(x), Q)`` draw and
         a zero weight increment: kernel-smoothing an unmeasured cloud
         would inflate it every step.
+
+        What this targets. Inflating the transition kernel by ``h² C``
+        makes this the Gaussian optimal proposal for a *smoothed* model,
+        not for the model as written — a regularized particle filter,
+        whose stationary distribution is the posterior under a
+        kernel-widened transition rather than the exact posterior. On a
+        pair with a visible linear channel the per-pair update is
+        therefore Gaussian-approximate: every particle is moved by the
+        same gain, and whatever multimodality the cloud carried in the
+        subspace the measurement does not resolve is smoothed along with
+        it. That is the trade the filter makes to keep a cell reachable
+        by a measurement much sharper than its cloud; an unmeasured pair
+        keeps the exact bootstrap kernel and its multimodality intact,
+        which is what a ring prior needs until the sensor first fires.
+
+        The conditioned covariance is never formed. The draw is sampled
+        as ``u - gain (H u + v)`` for ``u ~ N(0, P)`` and ``v ~ N(0, R)``,
+        which carries exactly the Joseph-form covariance
+        ``(I - gain H) P (I - gain H)ᵀ + gain R gainᵀ``. Subtracting the
+        measurement's information from ``P`` directly cancels away the
+        significant digits of a broad cloud's small directions, leaving a
+        matrix that in float32 is as likely to be indefinite as not.
 
         Returns the drawn particles and the per-particle log-weight
         increment, both shaped like the inputs.
