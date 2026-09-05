@@ -187,9 +187,14 @@ class RolloutScene:
     are ``RangeLimitedObservation``; otherwise the layer is silently
     skipped for that side.
 
-    Limitation: every side must have ``ImpulsiveManeuver`` in its action
-    components (the scene reads ``.dv`` for thrust quivers). For attitude-
-    only scenarios, configure ``ImpulsiveManeuver`` with ``track_mass=False``
+    Thrust quivers draw ``traj.applied_dv``, the Δv the env actually
+    imparted, whenever the trajectory carries it. A trajectory without that
+    field falls back to the commanded ``traj.sides.<side>.action.dv``, which
+    overstates a burn that thrust limits or an empty tank clipped.
+
+    Limitation: a side that falls back to the commanded Δv must have
+    ``ImpulsiveManeuver`` in its action components. For attitude-only
+    scenarios, configure ``ImpulsiveManeuver`` with ``track_mass=False``
     and emit zero Δv from the policy — this satisfies the constructor
     without changing dynamics.
     """
@@ -318,33 +323,36 @@ class RolloutScene:
         else:
             raise ValueError(f"mode must be 'auto', '2d', or '3d'; got {self.mode!r}")
 
-        # Fail fast: the renderer reads `action.dv` for the thrust-quiver
-        # overlays, so both sides' Command pytrees must carry the
-        # ImpulsiveManeuver component (which contributes the `dv` field).
-        # A comms-only side would otherwise raise an opaque AttributeError
-        # below; this check names the offending side up front.
+        # Thrust quivers show the Δv the env imparted, so prefer
+        # `traj.applied_dv`. Falling back to the commanded `action.dv`
+        # requires the ImpulsiveManeuver component; a comms-only side would
+        # otherwise raise an opaque AttributeError below, so name it up front.
         from orbitalgym.actions.components import ImpulsiveManeuver
 
+        applied = getattr(self.traj, "applied_dv", None)
+        side_dv: dict[str, np.ndarray] = {}
         for side_name in ("guard", "bandit"):
+            side_applied = None if applied is None else getattr(applied, side_name)
+            if side_applied is not None:
+                side_dv[side_name] = np.asarray(side_applied)
+                continue
             action = getattr(self.traj.sides, side_name).action
             comps = getattr(type(action), "_orbitalgym_action_components", ())
-            # `comps` may hold either component classes (legacy) or instances
-            # (post-frame-aware refactor). Accept both forms.
+            # `comps` may hold either component classes or instances. Accept both.
             has_impulsive = any(
                 c is ImpulsiveManeuver or isinstance(c, ImpulsiveManeuver) for c in comps
             )
             if not has_impulsive:
                 raise ValueError(
                     f"RolloutScene requires IMPULSIVE_MANEUVER in "
-                    f"{side_name}_action_components (it reads "
-                    f"traj.sides.{side_name}.action.dv to draw thrust arrows). "
-                    f"Got components={comps!r}"
+                    f"{side_name}_action_components (without traj.applied_dv it "
+                    f"reads traj.sides.{side_name}.action.dv to draw thrust "
+                    f"arrows). Got components={comps!r}"
                 )
+            side_dv[side_name] = np.asarray(action.dv)
 
-        # Trajectories store actions as Command pytrees; pull the ImpulsiveManeuver
-        # component's `dv` field for the Δv quiver overlays.
-        guard_dv = np.asarray(self.traj.sides.guard.action.dv)
-        bandit_dv = np.asarray(self.traj.sides.bandit.action.dv)
+        guard_dv = side_dv["guard"]
+        bandit_dv = side_dv["bandit"]
         if self._mode == "3d":
             self._g_xyz = _positions_xyz(self.traj.env_state.guards)
             self._b_xyz = _positions_xyz(self.traj.env_state.bandits)

@@ -51,8 +51,10 @@ rewards, beliefs, scripted policies — the type is `BySide[T]`.
 - `info["applied_dv"]` — `BySide` of `(N_side, 3)` truth-frame Δv the
   step actually imparted, zero-padded to width 3. Thrust and remaining
   propellant both clip a command, so anything that predicts the ego
-  motion or accounts for Δv spent must read this rather than the
-  commanded `dv`.
+  motion, accounts for Δv spent, or draws a burn must read this rather
+  than the commanded `dv`. `rollout` stores it on `traj.applied_dv`,
+  where the episode metrics and the thrust quivers in `RolloutScene`
+  pick it up.
 
 ## Axis ordering: `BATCH → TIME → VEHICLE → FEATURE`
 

@@ -409,3 +409,28 @@ def test_pf_belief_dispatcher_picks_pf_path():
     assert _is_particle_filter_belief(pf_like)
     assert not _is_particle_filter_belief(gauss_like)
     assert not _is_particle_filter_belief(None)
+
+
+def test_thrust_quivers_use_applied_dv(basic_cfg_and_traj):
+    _, traj = basic_cfg_and_traj
+    applied = BySide(
+        guard=jnp.ones_like(traj.applied_dv.guard),
+        bandit=jnp.zeros_like(traj.applied_dv.bandit),
+    )
+    scene = RolloutScene(traj=traj.replace(applied_dv=applied), dt=10.0, show_thrust=True)
+    assert float(jnp.min(jnp.abs(jnp.asarray(scene._g_action)))) == 1.0
+    assert float(jnp.max(jnp.abs(jnp.asarray(scene._b_action)))) == 0.0
+
+
+def test_thrust_quivers_fall_back_to_the_commanded_dv(basic_cfg_and_traj):
+    _, traj = basic_cfg_and_traj
+    guard = traj.sides.guard
+    commanded = jnp.full_like(guard.action.dv, 2.0)
+    traj = traj.replace(
+        applied_dv=None,
+        sides=traj.sides.replace(
+            guard=guard.replace(action=guard.action.replace(dv=commanded))
+        ),
+    )
+    scene = RolloutScene(traj=traj, dt=10.0, show_thrust=True)
+    assert float(jnp.min(jnp.abs(jnp.asarray(scene._g_action)))) == 2.0
