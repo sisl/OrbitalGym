@@ -54,20 +54,32 @@ class EpisodeMetrics:
 
 
 def _side_delta_v(
-    side_state: Any, params: Any, applied_dv: Any, mask: jax.Array, post_idx: jax.Array
+    side_state: Any,
+    final_side_state: Any,
+    params: Any,
+    applied_dv: Any,
+    mask: jax.Array,
+    last_idx: jax.Array,
 ) -> jax.Array:
     """Team delta-v in m/s over the masked steps.
 
     With a propellant trace, delta-v follows from the rocket equation on
-    the mass consumed between the first step and the post-terminal state
-    at ``post_idx``. Without one, it is the sum of the delta-v magnitudes
-    the env actually imparted — thrust and an empty tank both clip a
-    command, so the commanded magnitudes would overstate the spend.
+    the mass consumed between the state entering the first step and the
+    state leaving the terminating step. The state leaving step ``k`` is the
+    one entering step ``k + 1``, and for the last logged step it is
+    ``final_side_state``, so an episode that fills the log still accounts
+    for its final burn. Without a propellant trace, delta-v is the sum of
+    the delta-v magnitudes the env actually imparted — thrust and an empty
+    tank both clip a command, so the commanded magnitudes would overstate
+    the spend.
     """
     if hasattr(side_state, "propellant_mass"):
         m_prop = side_state.propellant_mass  # (T, n)
+        m_post = jnp.concatenate(
+            [m_prop[1:], final_side_state.propellant_mass[None]], axis=0
+        )  # (T, n) propellant leaving each step
         m0 = m_prop[0]
-        m1 = m_prop[post_idx]
+        m1 = m_post[last_idx]
         dry = jnp.asarray(params.dry_mass_kg, dtype=m_prop.dtype)
         per_vehicle = params.isp_s * G0 * jnp.log((dry + m0) / (dry + m1))
         return jnp.sum(per_vehicle)
@@ -128,7 +140,6 @@ def lbg_episode_metrics(traj: Any, cfg: Any) -> EpisodeMetrics:
 
     # The event that ended the episode is the one on the last masked segment.
     T = mask.shape[0]  # noqa: N806
-    post_idx = jnp.minimum(last_idx + 1, T - 1)
     caught = caught_t[last_idx]
     breached = breached_t[last_idx]
     # With a repel gate armed, an episode that stopped before the horizon
@@ -155,17 +166,19 @@ def lbg_episode_metrics(traj: Any, cfg: Any) -> EpisodeMetrics:
     applied_dv = getattr(traj, "applied_dv", None)
     dv_guard = _side_delta_v(
         traj.env_state.guards,
+        traj.final_state.guards,
         cfg.guard_params,
         None if applied_dv is None else applied_dv.guard,
         mask,
-        post_idx,
+        last_idx,
     )
     dv_bandit = _side_delta_v(
         traj.env_state.bandits,
+        traj.final_state.bandits,
         cfg.bandit_params,
         None if applied_dv is None else applied_dv.bandit,
         mask,
-        post_idx,
+        last_idx,
     )
 
     contact = getattr(traj, "contact", None)

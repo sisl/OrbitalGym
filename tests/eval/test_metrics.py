@@ -124,19 +124,31 @@ def test_breach_when_termination_is_the_last_step():
     assert float(m.dv_guard) == 0.0
 
 
-def test_one_step_delta_v_is_reported_for_a_side_with_mass():
+def _burn_traj(n_steps: int, dv_mps: float = 0.1):
     ic = _ic(1000.0, 1000.0, jnp.pi)
-    cfg = make_lady_bandit_guard(ic_sampler=ic, max_horizon_s=20.0)
+    cfg = make_lady_bandit_guard(ic_sampler=ic, max_horizon_s=n_steps * 10.0)
     env = OrbitalGymEnv(cfg)
     policies = BySide(
-        guard=ConstantGuardBurn(command_cls=env.guard_command_cls, n_vehicles=1, dv_mps=0.1),
+        guard=ConstantGuardBurn(command_cls=env.guard_command_cls, n_vehicles=1, dv_mps=dv_mps),
         bandit=ZeroControl(n_vehicles=1, command_cls=env.bandit_command_cls),
     )
     init = BySide(guard=lambda c, s, k: None, bandit=lambda c, s, k: None)
-    traj = rollout(env, policies, init, jax.random.PRNGKey(0), n_steps=2)
+    return rollout(env, policies, init, jax.random.PRNGKey(0), n_steps=n_steps), cfg
+
+
+def test_delta_v_is_reported_for_a_side_with_mass():
+    traj, cfg = _burn_traj(2)
     m = lbg_episode_metrics(traj, cfg)
     assert int(m.steps) == 2
-    assert float(m.dv_guard) == pytest.approx(0.1, abs=1e-3)
+    assert float(m.dv_guard) == pytest.approx(0.2, abs=1e-3)
+
+
+def test_delta_v_of_a_full_length_episode_counts_the_last_burn():
+    traj, cfg = _burn_traj(10)
+    m = lbg_episode_metrics(traj, cfg)
+    applied = float(jnp.sum(jnp.linalg.norm(traj.applied_dv.guard, axis=-1)))
+    assert int(m.steps) == 10
+    assert float(m.dv_guard) == pytest.approx(applied, rel=1e-3)
 
 
 def _two_guard_traj(guard_rtn, bandit_rtn, guard_final, bandit_final, cfg):
