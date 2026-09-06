@@ -40,6 +40,25 @@ class EpisodeMetrics:
     ``in_cone_fraction_guard`` is the fraction of masked steps where any
     guard observation channel sees any bandit; 0 when the trajectory did
     not log a ``visible`` mask.
+
+    The information fields describe what the guard team knows about the
+    bandit nearest the lady, and are NaN when no guard belief log is
+    supplied:
+
+    ``belief_err_guard``
+        Metres, time-averaged over the episode's live steps, of the
+        smallest position error among the guards' belief means about that
+        bandit.
+    ``belief_err_guard_at_commit``
+        The same quantity at the first live step where a bandit is inside
+        ``commit_radius_m`` of the lady; NaN if no bandit ever commits.
+    ``time_to_detect_guard``
+        Seconds from the episode start to the first live step where that
+        smallest error drops below ``detect_error_m``; NaN if it never
+        does.
+    ``belief_age_guard``
+        Seconds since any guard last held a bandit in its sensor cone,
+        time-averaged over the live steps.
     """
 
     outcome: jax.Array
@@ -51,6 +70,10 @@ class EpisodeMetrics:
     link_events_guard: jax.Array
     ic_valid: jax.Array
     in_cone_fraction_guard: jax.Array
+    belief_err_guard: jax.Array
+    belief_err_guard_at_commit: jax.Array
+    time_to_detect_guard: jax.Array
+    belief_age_guard: jax.Array
 
 
 def _side_delta_v(
@@ -94,8 +117,100 @@ def _side_delta_v(
     return jnp.sum(dv_mag * mask[:, None])
 
 
-def lbg_episode_metrics(traj: Any, cfg: Any) -> EpisodeMetrics:
-    """Classify one LBG episode and account for its resources."""
+@flax.struct.dataclass
+class GuardInformation:
+    """The four information metrics for one episode."""
+
+    belief_err: jax.Array
+    belief_err_at_commit: jax.Array
+    time_to_detect: jax.Array
+    belief_age: jax.Array
+
+
+def guard_information(
+    traj: Any,
+    belief_guard: Any,
+    mask: jax.Array,
+    steps: jax.Array,
+    dt: float,
+    commit_radius_m: float,
+    detect_error_m: float,
+) -> GuardInformation:
+    """What the guard team knows about the bandit nearest the lady.
+
+    ``belief_guard`` is the guard entry of the belief history that
+    :func:`orbitalgym.rollout.belief_rollout` returns: leaves carry a
+    leading time axis, so ``belief_guard.mean`` is ``(T, N_obs, N_total,
+    d)``. Own-side entities occupy the first ``N_obs`` tracked slots and
+    the bandits follow, and the first ``d // 2`` components of a tracked
+    state are its position. The lady sits at the origin of the truth
+    frame, so a bandit's distance to her is the norm of its position.
+    """
+    mean = belief_guard.mean  # (T, N_obs, N_total, d)
+    n_obs = mean.shape[1]
+    pos_dim = mean.shape[-1] // 2
+
+    bandit_pos = positions(traj.env_state.bandits)[..., :pos_dim]  # (T, n_b, p)
+    belief_bandit = mean[:, :, n_obs:, :pos_dim]  # (T, N_obs, n_b, p)
+
+    d_bl = jnp.linalg.norm(bandit_pos, axis=-1)  # (T, n_b)
+    nearest = jnp.argmin(d_bl, axis=-1)  # (T,)
+    true_pos = jnp.take_along_axis(bandit_pos, nearest[:, None, None], axis=1)[:, 0]  # (T, p)
+    guard_pos = jnp.take_along_axis(belief_bandit, nearest[:, None, None, None], axis=2)[:, :, 0]
+    err = jnp.linalg.norm(guard_pos - true_pos[:, None, :], axis=-1)  # (T, N_obs)
+    err_min = jnp.min(err, axis=-1)  # (T,)
+
+    dtype = err_min.dtype
+    nan = jnp.asarray(jnp.nan, dtype=dtype)
+    live = steps.astype(dtype)
+    denom = jnp.maximum(live, 1.0)
+    zero = jnp.zeros((), dtype=dtype)
+
+    belief_err = jnp.sum(jnp.where(mask, err_min, zero)) / denom
+
+    committed = mask & (jnp.min(d_bl, axis=-1) < commit_radius_m)
+    commit_idx = jnp.argmax(committed)
+    belief_err_at_commit = jnp.where(jnp.any(committed), err_min[commit_idx], nan)
+
+    detected = mask & (err_min < detect_error_m)
+    detect_idx = jnp.argmax(detected)
+    time_to_detect = jnp.where(jnp.any(detected), detect_idx.astype(dtype) * dt, nan)
+
+    visible = getattr(traj, "visible", None)
+    if visible is None or visible.guard is None:
+        belief_age = nan
+    else:
+        # Steps since a bandit was last in some guard's cone. The count is
+        # taken over the whole prefix, so a bandit never yet seen leaves an
+        # age of t + 1 at step t.
+        idx = jnp.arange(mask.shape[0])
+        seen_idx = jnp.where(jnp.any(visible.guard, axis=-1), idx, -1)
+        age_steps = idx - jax.lax.cummax(seen_idx)
+        belief_age = jnp.sum(jnp.where(mask, age_steps, 0)).astype(dtype) * dt / denom
+
+    return GuardInformation(
+        belief_err=belief_err,
+        belief_err_at_commit=belief_err_at_commit,
+        time_to_detect=time_to_detect,
+        belief_age=belief_age,
+    )
+
+
+def lbg_episode_metrics(
+    traj: Any,
+    cfg: Any,
+    *,
+    belief_guard: Any = None,
+    commit_radius_m: float = 2500.0,
+    detect_error_m: float = 100.0,
+) -> EpisodeMetrics:
+    """Classify one LBG episode, account for its resources, and score what
+    the guard team knew.
+
+    ``belief_guard`` is the guard entry of the belief history returned by
+    :func:`orbitalgym.rollout.belief_rollout`. Without it the information
+    fields come back NaN.
+    """
     if traj.final_state is None:
         raise ValueError(
             "lbg_episode_metrics needs traj.final_state: catch and breach are "
@@ -203,6 +318,16 @@ def lbg_episode_metrics(traj: Any, cfg: Any) -> EpisodeMetrics:
             jnp.float32
         )
 
+    if belief_guard is None:
+        nan = jnp.asarray(jnp.nan)
+        info = GuardInformation(
+            belief_err=nan, belief_err_at_commit=nan, time_to_detect=nan, belief_age=nan
+        )
+    else:
+        info = guard_information(
+            traj, belief_guard, mask, steps, cfg.dt, commit_radius_m, detect_error_m
+        )
+
     return EpisodeMetrics(
         outcome=outcome,
         steps=steps.astype(jnp.int32),
@@ -213,4 +338,8 @@ def lbg_episode_metrics(traj: Any, cfg: Any) -> EpisodeMetrics:
         link_events_guard=link_events,
         ic_valid=ic_valid,
         in_cone_fraction_guard=in_cone_fraction_guard,
+        belief_err_guard=info.belief_err,
+        belief_err_guard_at_commit=info.belief_err_at_commit,
+        time_to_detect_guard=info.time_to_detect,
+        belief_age_guard=info.belief_age,
     )

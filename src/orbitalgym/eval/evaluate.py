@@ -23,19 +23,25 @@ def evaluate_bank(
     init_policy_state_fns: BySide,
     belief_initializers: BySide,
     belief_updaters: BySide,
+    commit_radius_m: float = 2500.0,
+    detect_error_m: float = 100.0,
     **rollout_kwargs: Any,
 ) -> EpisodeMetrics:
     """Run one belief rollout per bank episode under ``jax.vmap`` and return metrics.
 
     Episode ``i`` starts from ``bank_states`` index ``i`` with PRNG key
     ``split(key, n)[i]``. Only metrics come back to the host; trajectories
-    stay on device and are discarded.
+    and belief logs stay on device and are discarded.
+
+    ``commit_radius_m`` is the bandit-to-lady distance that marks the
+    commit step, and ``detect_error_m`` the guard belief error that counts
+    as a detection; both feed the information metrics.
     """
     n_episodes = int(bank_states.ic_valid.shape[0])
     keys = jax.random.split(key, n_episodes)
 
     def _one(initial_state, k):
-        traj, _ = belief_rollout(
+        traj, belief_history = belief_rollout(
             env,
             policies,
             init_policy_state_fns,
@@ -46,7 +52,13 @@ def evaluate_bank(
             initial_state=initial_state,
             **rollout_kwargs,
         )
-        return lbg_episode_metrics(traj, cfg)
+        return lbg_episode_metrics(
+            traj,
+            cfg,
+            belief_guard=belief_history.guard,
+            commit_radius_m=commit_radius_m,
+            detect_error_m=detect_error_m,
+        )
 
     return jax.vmap(_one)(bank_states, keys)
 
@@ -63,6 +75,10 @@ def metrics_to_records(metrics: EpisodeMetrics, **constants: Any) -> list[dict[s
         "link_events_guard": np.asarray(metrics.link_events_guard).astype(int),
         "ic_valid": np.asarray(metrics.ic_valid).astype(bool),
         "in_cone_fraction_guard": np.asarray(metrics.in_cone_fraction_guard).astype(float),
+        "belief_err_guard": np.asarray(metrics.belief_err_guard).astype(float),
+        "belief_err_guard_at_commit": np.asarray(metrics.belief_err_guard_at_commit).astype(float),
+        "time_to_detect_guard": np.asarray(metrics.time_to_detect_guard).astype(float),
+        "belief_age_guard": np.asarray(metrics.belief_age_guard).astype(float),
     }
     n = int(fields["outcome"].shape[0])
     rows = []

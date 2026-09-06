@@ -150,6 +150,32 @@ using the particle filter updater. The `team_sync_fns` fuse particle
 beliefs across vehicles on the same side (e.g., guards share detection
 windows via the provided link).
 
+### What comes back
+
+`evaluate_bank` returns an `EpisodeMetrics` with one entry per scenario.
+Alongside the outcome and the resource accounting (`outcome`, `steps`,
+`min_d_gb`, `min_d_bl`, `dv_guard`, `dv_bandit`, `link_events_guard`,
+`ic_valid`, `in_cone_fraction_guard`) it scores what the guard team knew
+about the bandit nearest the lady. The lady sits at the origin of the
+truth frame, and the belief error of one guard is the distance between
+its belief mean for that bandit and the bandit's true position.
+
+| Metric | Definition |
+| --- | --- |
+| `belief_err_guard` | Metres. The smallest belief error among the guards, averaged over the episode's live steps. |
+| `belief_err_guard_at_commit` | Metres. The same quantity at the first live step where a bandit is within `commit_radius_m` of the lady. NaN when no bandit commits. |
+| `time_to_detect_guard` | Seconds from the episode start to the first live step where the smallest belief error drops below `detect_error_m`. NaN when it never does. |
+| `belief_age_guard` | Seconds since any guard last held a bandit in its sensor cone, averaged over the live steps. Counts from the episode start while no guard has seen a bandit yet. |
+
+`commit_radius_m` (2500 m) and `detect_error_m` (100 m) are
+`evaluate_bank` keywords. These four metrics separate scenarios that a
+win rate cannot: when the outcome is settled before the first
+communication link opens, only the information metrics move.
+
+`metrics_to_records(metrics, **constants)` turns the batch into one
+plain-Python dict per episode, carrying every field above plus the
+constants, ready for a data frame or a parquet file.
+
 ## 4. Planning on macro steps
 
 A solver that searches at the env's tick rate covers `dt` seconds per
