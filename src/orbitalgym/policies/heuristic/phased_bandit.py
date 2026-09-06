@@ -106,12 +106,21 @@ class PhasedBandit:
 
     ``settle_tol_mps`` decides how well the hold holds. A residual velocity
     error ``dv`` violates the bounded-orbit condition and leaves an along-track
-    drift of about ``2 pi dv / (1.5 n)`` metres per orbit, so a loose tolerance
-    walks the vehicle off the ring during the very phase the schedule exists to
-    create. On a 2 km ring approached from 7.5 km at a 0.4 m/s per-step cap,
-    the ring amplitude wanders 53% of the standoff within one orbit at
-    ``settle_tol_mps=0.2`` and 6% at the default 0.02, for 0.2% more transfer
-    fuel. Raise it only for a schedule whose hold is much shorter than an orbit.
+    drift of about ``2 pi dv / (1.5 n)`` metres per orbit, so how tightly the
+    transfer ends sets how far the vehicle walks off the ring during the very
+    phase the schedule exists to create. Measured on a 2 km standoff ring
+    approached from 3 km at a 0.4545 m/s per-step cap, over six start phases,
+    ``settle_tol_mps=0.2`` settles in 470 to 840 s and holds the amplitude
+    within 1.6 to 5.5 percent of the standoff over an orbit. The default 0.02
+    is that behaviour with margin: it keeps the hold within about 5 percent
+    across start phases rather than depending on where in the ellipse the
+    looser threshold happens to stop the transfer.
+
+    The transfer carries no avoidance term by design. Pushing away from a guard
+    while regulating onto the ring would fight the ring target and leave the
+    vehicle short of it when the phase ends. Avoidance acts in the commit
+    phase, through the wrapped policy's ``avoidance_gain`` and
+    ``avoidance_sigma_m``.
 
     Every phase's command is capped at ``max_dv_mps`` by the same norm clip
     the LQR policies use. The agent view is a belief with

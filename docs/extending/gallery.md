@@ -94,10 +94,15 @@ The transfer therefore targets the ellipse *state*, position and velocity, at
 the vehicle's current phase angle, and ends only once both are inside
 `settle_tol_m` and `settle_tol_mps`. The velocity tolerance sets how tight the
 hold is: a residual `dv` leaves an along-track drift of about
-`2 pi dv / (1.5 n)` metres per orbit. On a 2 km ring approached from 7.5 km at
-a 0.4 m/s per-step cap the amplitude wanders 53% of the standoff within one
-orbit at `settle_tol_mps=0.2`, against 6% at the default 0.02, for 0.2% more
-transfer fuel.
+`2 pi dv / (1.5 n)` metres per orbit. Measured on a 2 km standoff ring
+approached from 3 km at a 0.4545 m/s per-step cap, over six start phases,
+`settle_tol_mps=0.2` settles in 470 to 840 s and holds the amplitude within
+1.6 to 5.5 percent of the standoff over an orbit; the default 0.02 buys margin
+on that, keeping the hold within about 5 percent across start phases.
+
+Avoidance applies only in the commit phase. The transfer regulates onto the
+ring with no repulsion term, so a nearby guard cannot push the vehicle off the
+target it is trying to reach.
 
 Phases are per-vehicle and live in the policy state, so each bandit in a fleet
 runs its own schedule; transitions are `jnp.where` selects on traced values,
