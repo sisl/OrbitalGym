@@ -34,7 +34,6 @@ START_RING_M = 7500.0
 STANDOFF_M = 2000.0
 COAST_S = 300.0
 HOLD_S = 6000.0
-SETTLE_TOL_MPS = 0.02
 ROLLOUT_STEPS = 1400
 
 
@@ -138,7 +137,6 @@ def _phased_rollout():
         t_coast_s=COAST_S,
         standoff_m=STANDOFF_M,
         t_hold_s=HOLD_S,
-        settle_tol_mps=SETTLE_TOL_MPS,
         t_transfer_max_s=4000.0,
     )
     guard = dataclasses.replace(

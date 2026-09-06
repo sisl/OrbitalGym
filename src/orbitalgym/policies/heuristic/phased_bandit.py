@@ -104,6 +104,15 @@ class PhasedBandit:
     call rather than read off the absolute ``t``, so the schedule is measured
     from the start of the episode.
 
+    ``settle_tol_mps`` decides how well the hold holds. A residual velocity
+    error ``dv`` violates the bounded-orbit condition and leaves an along-track
+    drift of about ``2 pi dv / (1.5 n)`` metres per orbit, so a loose tolerance
+    walks the vehicle off the ring during the very phase the schedule exists to
+    create. On a 2 km ring approached from 7.5 km at a 0.4 m/s per-step cap,
+    the ring amplitude wanders 53% of the standoff within one orbit at
+    ``settle_tol_mps=0.2`` and 6% at the default 0.02, for 0.2% more transfer
+    fuel. Raise it only for a schedule whose hold is much shorter than an orbit.
+
     Every phase's command is capped at ``max_dv_mps`` by the same norm clip
     the LQR policies use. The agent view is a belief with
     ``mean (N_obs, N_total, d)`` or a flat observation of the same numbers, as
@@ -135,7 +144,7 @@ class PhasedBandit:
         standoff_m: float,
         t_hold_s: float,
         settle_tol_m: float = 20.0,
-        settle_tol_mps: float = 0.2,
+        settle_tol_mps: float = 0.02,
         t_transfer_max_s: float = 3000.0,
         avoidance_gain: float = 0.0,
         avoidance_sigma_m: float = 50.0,
