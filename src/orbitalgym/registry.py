@@ -87,8 +87,8 @@ class PolicyKey(StrEnum):
 
     ZERO_CONTROL = "zero_control"
     POINTING = "pointing_policy"
-    LQR_AVOID = "lqr_go_to_lady_with_avoidance"
-    LQR_INTERCEPT = "lqr_intercept"
+    GLIDESLOPE_TO_LADY = "glideslope_to_lady"
+    GLIDESLOPE_INTERCEPT = "glideslope_intercept"
     PHASED_BANDIT = "phased_bandit"
     MPPI = "mppi"
 

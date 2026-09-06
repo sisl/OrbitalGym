@@ -79,7 +79,7 @@ described above.
 The inner planner is invoked **only at upload events** (typically once
 per contact, after `upload_delay_s`, gated by the lag predicate).
 Out-of-contact ticks do exactly one thing: pop the next slot from the
-cached plan and emit it. There is no MCTS rerun, no LQR resolve, no
+cached plan and emit it. There is no MCTS rerun, no classical resolve, no
 heuristic re-evaluation between contacts — the wrapper executes a
 stored open-loop plan.
 

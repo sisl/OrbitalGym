@@ -1,6 +1,6 @@
 """ContactAwareBelief — duck-typed wrapper exposing `.mean` + `.contact`.
 
-Policies that consume only `.mean` (existing MCTS, LQR, lead-intercept,
+Policies that consume only `.mean` (existing MCTS, glideslope, lead-intercept,
 etc.) are unaffected — the mean attribute is delegated. `PlanCachePolicy`
 is the only consumer that reads `.contact`.
 """

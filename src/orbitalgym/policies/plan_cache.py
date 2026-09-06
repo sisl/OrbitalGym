@@ -92,7 +92,7 @@ class PlanCachePolicy:
     than the longest gap will leave the vehicle in safe-mode (zero Δv)
     for a portion of every off-contact period.
 
-    For a stateless inner planner (typical for LQR), all H slots are
+    For a stateless inner planner (typical for a feedback law), all H slots are
     nearly identical (the lagged belief doesn't evolve across the H
     inner calls), so the plan effectively encodes "apply this Δv for
     H ticks, then go safe". For a stateful inner planner (e.g. a
@@ -139,7 +139,7 @@ class PlanCachePolicy:
         ``inner_init_state`` is forwarded into the inner planner so
         stateful inners (e.g. MCTS) start from a well-defined seed.
         ``key`` is required when the inner planner is non-deterministic
-        (e.g. MCTS); for deterministic LQR-style inners pass any
+        (e.g. MCTS); for deterministic feedback-law inners pass any
         deterministic key. Defaults to ``jax.random.key(0)`` so the
         method is callable in pure-deterministic setups without
         threading a key through.

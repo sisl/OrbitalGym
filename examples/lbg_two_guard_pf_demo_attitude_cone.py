@@ -100,6 +100,10 @@ from orbitalgym.dynamics.hcw import hcw_rt_step  # noqa: E402
 from orbitalgym.games.lady_bandit_guard import LadyBanditGuard  # noqa: E402
 from orbitalgym.observations.conical import ConicalObservation  # noqa: E402
 from orbitalgym.observations.negative_info import Hard  # noqa: E402
+from orbitalgym.policies.heuristic.glideslope import (  # noqa: E402
+    clip_to_cap,
+    glideslope_u,
+)
 from orbitalgym.policies.zero import ZeroControl  # noqa: E402
 from orbitalgym.reference_orbit import (  # noqa: E402
     ReferenceOrbitState,
@@ -123,10 +127,6 @@ from orbitalgym.termination.max_distance import (  # noqa: E402, E501
     AnyOfTermination,
     MaxDistanceTermination,
 )
-
-# HCW-LQR helpers used to build the lady-seeking bandit controller in section 3.
-sys.path.insert(0, str(_repo_root / "examples"))
-from policies.lqr_bandit import _build_horizon_matrices, _hcw_rt_AB  # noqa: E402
 
 # %% [markdown]
 # ## 1. Knobs — TUNE THIS CELL
@@ -157,9 +157,10 @@ BANDIT_MAX_DV_MPS = 0.5
 
 # ---- Bandit guard-avoidance (APF) -------------------------------------------
 # See the baseline notebook section-3 markdown for the APF design. The
-# bandit's per-step Δv is `clip(u_lqr + sum_g g·exp(-d^2/2σ^2)·n̂_g, ±max_dv)`
-# where `n̂_g` is the unit vector from each guard to the bandit. Set
-# `BANDIT_AVOIDANCE_GAIN = 0` to recover pure lady-seeking LQR.
+# bandit's per-step Δv is `clip_norm(u_glide + sum_g g·exp(-d^2/2σ^2)·n̂_g,
+# max_dv)` where `n̂_g` is the unit vector from each guard to the bandit and
+# `u_glide` is the unclipped glideslope impulse toward the lady. Set
+# `BANDIT_AVOIDANCE_GAIN = 0` to recover the pure lady-seeking glideslope.
 BANDIT_AVOIDANCE_GAIN = 1.0
 BANDIT_AVOIDANCE_SIGMA_M = 300.0
 
@@ -407,24 +408,45 @@ print(
 )
 
 # %% [markdown]
-# ## 3. EXTENSION POINT — Bandit policy: HCW-LQR + guard avoidance (APF)
+# ## 3. EXTENSION POINT — Bandit policy: glideslope + guard avoidance (APF)
 #
 # Same as the baseline notebook (see the markdown in section 3 there
-# for the full design / tuning notes): closed-form HCW-LQR toward the
-# lady, plus a Gaussian-decay artificial potential field that pushes
-# the bandit away from each guard. Set `BANDIT_AVOIDANCE_GAIN=0` in
-# section 1 to recover pure lady-seeking LQR.
+# for the full design / tuning notes): a glideslope toward the lady,
+# plus a Gaussian-decay artificial potential field that pushes the
+# bandit away from each guard, the two summed and clipped once. Set
+# `BANDIT_AVOIDANCE_GAIN=0` in section 1 to recover the pure
+# lady-seeking glideslope.
 
 
 # %%
 @dataclass(frozen=True)
-class LQRGoToLadyWithAvoidance:
-    """HCW-LQR toward lady + Gaussian-repulsion APF away from guards.
+class GlideslopeToLadyWithAvoidance:
+    """Glideslope toward the lady + Gaussian-repulsion APF away from guards.
 
-    `agent_view = (bandit_rt, guard_pos)` — see baseline notebook.
+    `agent_view` is a tuple `(bandit_rt, guard_pos)`:
+        bandit_rt:   shape (n_bandits, 4) — RT-frame state.
+        guard_pos:   shape (n_guards, 2)  — RT-frame positions only.
+
+    The lady-seeking term is the glideslope impulse toward the RTN origin:
+    the commanded closing speed is the smaller of `rho / slope_s +
+    arrival_mps` and the braking curve `sqrt(2 * a_brake * rho)` the
+    per-step cap can shed, with `a_brake = brake_fraction * max_dv_mps / dt`.
+    The repulsion sums a Gaussian decay away from each guard:
+        magnitude = avoidance_gain * exp(-d^2 / (2*sigma^2))
+        direction = (bandit_pos - guard_pos) / ||bandit_pos - guard_pos||
+    The guidance impulse is left unclipped so the repulsion competes with it
+    on equal terms; their sum is scaled down to Euclidean norm `max_dv_mps`
+    once, when it exceeds it. Setting `avoidance_gain=0` recovers the pure
+    glideslope.
+
+    The gain, `slope_s` and `arrival_mps`, does not depend on `max_dv_mps`:
+    the cap enters only through the braking curve and the final clip.
     """
 
-    gain: jax.Array
+    dt: float
+    slope_s: float
+    arrival_mps: float
+    brake_fraction: float
     max_dv_mps: float
     avoidance_gain: float
     avoidance_sigma_m: float
@@ -435,27 +457,24 @@ class LQRGoToLadyWithAvoidance:
     def build(
         cls,
         *,
-        mean_motion,
         dt,
-        horizon=8,
-        control_cost=1e-3,
+        slope_s=100.0,
+        arrival_mps=0.3,
+        brake_fraction=0.5,
         max_dv_mps=0.5,
         avoidance_gain=1.0,
         avoidance_sigma_m=300.0,
         n_vehicles=1,
         command_cls=None,
     ):
-        A, B = _hcw_rt_AB(mean_motion, dt)  # noqa: N806
-        A_powH, M = _build_horizon_matrices(A, B, horizon)  # noqa: N806
-        C = jnp.array([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]])  # noqa: N806
-        H_lam = M.T @ C.T @ C @ M + control_cost * jnp.eye(M.shape[1])  # noqa: N806
-        K = jnp.linalg.solve(H_lam, M.T @ C.T @ C @ A_powH)  # noqa: N806
-        gain = K[:2, :]
         return cls(
-            gain=gain,
-            max_dv_mps=max_dv_mps,
-            avoidance_gain=avoidance_gain,
-            avoidance_sigma_m=avoidance_sigma_m,
+            dt=float(dt),
+            slope_s=float(slope_s),
+            arrival_mps=float(arrival_mps),
+            brake_fraction=float(brake_fraction),
+            max_dv_mps=float(max_dv_mps),
+            avoidance_gain=float(avoidance_gain),
+            avoidance_sigma_m=float(avoidance_sigma_m),
             n_vehicles=n_vehicles,
             command_cls=command_cls,
         )
@@ -463,28 +482,38 @@ class LQRGoToLadyWithAvoidance:
     def __call__(self, policy_state, agent_view, key, t):
         del key, t
         if self.command_cls is None:
-            raise ValueError("LQRGoToLadyWithAvoidance was constructed without command_cls.")
-        bandit_rt, guard_pos = agent_view
-        u_lqr = -bandit_rt @ self.gain.T
+            raise ValueError("GlideslopeToLadyWithAvoidance was constructed without command_cls.")
+        bandit_rt, guard_pos = agent_view  # (n_b, 4), (n_g, 2)
+
+        # ---- Lady-seeking (glideslope, unclipped) ----
+        u_glide = glideslope_u(
+            bandit_rt,
+            jnp.zeros_like(bandit_rt),
+            max_dv_mps=self.max_dv_mps,
+            dt=self.dt,
+            slope_s=self.slope_s,
+            arrival_mps=self.arrival_mps,
+            brake_fraction=self.brake_fraction,
+        )
+
+        # ---- Guard avoidance (APF) ----
+        # diff[b, g, :] = bandit_pos[b] - guard_pos[g]; shape (n_b, n_g, 2)
         bandit_pos = bandit_rt[:, None, :2]
         gp = guard_pos[None, :, :]
         diff = bandit_pos - gp
-        dist = jnp.linalg.norm(diff, axis=-1, keepdims=True)
+        dist = jnp.linalg.norm(diff, axis=-1, keepdims=True)  # (n_b, n_g, 1)
         direction = diff / (dist + 1e-9)
         sigma = self.avoidance_sigma_m
         magnitude = self.avoidance_gain * jnp.exp(-(dist**2) / (2.0 * sigma**2))
-        u_avoid = (magnitude * direction).sum(axis=1)
-        u = u_lqr + u_avoid
-        dvs = jnp.clip(u, -self.max_dv_mps, self.max_dv_mps)
+        u_avoid = (magnitude * direction).sum(axis=1)  # (n_b, 2)
+
+        dvs = clip_to_cap(u_glide + u_avoid, self.max_dv_mps)
         cmd_template = self.command_cls.zeros(self.n_vehicles)
         return cmd_template.replace(dv=dvs), policy_state
 
 
-bandit_policy = LQRGoToLadyWithAvoidance.build(
-    mean_motion=N_MOTION,
+bandit_policy = GlideslopeToLadyWithAvoidance.build(
     dt=cfg.dt,
-    horizon=8,
-    control_cost=1e-3,
     max_dv_mps=BANDIT_MAX_DV_MPS,
     avoidance_gain=BANDIT_AVOIDANCE_GAIN,
     avoidance_sigma_m=BANDIT_AVOIDANCE_SIGMA_M,
@@ -852,7 +881,7 @@ print(f"#fusion events: {len(fusion_events)} (out of {n_steps} ticks)")
 #
 # **Why the cloud lags the truth.** Same as the baseline notebook:
 # each side's PF predicts the *opposing* side under zero-control HCW,
-# because that side's actions are unobserved. The bandit's HCW-LQR
+# because that side's actions are unobserved. The bandit's glideslope
 # thrust pulls it off the natural-motion ring while the guards' PF
 # rides the ring. Even continuous in-cone detection only reels the
 # cloud in over multiple consecutive ticks (because process noise is
@@ -967,11 +996,8 @@ CLOSE_TO_LADY_RADIUS_M = BREACH_RADIUS_M * 5.0
 def run_one_episode(seed: int):
     cfg_seed = make_cfg(guard_obs_fn=guard_obs_fn, bandit_obs_fn=bandit_obs_fn, seed=seed)
     env_seed = OrbitalGymEnv(cfg_seed)
-    bandit_policy_seed = LQRGoToLadyWithAvoidance.build(
-        mean_motion=N_MOTION,
+    bandit_policy_seed = GlideslopeToLadyWithAvoidance.build(
         dt=cfg_seed.dt,
-        horizon=8,
-        control_cost=1e-3,
         max_dv_mps=BANDIT_MAX_DV_MPS,
         avoidance_gain=BANDIT_AVOIDANCE_GAIN,
         avoidance_sigma_m=BANDIT_AVOIDANCE_SIGMA_M,
