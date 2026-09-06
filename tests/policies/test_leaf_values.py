@@ -259,6 +259,25 @@ def test_from_game_matches_explicit_reward_weights():
     )
 
 
+def test_from_game_carries_home_weight_into_the_guard_leaf_only():
+    """home_weight lives in the guard's potential, and the readers pass it through."""
+    cfg = make_lady_bandit_guard()
+    homed = dataclasses.replace(cfg, reward_fn=dataclasses.replace(cfg.reward_fn, home_weight=0.5))
+    adapter = POMDPAdapter(OrbitalGymEnv(cfg))
+    s = _state_with(adapter, guard_r=-800.0, bandit_r=400.0)
+    speeds = dict(v_close_guard_mps=V_CLOSE, v_close_bandit_mps=V_CLOSE, n_remaining=N_REMAINING)
+
+    guard_gap = float(guard_leaf_value_from_game(adapter, homed, **speeds)(s)) - float(
+        guard_leaf_value_from_game(adapter, cfg, **speeds)(s)
+    )
+    expected = -cfg.reward_fn.shaping_gain * 0.5 * 800.0 / cfg.reward_fn.shaping_scale_m
+    assert guard_gap == pytest.approx(expected, abs=1e-3)
+
+    assert float(bandit_leaf_value_from_game(adapter, homed, **speeds)(s)) == pytest.approx(
+        float(bandit_leaf_value_from_game(adapter, cfg, **speeds)(s)), abs=1e-9
+    )
+
+
 def test_from_game_tracks_a_retuned_reward():
     cfg = make_lady_bandit_guard()
     retuned = dataclasses.replace(

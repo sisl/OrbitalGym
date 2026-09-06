@@ -18,15 +18,17 @@ shaping a reward with a potential and initializing the value function with the
 same potential produce the same greedy behavior, so a leaf that already
 carries the potential plays the role the shaping would have played beyond the
 horizon. Ranking a depth-``D`` path for one side by that side's shaped rewards
-plus this leaf gives
+plus this leaf, with the tree backup discounting the leaf by ``g^D``, gives
 
-    terminal_estimate(leaf) + (1 + g^D) Phi(leaf) - Phi(root)
+    g^D terminal_estimate(leaf) + 2 gain g^D Phi(leaf) - gain Phi(root)
 
-up to the unshaped rewards collected on the way: the potential at the leaf
-survives, and ``Phi(root)`` is a constant across the actions being compared.
-Subtracting the potential instead would cancel it against the shaping that
-telescoped along the path, leaving the search with the terminal estimate
-alone and no guidance wherever that estimate is flat.
+up to the unshaped rewards collected on the way: the shaping telescopes to
+``gain (g^D Phi(leaf) - Phi(root))`` and the discounted leaf contributes
+``gain g^D Phi(leaf)`` again, so the potential at the leaf survives with twice
+the weight while ``Phi(root)`` is a constant across the actions being compared.
+Subtracting the potential instead would cancel it against the telescoped
+shaping, leaving the search with the terminal estimate alone and no guidance
+wherever that estimate is flat.
 
 The reward weights and radii are required arguments, because a leaf value
 built on weights the reward does not use orders states by a different game.
@@ -71,17 +73,11 @@ import jax
 import jax.numpy as jnp
 
 from orbitalgym.env.types import Side
-from orbitalgym.games.proximity import positions
-from orbitalgym.rewards.lbg_zero_sum import LbgZeroSumReward, lbg_potential
-
-
-def _distances(state: Any) -> tuple[jax.Array, jax.Array]:
-    """Nearest guard-bandit and bandit-lady distances at the step endpoints."""
-    guards = positions(state.guards)
-    bandits = positions(state.bandits)
-    d_gb = jnp.min(jnp.linalg.norm(guards[:, None, :] - bandits[None, :, :], axis=-1))
-    d_bl = jnp.min(jnp.linalg.norm(bandits, axis=-1))
-    return d_gb, d_bl
+from orbitalgym.rewards.lbg_zero_sum import (
+    LbgZeroSumReward,
+    lbg_distances,
+    lbg_potential_from_distances,
+)
 
 
 def _time_to_radius(
@@ -128,14 +124,13 @@ def _leaf_value(
     sign = 1.0 if side is Side.GUARD else -1.0
 
     def value(s_flat: jax.Array) -> jax.Array:
-        state = adapter.unpack(s_flat)
-        d_gb, d_bl = _distances(state)
+        d_gb, d_bl, d_gl = lbg_distances(adapter.unpack(s_flat))
         t_catch = _time_to_radius(d_gb, catch_radius_m, v_close_guard_mps, macro_dt)
         t_breach = _time_to_radius(d_bl, breach_radius_m, v_close_bandit_mps, macro_dt)
         terminal = r_catch * _event_weight(t_catch, g, n_remaining) - r_breach * _event_weight(
             t_breach, g, n_remaining
         )
-        phi = lbg_potential(state, side, shaping_scale_m, home_weight)
+        phi = lbg_potential_from_distances(side, d_gb, d_bl, d_gl, shaping_scale_m, home_weight)
         return (sign * terminal + shaping_gain * phi).astype(s_flat.dtype)
 
     return value
