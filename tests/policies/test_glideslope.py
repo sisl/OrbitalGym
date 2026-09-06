@@ -86,7 +86,11 @@ def test_free_space_approach_arrives_slowly():
     While the impulse is clipped the vehicle cannot be on the glideslope, and
     from a 6 km line-of-sight range the braking curve lets it build a speed the
     glideslope then asks it to shed faster than half the budget allows. The
-    speed bound is therefore checked from the first unsaturated command onward.
+    speed bound is therefore checked from the first unsaturated command onward,
+    and the commands are separately required to stay off the cap for the rest
+    of the approach, so the bound is checked on a vehicle that can actually
+    reach the commanded velocity. Past arrival the cap binds again as the
+    vehicle holds station on the lady, and the speed bound still holds there.
     """
     policy = _to_lady(GUARD_CAP)
     far_opponent = np.array([0.0, 5.0e5, 0.0, 0.0])
@@ -100,6 +104,7 @@ def test_free_space_approach_arrives_slowly():
         arrival_speed = None
         max_norm = 0.0
         unsaturated_step = None
+        approach_norm = 0.0
         speed_excess = -np.inf
         for step in range(3000):
             dv = _command(policy, x, far_opponent)
@@ -113,6 +118,8 @@ def test_free_space_approach_arrives_slowly():
             if unsaturated_step is not None:
                 excess = float(np.linalg.norm(post[2:])) - _commanded_speed(rho, GUARD_CAP)
                 speed_excess = max(speed_excess, excess)
+                if arrival_step is None:
+                    approach_norm = max(approach_norm, dv_norm)
             if arrival_step is None and rho < 5.0:
                 arrival_step = step
                 arrival_speed = float(np.linalg.norm(x[2:]))
@@ -122,6 +129,10 @@ def test_free_space_approach_arrives_slowly():
         assert arrival_speed < 0.5, f"arrived at {arrival_speed:.3f} m/s from {start}"
         assert unsaturated_step is not None and unsaturated_step <= 60, (
             f"still thrust-limited after {unsaturated_step} steps from {start}"
+        )
+        assert approach_norm < GUARD_CAP - 1e-6, (
+            f"cap bound again during the approach: commanded {approach_norm:.6f} m/s "
+            f"at cap {GUARD_CAP} between steps {unsaturated_step} and {arrival_step}"
         )
         assert speed_excess <= 0.05, f"speed exceeded the glideslope by {speed_excess:.4f} m/s"
         assert max_norm <= GUARD_CAP + 1e-6, f"commanded {max_norm:.6f} m/s over cap {GUARD_CAP}"

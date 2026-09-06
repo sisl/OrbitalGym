@@ -109,7 +109,10 @@ from orbitalgym.dynamics.hcw import hcw_rt_step  # noqa: E402
 from orbitalgym.games.lady_bandit_guard import LadyBanditGuard  # noqa: E402
 from orbitalgym.observations.negative_info import Hard  # noqa: E402
 from orbitalgym.observations.range_limited import RangeLimitedObservation  # noqa: E402
-from orbitalgym.policies.heuristic.glideslope import glideslope_dv  # noqa: E402
+from orbitalgym.policies.heuristic.glideslope import (  # noqa: E402
+    clip_to_cap,
+    glideslope_u,
+)
 from orbitalgym.policies.zero import ZeroControl  # noqa: E402
 from orbitalgym.reference_orbit import (  # noqa: E402
     ReferenceOrbitState,
@@ -335,23 +338,30 @@ print(
 #
 # The bandit balances two competing goals:
 #
-# 1. **Reach the lady.** Modeled by a closed-form glideslope that
-#    minimizes terminal position-magnitude.
+# 1. **Reach the lady.** Modeled by a glideslope: the commanded closing
+#    speed grows linearly with range and is capped by the braking curve
+#    the bandit's own Δv budget can shed.
 # 2. **Avoid the guards.** Modeled by an artificial potential field
 #    (APF) — a sum of repulsive Δv contributions, one per guard, with
 #    Gaussian decay in the bandit-to-guard distance.
 #
-# Why this split? Adding a quadratic guard-avoidance penalty *inside*
-# the glideslope cost would destroy its closed-form solvability (guards'
-# positions vary over the horizon, and avoidance is fundamentally
-# nonlinear in distance). The APF-on-top approach keeps the per-step
-# cost at a few matmuls + a sum:
+# Why this split? The glideslope commands a velocity along the line of
+# sight to the lady, so there is nowhere inside it to express "stay away
+# from a guard", which depends on geometry the line of sight ignores.
+# Adding the repulsion on top keeps the per-step cost at a handful of
+# elementwise operations:
 #
 # ```text
-#   u_glide   = -gain @ x_b                       (lady-seeking, closed-form)
+#   rho     = ||x_b[:2]||                         (range to the lady)
+#   s       = min(rho / slope_s + arrival_mps, sqrt(2 a_brake rho))
+#   u_glide = -s * rho_hat - x_b[2:]              (lady-seeking, unclipped)
 #   u_avoid = sum_g  g·exp(-d_g^2/(2sigma^2)) · (x_b - x_g)/||x_b - x_g||
-#   u       = clip(u_glide + u_avoid, +/- max_dv)
+#   u       = clip_norm(u_glide + u_avoid, max_dv)
 # ```
+#
+# `a_brake = brake_fraction * max_dv / dt`. The gain, `slope_s` and
+# `arrival_mps`, does not depend on `max_dv`: the budget enters only
+# through the braking curve and the single norm clip on the sum.
 #
 # Tuning knobs (in section 1):
 #
@@ -393,8 +403,10 @@ class GlideslopeToLadyWithAvoidance:
     The repulsion sums a Gaussian decay away from each guard:
         magnitude = avoidance_gain * exp(-d^2 / (2*sigma^2))
         direction = (bandit_pos - guard_pos) / ||bandit_pos - guard_pos||
-    The sum of the two is scaled down to Euclidean norm `max_dv_mps` when it
-    exceeds it. Setting `avoidance_gain=0` recovers the pure glideslope.
+    The guidance impulse is left unclipped so the repulsion competes with it
+    on equal terms; their sum is scaled down to Euclidean norm `max_dv_mps`
+    once, when it exceeds it. Setting `avoidance_gain=0` recovers the pure
+    glideslope.
 
     The gain, `slope_s` and `arrival_mps`, does not depend on `max_dv_mps`:
     the cap enters only through the braking curve and the final clip.
@@ -442,8 +454,8 @@ class GlideslopeToLadyWithAvoidance:
             raise ValueError("GlideslopeToLadyWithAvoidance was constructed without command_cls.")
         bandit_rt, guard_pos = agent_view  # (n_b, 4), (n_g, 2)
 
-        # ---- Lady-seeking (glideslope) ----
-        u_glide = glideslope_dv(
+        # ---- Lady-seeking (glideslope, unclipped) ----
+        u_glide = glideslope_u(
             bandit_rt,
             jnp.zeros_like(bandit_rt),
             max_dv_mps=self.max_dv_mps,
@@ -464,9 +476,7 @@ class GlideslopeToLadyWithAvoidance:
         magnitude = self.avoidance_gain * jnp.exp(-(dist**2) / (2.0 * sigma**2))
         u_avoid = (magnitude * direction).sum(axis=1)  # (n_b, 2)
 
-        u = u_glide + u_avoid
-        norm = jnp.linalg.norm(u, axis=-1, keepdims=True)
-        dvs = u * jnp.minimum(1.0, self.max_dv_mps / jnp.maximum(norm, 1e-12))
+        dvs = clip_to_cap(u_glide + u_avoid, self.max_dv_mps)
         cmd_template = self.command_cls.zeros(self.n_vehicles)
         return cmd_template.replace(dv=dvs), policy_state
 

@@ -34,13 +34,13 @@ from orbitalgym.policies.heuristic.views import IN_PLANE_RTN, mean_from_view
 from orbitalgym.registry import PolicyKey, register
 
 
-def _clip_to_cap(u: jax.Array, max_dv_mps: float) -> jax.Array:
+def clip_to_cap(u: jax.Array, max_dv_mps: float) -> jax.Array:
     """Scale each row of ``u`` down to Euclidean norm ``max_dv_mps``, keeping its direction."""
     norm = jnp.linalg.norm(u, axis=-1, keepdims=True)
     return u * jnp.minimum(1.0, max_dv_mps / jnp.maximum(norm, 1e-12))
 
 
-def _glideslope_u(
+def glideslope_u(
     x: jax.Array,
     x_target: jax.Array,
     *,
@@ -50,7 +50,13 @@ def _glideslope_u(
     arrival_mps: float,
     brake_fraction: float,
 ) -> jax.Array:
-    """The unclipped impulse that puts the in-plane velocity of ``x`` on the desired velocity."""
+    """The unclipped impulse that puts the in-plane velocity of ``x`` on the desired velocity.
+
+    ``x`` and ``x_target`` have shape ``(n, 4)``; the result is ``(n, 2)`` and
+    is not bounded by ``max_dv_mps``, which enters only through the braking
+    curve. Callers that add their own terms, such as an avoidance push, add
+    them here and apply :func:`clip_to_cap` once to the sum.
+    """
     rho_vec = x[..., :2] - x_target[..., :2]
     rho = jnp.linalg.norm(rho_vec, axis=-1, keepdims=True)
     rho_hat = rho_vec / jnp.maximum(rho, 1e-9)
@@ -74,9 +80,10 @@ def glideslope_dv(
 ) -> jax.Array:
     """Glideslope impulse for in-plane states ``x``, ``x_target`` of shape ``(n, 4)``.
 
-    Returns ``(n, 2)`` radial/along-track impulses of norm at most ``max_dv_mps``.
+    :func:`glideslope_u` followed by :func:`clip_to_cap`. Returns ``(n, 2)``
+    radial/along-track impulses of norm at most ``max_dv_mps``.
     """
-    u = _glideslope_u(
+    u = glideslope_u(
         x,
         x_target,
         max_dv_mps=max_dv_mps,
@@ -85,7 +92,7 @@ def glideslope_dv(
         arrival_mps=arrival_mps,
         brake_fraction=brake_fraction,
     )
-    return _clip_to_cap(u, max_dv_mps)
+    return clip_to_cap(u, max_dv_mps)
 
 
 def _pad_and_wrap(dv_rt: jax.Array, command_cls: Any, n: int):
@@ -177,7 +184,7 @@ class GlideslopeToLady:
         own_rt = own[:, IN_PLANE_RTN] if self.state_dim == 6 else own
         opp_pos = mean[:, n:, :2]  # (n, n_opp, 2)
 
-        u_glide = _glideslope_u(
+        u_glide = glideslope_u(
             own_rt,
             jnp.zeros_like(own_rt),
             max_dv_mps=self.max_dv_mps,
@@ -194,7 +201,7 @@ class GlideslopeToLady:
         )
         u_avoid = jnp.sum(magnitude * direction, axis=1)
 
-        dv_rt = _clip_to_cap(u_glide + u_avoid, self.max_dv_mps)
+        dv_rt = clip_to_cap(u_glide + u_avoid, self.max_dv_mps)
         return _pad_and_wrap(dv_rt, self.command_cls, n), policy_state
 
 

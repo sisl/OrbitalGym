@@ -30,9 +30,12 @@ from orbitalgym.policies.heuristic.glideslope import glideslope_dv
 class GlideslopeBanditPolicy:
     """Glideslope approach to the lady; vmap-friendly.
 
-    Conforms to the Policy protocol. The same FullObservation layout as
-    `MPCBanditPolicy` is assumed: each bandit reads its own RT-frame state
-    from the broadcast obs.
+    Conforms to the Policy protocol. `agent_view` is the bandit side's
+    flattened observation: `n_bandits * (n_bandits + n_guards) * 4` numbers in
+    row-major order, one HCW_RT state `[R, T, Rdot, Tdot]` per (observer,
+    entity) pair. Bandit `i` reads its own state from cell `(i, i)`; the
+    opposing columns are ignored, because the law targets the lady at the
+    RTN origin.
 
     Build with `from_env(env, slope_s=..., arrival_mps=..., dv_max=...)` — the
     helper extracts dt and the vehicle counts from the env.

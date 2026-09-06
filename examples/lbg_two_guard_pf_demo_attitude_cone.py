@@ -100,7 +100,10 @@ from orbitalgym.dynamics.hcw import hcw_rt_step  # noqa: E402
 from orbitalgym.games.lady_bandit_guard import LadyBanditGuard  # noqa: E402
 from orbitalgym.observations.conical import ConicalObservation  # noqa: E402
 from orbitalgym.observations.negative_info import Hard  # noqa: E402
-from orbitalgym.policies.heuristic.glideslope import glideslope_dv  # noqa: E402
+from orbitalgym.policies.heuristic.glideslope import (  # noqa: E402
+    clip_to_cap,
+    glideslope_u,
+)
 from orbitalgym.policies.zero import ZeroControl  # noqa: E402
 from orbitalgym.reference_orbit import (  # noqa: E402
     ReferenceOrbitState,
@@ -154,8 +157,9 @@ BANDIT_MAX_DV_MPS = 0.5
 
 # ---- Bandit guard-avoidance (APF) -------------------------------------------
 # See the baseline notebook section-3 markdown for the APF design. The
-# bandit's per-step Δv is `clip(u_glide + sum_g g·exp(-d^2/2σ^2)·n̂_g, ±max_dv)`
-# where `n̂_g` is the unit vector from each guard to the bandit. Set
+# bandit's per-step Δv is `clip_norm(u_glide + sum_g g·exp(-d^2/2σ^2)·n̂_g,
+# max_dv)` where `n̂_g` is the unit vector from each guard to the bandit and
+# `u_glide` is the unclipped glideslope impulse toward the lady. Set
 # `BANDIT_AVOIDANCE_GAIN = 0` to recover the pure lady-seeking glideslope.
 BANDIT_AVOIDANCE_GAIN = 1.0
 BANDIT_AVOIDANCE_SIGMA_M = 300.0
@@ -407,10 +411,11 @@ print(
 # ## 3. EXTENSION POINT — Bandit policy: glideslope + guard avoidance (APF)
 #
 # Same as the baseline notebook (see the markdown in section 3 there
-# for the full design / tuning notes): closed-form glideslope toward the
-# lady, plus a Gaussian-decay artificial potential field that pushes
-# the bandit away from each guard. Set `BANDIT_AVOIDANCE_GAIN=0` in
-# section 1 to recover the pure lady-seeking glideslope.
+# for the full design / tuning notes): a glideslope toward the lady,
+# plus a Gaussian-decay artificial potential field that pushes the
+# bandit away from each guard, the two summed and clipped once. Set
+# `BANDIT_AVOIDANCE_GAIN=0` in section 1 to recover the pure
+# lady-seeking glideslope.
 
 
 # %%
@@ -429,8 +434,10 @@ class GlideslopeToLadyWithAvoidance:
     The repulsion sums a Gaussian decay away from each guard:
         magnitude = avoidance_gain * exp(-d^2 / (2*sigma^2))
         direction = (bandit_pos - guard_pos) / ||bandit_pos - guard_pos||
-    The sum of the two is scaled down to Euclidean norm `max_dv_mps` when it
-    exceeds it. Setting `avoidance_gain=0` recovers the pure glideslope.
+    The guidance impulse is left unclipped so the repulsion competes with it
+    on equal terms; their sum is scaled down to Euclidean norm `max_dv_mps`
+    once, when it exceeds it. Setting `avoidance_gain=0` recovers the pure
+    glideslope.
 
     The gain, `slope_s` and `arrival_mps`, does not depend on `max_dv_mps`:
     the cap enters only through the braking curve and the final clip.
@@ -478,8 +485,8 @@ class GlideslopeToLadyWithAvoidance:
             raise ValueError("GlideslopeToLadyWithAvoidance was constructed without command_cls.")
         bandit_rt, guard_pos = agent_view  # (n_b, 4), (n_g, 2)
 
-        # ---- Lady-seeking (glideslope) ----
-        u_glide = glideslope_dv(
+        # ---- Lady-seeking (glideslope, unclipped) ----
+        u_glide = glideslope_u(
             bandit_rt,
             jnp.zeros_like(bandit_rt),
             max_dv_mps=self.max_dv_mps,
@@ -500,9 +507,7 @@ class GlideslopeToLadyWithAvoidance:
         magnitude = self.avoidance_gain * jnp.exp(-(dist**2) / (2.0 * sigma**2))
         u_avoid = (magnitude * direction).sum(axis=1)  # (n_b, 2)
 
-        u = u_glide + u_avoid
-        norm = jnp.linalg.norm(u, axis=-1, keepdims=True)
-        dvs = u * jnp.minimum(1.0, self.max_dv_mps / jnp.maximum(norm, 1e-12))
+        dvs = clip_to_cap(u_glide + u_avoid, self.max_dv_mps)
         cmd_template = self.command_cls.zeros(self.n_vehicles)
         return cmd_template.replace(dv=dvs), policy_state
 
