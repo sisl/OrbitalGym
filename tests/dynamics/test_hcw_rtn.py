@@ -56,7 +56,7 @@ def test_hcw_rtn_stm_matches_step_with_zero_impulse():
 
     With zero impulse, hcw_rtn_step(x) and hcw_rtn_stm @ x should produce the
     same next state to numerical precision. This pins the STM helper (used by
-    Kalman filters and LQR builds) to the dynamics actually used inside the
+    Kalman filters and controller builds) to the dynamics actually used inside the
     env, preventing the two from drifting apart silently.
     """
     n = 1.0e-3

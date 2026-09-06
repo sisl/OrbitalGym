@@ -12,7 +12,7 @@ Composes existing primitives to produce a scenario where:
   catch_radius / breach_radius).
 
 The bandit and guard policies are wired separately by the caller — see
-`examples/policies/lqr_bandit.py` for a JAX-native LQR bandit and
+`examples/policies/glideslope_bandit.py` for a JAX-native glideslope bandit and
 `orbitalgym.policies.mcts.MCTSPolicy` for the guard.
 """
 

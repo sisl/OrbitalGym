@@ -65,7 +65,7 @@ def hcw_rtn_stm(mean_motion: float, dt: float) -> jax.Array:
     in-plane 4x4 block (R, T, Rdot, Tdot) and the cross-track 2x2 block
     (N, Ndot), placed at the appropriate axis indices.
 
-    Callers building a Kalman filter, LQR, or any analysis tool that needs the
+    Callers building a Kalman filter, a linear controller, or any analysis tool that needs the
     plant Jacobian over one tick should use this rather than re-deriving the
     closed-form blocks. Stays consistent with hcw_rtn_step by construction.
     """

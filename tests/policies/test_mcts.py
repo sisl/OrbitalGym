@@ -456,7 +456,7 @@ def test_belief_adapted_mcts_unwraps_contact_aware_belief():
     assert cmd.dv.shape == expected
 
 
-# --- opponent_schedule: delayed-LQR opponent semantics inside MCTS ---
+# --- opponent_schedule: delayed-feedback opponent semantics inside MCTS ---
 
 
 def _all_contact_schedule(t_horizon: float = 1e9, pad_to: int = 4):

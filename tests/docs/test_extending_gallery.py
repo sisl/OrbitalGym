@@ -12,6 +12,8 @@ def test_every_gallery_class_imports_from_documented_path():
         HeuristicWithFallbackPolicy,
     )
     from orbitalgym.policies.heuristic import (
+        GlideslopeIntercept,
+        GlideslopeToLady,
         JitteredPolicy,
         LeadInterceptPursuer,
         OrthogonalEvader,
@@ -26,3 +28,5 @@ def test_every_gallery_class_imports_from_documented_path():
     assert HeuristicWithFallbackPolicy(primary=ZeroControl(), fallback=ZeroControl())
     assert CompositeActionPolicy(base=ZeroControl(), offset=ZeroControl())
     assert UniformRandomDiscretePolicy(action_grid=jnp.zeros((1, 2)))
+    assert GlideslopeToLady is not None
+    assert GlideslopeIntercept is not None

@@ -226,7 +226,7 @@ class RolloutScene:
     # carries cone geometry; other link kinds (e.g. ``AlwaysLinked``,
     # ``GroundNetworkLink``) are silently skipped.
     show_link_cones: bool = False
-    # When True, render the cached LQR plan as a faint dashed polyline
+    # When True, render the cached plan as a faint dashed polyline
     # forward from each agent's current position. Reads
     # ``traj.sides.<side>.policy_state.{plan, step_in_plan}`` and
     # propagates the remaining Δv commands forward from the agent's
@@ -1190,7 +1190,7 @@ def _planned_trajectory_path(
     `cur_state_rtn` is the full RTN state ``[R, T, N, dR, dT, dN]`` read
     from the recorded trajectory. The agent's velocity at the current
     frame is what makes the predicted curve diverge from a straight
-    line (orbital drift dominates over the LQR Δv at HCW scales).
+    line (orbital drift dominates over the commanded Δv at HCW scales).
 
     If ``propagator`` is provided, it propagates ``state`` through the
     scenario's true dynamics each tick (so the curve matches what the

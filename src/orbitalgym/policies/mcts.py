@@ -18,7 +18,7 @@ Design notes:
   into the env. The default
   :class:`orbitalgym.policies.uniform_random.UniformRandomDiscretePolicy`
   is deliberately cheap and uncoupled from any scenario; for sharper
-  search, wire e.g. an LQR or LeadIntercept policy as ``opponent_model``.
+  search, wire e.g. a glideslope or LeadIntercept policy as ``opponent_model``.
 - **agent_view contract (v1).** Either a 1-D flat state vector matching
   ``env_model.states_dim``, or any object exposing ``mean: jax.Array`` of
   the same shape (a :class:`orbitalgym.belief.base.Belief`). KF/EKF
@@ -103,7 +103,7 @@ class MCTSPolicy:
     teammate_model: Any = None
 
     # Optional ContactSchedule. When set, the opponent_model is treated as a
-    # *delayed-LQR* controller: its command is recomputed only when the
+    # *delayed-feedback* controller: its command is recomputed only when the
     # simulated time falls inside a contact window; outside contacts the
     # last-cached command is replayed. The cached Δv is carried as part of
     # the MCTS embedding so it persists across tree-edge advances. Default
@@ -236,7 +236,7 @@ class MCTSPolicy:
             return cmd.dv
 
         # When `opponent_schedule` is set, the opponent is modelled as a
-        # delayed-LQR controller: command is recomputed during contact
+        # delayed-feedback controller: command is recomputed during contact
         # windows, otherwise the cached Δv is replayed. The cache lives in
         # the MCTS embedding so it persists across tree-edge advances.
         opp_schedule = self.opponent_schedule
@@ -271,7 +271,7 @@ class MCTSPolicy:
             joint_idx: jax.Array,
             k: jax.Array,
         ):
-            """Step with delayed-LQR opponent semantics.
+            """Step with delayed-feedback opponent semantics.
 
             The opponent's Δv is *recomputed* only when the simulated tick's
             ``state.t`` is inside a contact window of ``opponent_schedule``.
@@ -344,7 +344,7 @@ class MCTSPolicy:
             # Compute initial cached opponent Δv at the root by calling the
             # opponent_model on the current state. This means: at t=0 (or
             # whenever the search root is evaluated) the bandit assumes the
-            # opponent's last commanded Δv is the freshly-solved LQR Δv —
+            # opponent's last commanded Δv is the freshly-solved Δv —
             # the most defensible prior given no prior contact history.
             key_root, key = jax.random.split(key)
             opp_cached_dv_root = _opponent_dv(s_flat, key_root)

@@ -159,7 +159,7 @@ explicit `reward_fn` that scores both.
 ## Suggested experiments
 
 - **Sanity baseline.** Run with zero control on both sides — neither side wins, the episode ends at `max_steps` and cumulative return is dominated by the dense distance terms.
-- **Bandit attack.** Wire `examples/policies/lqr_bandit.py`'s `LQRBanditPolicy` as the bandit's policy — the bandit closes on the lady; the zero-control guard should eventually lose by breach.
+- **Bandit attack.** Wire `examples/policies/glideslope_bandit.py`'s `GlideslopeBanditPolicy` as the bandit's policy — the bandit closes on the lady; the zero-control guard should eventually lose by breach.
 - **Guard interception.** Train a guard policy (e.g. MCTS, see `examples/lbg_ring_intercept.ipynb`) to maximize guard return — the guard should learn to close on the bandit before it reaches the lady.
 
 ## Variants

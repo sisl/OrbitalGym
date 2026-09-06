@@ -23,7 +23,7 @@ simulation, unlike Python-loop UCB1 patterns that came before.
   Policy. This is the searcher's *belief about the opponent*, not a
   "scripted opponent" baked into the planner. Default is
   `UniformRandomDiscretePolicy(opponent_action_grid)`; for sharper
-  search wire any vmappable Policy (e.g. `LQRBanditPolicy`,
+  search wire any vmappable Policy (e.g. `GlideslopeToLady`,
   `LeadInterceptPursuer`).
 - **agent_view contract.** Either a flat state vector
   (`adapter.states_dim` length) or a `Belief` whose `mean` field is
@@ -101,7 +101,7 @@ trusts the truth). Real `KFBelief`/`EKFBelief` whose `mean` is per-pair
 | `max_depth` | None | Cap planning horizon; useful when the discount is 1.0 and trajectories are long. |
 | `discount` | `None` | `None` reads `env_model.discount()`, the adapter's per-macro-step discount. Set a float to override. |
 | `leaf_value_fn` | zero | Cheap heuristic estimate at leaves often beats pure rollouts. |
-| `opponent_model` | uniform-random | Wire e.g. `LQRBanditPolicy` for adversary-aware search. |
+| `opponent_model` | uniform-random | Wire e.g. `GlideslopeToLady` for adversary-aware search. |
 
 ## CPU vs MPS
 
@@ -123,7 +123,7 @@ back to CPU.
   the supported path.
 - **Two-MCTS-as-mutual-opponent-models** is fine in principle but
   combinatorially expensive — each `MCTSPolicy.opponent_model` invocation
-  inside the tree spawns another full search. Use cheap surrogates (LQR,
+  inside the tree spawns another full search. Use cheap surrogates (glideslope,
   uniform-random) as opponent models even when the *real* opponent in
   the game is itself an MCTS policy.
 - **Warm-starting / tree reuse** across calls is future work. Today

@@ -225,8 +225,8 @@ def test_flat_observation_matches_the_belief_path():
     assert jnp.allclose(belief_cmd.dv, flat_cmd.dv)
 
 
-def test_commit_matches_the_lqr_policy_it_wraps():
-    policy = _unit_policy(avoidance_gain=0.5)
+def test_commit_matches_the_glideslope_policy_it_wraps():
+    policy = _unit_policy(avoidance_gain_mps=0.5)
     view = _view(_ring_state(STANDOFF_M, 0.4), _ring_state(400.0, 1.5))
     state = policy.init_state().replace(phase=jnp.asarray([COMMIT], dtype=jnp.int32))
     cmd, _ = policy(state, view, jax.random.key(0), jnp.asarray(0.0))

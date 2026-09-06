@@ -13,7 +13,7 @@
 # ---
 
 # %% [markdown]
-# # LBG with ground-station-gated planning (delayed LQR / delayed MCTS)
+# # LBG with ground-station-gated planning (delayed glideslope / delayed MCTS)
 #
 # This notebook demonstrates the operational picture for Phase B of the
 # ground-station-comms workstream:
@@ -22,9 +22,9 @@
 #   from **one bandit**. Both sides share the **same ground-station
 #   network** (Alaska + Australia) — both teams' planners are gated by
 #   the same set of contact windows.
-# - **Guards** carry a **Kalman-filter belief** + a **belief-aware LQR**
+# - **Guards** carry a **Kalman-filter belief** + a **belief-aware glideslope**
 #   inner planner, wrapped in a `PlanCachePolicy` so the cached single-
-#   step LQR command only refreshes on contact (default
+#   step glideslope command only refreshes on contact (default
 #   `replan_contacts_lag=1`). The guards are the *operationally
 #   constrained* side: their thrust commands are gated by the comms
 #   schedule — between uploads the most recently uploaded Δv is replayed
@@ -33,7 +33,7 @@
 #   continuous replanning. It carries a **particle-filter belief** +
 #   a `BeliefAdaptedMCTSPolicy` that runs **every tick** (no
 #   `PlanCachePolicy` wrapper). Inside the tree search the bandit models
-#   the guards as **delayed-LQR**: the guards' LQR command is recomputed
+#   the guards as **delayed-glideslope**: the guards' glideslope command is recomputed
 #   only when the simulated tick falls inside a contact window, otherwise
 #   the cached command from the most recent contact tick is replayed.
 #   This is wired via `MCTSPolicy(opponent_schedule=schedule)`, which
@@ -343,19 +343,19 @@ print(f"Total ticks for {HORIZON_S:.0f}s @ dt={DT:.0f}s: {int(HORIZON_S / DT)}")
 #
 # Architectural picture per side:
 #
-# - **Guards (operationally delayed):** Kalman filter + belief-aware LQR
+# - **Guards (operationally delayed):** Kalman filter + belief-aware glideslope
 #   inner, wrapped in `PlanCachePolicy`. Only refreshes plans on contact.
 # - **Bandit (studied agent, full processing):** Particle filter +
 #   `BeliefAdaptedMCTSPolicy` running *every tick* (no `PlanCachePolicy`
 #   wrapper). Inside the tree the bandit predicts the guards as a
-#   **delayed-LQR** controller: the LQR command is recomputed only on
+#   **delayed-glideslope** controller: the glideslope command is recomputed only on
 #   contact ticks; otherwise the cached command from the most recent
 #   contact tick is replayed. This is encoded by passing
 #   `opponent_schedule=schedule` to `MCTSPolicy`.
 #
 # **Guards: Kalman filter** with a proper HCW-RTN STM. Six-state ``[R, T,
 # N, Rdot, Tdot, Ndot]``. KF predict propagates beliefs correctly through
-# the cache windows so the LQR gets a sensible state to act on.
+# the cache windows so the glideslope gets a sensible state to act on.
 #
 # **Bandit: Particle filter** initialized from truth + tiny jitter (the
 # bandit knows where it is at t=0). Process noise + range-limited
@@ -367,7 +367,7 @@ d = layout.dynamics_state_dim  # 6 for RTN
 
 # 6x6 closed-form HCW-RTN STM, shared with the env's hcw_rtn_step (single
 # source of truth in orbitalgym.dynamics.hcw). This is the plant Jacobian
-# the KF and the LQR both consume — using the shared helper guarantees that
+# the KF and the glideslope both consume — using the shared helper guarantees that
 # any future change to the dynamics module propagates here automatically.
 stm = hcw_rtn_stm(env.mean_motion, DT)
 # Control matrix B = Phi[:, vel_axes]: an impulsive Δv at the start of the
@@ -425,7 +425,7 @@ belief_upd = BySide(
 print("Belief: guards=KF (RTN STM), bandit=PF (K=64 particles)")
 
 # %% [markdown]
-# ## 6. Action grids + LQR gains
+# ## 6. Action grids + glideslope parameters
 #
 # 27-action 3D grid (6 axis-aligned + 1 zero, plus 20 mid-magnitude
 # diagonals). Sized as a balance between MCTS expressivity and joint-
@@ -471,64 +471,59 @@ bandit_action_grid = build_action_grid_3d(BANDIT_DV)
 print(f"Action grids: guard={guard_action_grid.shape}, bandit={bandit_action_grid.shape}")
 
 
-# Build LQR gains for guards (chasing the bandit) and the bandit
-# (chasing the lady). The LQR kernel is the standard finite-horizon
-# closed-form solve adapted to our HCW-RTN 6-D state.
+# Glideslope parameters for guards (chasing the bandit) and the bandit
+# (chasing the lady). The commanded closing speed is the smaller of a
+# linear glideslope in range and the braking curve the per-tick Δv cap can
+# shed, so the gain is independent of the cap: the cap enters only through
+# the braking curve and the norm clip.
+GLIDE_SLOPE_S = 300.0
+GLIDE_ARRIVAL_MPS = 0.3
+GLIDE_BRAKE_FRACTION = 0.5
 
 
-def _build_lqr_gain(
-    A: jax.Array,  # noqa: N803 - LQR state matrix (control-theory math convention)
-    B: jax.Array,  # noqa: N803 - LQR control matrix (control-theory math convention)
+def _glideslope_dv(
+    rho_vec: jax.Array,
+    rel_vel: jax.Array,
     *,
-    horizon: int,
-    control_cost: float,
+    dv_max: float,
+    dt: float,
 ) -> jax.Array:
-    """Returns gain matrix G such that u_0 = -G @ x_0 minimizes
-    ``||C x_H||^2 + lambda ||U||^2`` where C selects positions [R,T,N]."""
-    powers = [jnp.eye(A.shape[0])]
-    for _ in range(horizon):
-        powers.append(A @ powers[-1])
-    A_powH = powers[horizon]  # noqa: N806 - A^H power (math convention)
-    M = jnp.concatenate([powers[horizon - 1 - k] @ B for k in range(horizon)], axis=1)  # noqa: N806
-    C = jnp.zeros((3, A.shape[0]))  # noqa: N806 - LQR output-selection matrix
-    C = C.at[0, 0].set(1.0)  # noqa: N806
-    C = C.at[1, 1].set(1.0)  # noqa: N806
-    C = C.at[2, 2].set(1.0)  # noqa: N806
-    H_lam = M.T @ C.T @ C @ M + control_cost * jnp.eye(M.shape[1])  # noqa: N806 - Hessian
-    K = jnp.linalg.solve(H_lam, M.T @ C.T @ C @ A_powH)  # noqa: N806 - LQR gain
-    u_dim = B.shape[1]
-    return K[:u_dim, :]
+    """Impulse putting the relative velocity on the glideslope toward the target.
+
+    ``rho_vec`` is the vehicle-minus-target displacement and ``rel_vel`` the
+    vehicle-minus-target velocity, both ``(n, k)``. Returns ``(n, k)``
+    impulses of Euclidean norm at most ``dv_max``.
+    """
+    rho = jnp.linalg.norm(rho_vec, axis=-1, keepdims=True)
+    rho_hat = rho_vec / jnp.maximum(rho, 1e-9)
+    a_brake = GLIDE_BRAKE_FRACTION * dv_max / dt
+    s = jnp.minimum(rho / GLIDE_SLOPE_S + GLIDE_ARRIVAL_MPS, jnp.sqrt(2.0 * a_brake * rho))
+    u = -s * rho_hat - rel_vel
+    norm = jnp.linalg.norm(u, axis=-1, keepdims=True)
+    return u * jnp.minimum(1.0, dv_max / jnp.maximum(norm, 1e-12))
 
 
-A_rtn, B_rtn = stm, control_matrix
-LQR_HORIZON = 8
-LQR_LAMBDA = 1.0  # Reduced from 10.0 so the LQR doesn't over-dampen the
-# guards' chase response. With the larger Δv cap above,
-# an unclipped LQR command in the natural-motion regime
-# is still small enough not to saturate; lowering λ
-# makes the controller actually pursue the bandit rather
-# than tracking a slow, smoothed trajectory that lets
-# secular drift dominate the geometry.
-lqr_gain = _build_lqr_gain(A_rtn, B_rtn, horizon=LQR_HORIZON, control_cost=LQR_LAMBDA)
-print(f"LQR gain shape: {tuple(lqr_gain.shape)}, lambda={LQR_LAMBDA}")
+print(
+    f"Glideslope: slope={GLIDE_SLOPE_S:.0f}s, arrival={GLIDE_ARRIVAL_MPS:.2f} m/s, "
+    f"brake_fraction={GLIDE_BRAKE_FRACTION}"
+)
 
 
 # %% [markdown]
-# ## 7. Belief-aware LQR policy (works for both sides)
+# ## 7. Belief-aware glideslope policy (works for both sides)
 #
-# Generic per-side LQR that consumes a `Belief`-shaped `agent_view` (or a
+# Generic per-side glideslope that consumes a `Belief`-shaped `agent_view` (or a
 # `_LaggedView` from PlanCachePolicy whose `.mean` is `(N_obs, N_total,
 # d)`). Per-vehicle state is observer ``i``'s estimate of itself
-# (``mean[i, i, :]``) — the LQR gain steers the vehicle toward the
+# (``mean[i, i, :]``) — the glideslope steers the vehicle toward the
 # tracked target's position (``mean[i, target, :3]`` plus optional
-# velocity matching). Wraps `LQRBanditPolicy`'s solve-and-clip strategy
-# in a Belief-shaped contract.
+# velocity matching) in a Belief-shaped contract.
 
 
 # %%
 @dataclass(frozen=True)
-class BeliefAwareLQR:
-    """Belief-aware closed-form LQR for either side.
+class BeliefAwareGlideslope:
+    """Belief-aware glideslope for either side.
 
     `target_index` selects which entity in observer i's tracked-entities
     block to chase. For guards ``target_index = n_self`` (first opposing
@@ -538,8 +533,8 @@ class BeliefAwareLQR:
     """
 
     n_self: int
-    gain: jax.Array  # (3, 6): u = -gain @ (x_self - x_target)
     dv_max: float
+    dt: float
     command_cls: Any
     target_index: int = 0
     chase_origin: bool = False
@@ -553,64 +548,67 @@ class BeliefAwareLQR:
         # belief is m[i, i, :].
         own = jnp.diagonal(m[:, : self.n_self, :], axis1=0, axis2=1).T  # (n_self, 6)
         target = jnp.zeros_like(own) if self.chase_origin else m[:, self.target_index, :]
-        x_err = own - target  # (n_self, 6)
-        dv_unclipped = -x_err @ self.gain.T  # (n_self, 3)
-        dv = jnp.clip(dv_unclipped, -self.dv_max, self.dv_max)
+        dv = _glideslope_dv(
+            own[:, :3] - target[:, :3],
+            own[:, 3:] - target[:, 3:],
+            dv_max=self.dv_max,
+            dt=self.dt,
+        )
         cmd = self.command_cls.zeros(self.n_self)
         return cmd.replace(dv=dv.astype(cmd.dv.dtype)), policy_state
 
 
-guard_inner_lqr = BeliefAwareLQR(
+guard_inner_glide = BeliefAwareGlideslope(
     n_self=N_GUARDS,
-    gain=lqr_gain,
     dv_max=GUARD_DV,
+    dt=DT,
     command_cls=env.guard_command_cls,
     target_index=N_GUARDS,  # first bandit slot in the (own, opp) layout
     chase_origin=False,
 )
 print(
-    f"Guard inner: BeliefAwareLQR "
-    f"(chase bandit, target_index={guard_inner_lqr.target_index}, dv_max={GUARD_DV} m/s)"
+    f"Guard inner: BeliefAwareGlideslope "
+    f"(chase bandit, target_index={guard_inner_glide.target_index}, dv_max={GUARD_DV} m/s)"
 )
 
 
 # %% [markdown]
-# ## 8. Bandit MCTS with **delayed-LQR** opponent model
+# ## 8. Bandit MCTS with a **delayed-glideslope** opponent model
 #
 # Inside the MCTS tree the bandit needs to predict how the **delayed**
 # guards will behave so it can plan around the comms gaps. We build the
-# opponent_model as a plain `FlatStateLQR` and wire the schedule into
+# opponent_model as a plain `FlatStateGlideslope` and wire the schedule into
 # MCTS via `opponent_schedule=schedule`: at each tree-edge advance the
-# bandit's MCTS recomputes the guards' LQR command only when the
+# bandit's MCTS recomputes the guards' glideslope command only when the
 # simulated tick falls inside a contact window; otherwise the *cached*
 # command from the most recent contact tick is replayed. The cached Δv
 # lives in the MCTS embedding alongside the flat state, so it persists
-# across tree-edge advances correctly. This is the faithful delayed-LQR
+# across tree-edge advances correctly. This is the faithful delayed-glideslope
 # model — between contacts the guards keep thrusting with their last
 # uplinked command, not zero.
 
 
 # %%
 @dataclass(frozen=True)
-class FlatStateLQR:
-    """Flat-position-obs LQR adapter. Used inside MCTS as the opponent_model.
+class FlatStateGlideslope:
+    """Flat-position-obs glideslope adapter. Used inside MCTS as the opponent_model.
 
     Inside MCTS the opponent's observation comes from
     `env.guard_observation_fn` (RangeLimitedObservation), whose obs is
     per-pair positions only — shape ``(n_self, n_total, 3)`` flattened.
-    This adapter does a position-only LQR: it reads each observer's
-    self-position estimate and the target position, and applies the
-    first three columns of the 6-D LQR gain (velocity columns dropped).
-    Velocity matching is unavailable in this view; the controller is
-    therefore P-only relative to the full-state LQR, which is fine as a
-    *model* of guard behaviour inside the bandit's tree search.
+    This adapter runs the glideslope on positions alone: it reads each
+    observer's self-position estimate and the target position and commands
+    the closing speed along the line of sight. Velocity matching is
+    unavailable in this view, so the relative velocity is taken as zero,
+    which is fine as a *model* of guard behaviour inside the bandit's tree
+    search.
     """
 
     n_self: int
     n_opp: int
     obs_dim: int  # m=3 for RangeLimitedObservation positions
-    gain_pos: jax.Array  # (3, 3) — position columns of the full LQR gain
     dv_max: float
+    dt: float
     command_cls: Any
     target_index: int = 0
     chase_origin: bool = False
@@ -622,25 +620,26 @@ class FlatStateLQR:
         obs_3d = agent_view.reshape((n_self, n_total, self.obs_dim))
         own = jnp.diagonal(obs_3d[:, :n_self, :], axis1=0, axis2=1).T  # (n_self, 3)
         target = jnp.zeros_like(own) if self.chase_origin else obs_3d[:, self.target_index, :]
-        x_err = own - target  # (n_self, 3)
-        dv = jnp.clip(-x_err @ self.gain_pos.T, -self.dv_max, self.dv_max)
+        dv = _glideslope_dv(
+            own - target,
+            jnp.zeros_like(own),
+            dv_max=self.dv_max,
+            dt=self.dt,
+        )
         cmd = self.command_cls.zeros(n_self)
         return cmd.replace(dv=dv.astype(cmd.dv.dtype)), policy_state
 
 
-# Opponent model the bandit's MCTS uses: a plain flat-LQR. Delay
-# semantics are introduced by passing `opponent_schedule=schedule` to
-# `MCTSPolicy` below — the LQR is recomputed on contact ticks and the
-# cached Δv is replayed otherwise. The full-state LQR gain is (3, 6);
-# drop velocity columns to get a position-only gain (3, 3) compatible
-# with the position-only obs.
-lqr_gain_pos = lqr_gain[:, :3]
-guard_flat_lqr_for_mcts = FlatStateLQR(
+# Opponent model the bandit's MCTS uses: a plain flat-state glideslope.
+# Delay semantics are introduced by passing `opponent_schedule=schedule`
+# to `MCTSPolicy` below — the command is recomputed on contact ticks and
+# the cached Δv is replayed otherwise.
+guard_flat_glide_for_mcts = FlatStateGlideslope(
     n_self=N_GUARDS,
     n_opp=N_BANDITS,
     obs_dim=3,
-    gain_pos=lqr_gain_pos,
     dv_max=GUARD_DV,
+    dt=DT,
     command_cls=env.guard_command_cls,
     target_index=N_GUARDS,
     chase_origin=False,
@@ -664,13 +663,14 @@ def _bandit_close_to_lady_value(s_flat: jax.Array) -> jax.Array:
 
 
 # Build the MCTS searching for the bandit. `opponent_schedule=schedule`
-# turns on delayed-LQR semantics inside the tree: the guards' LQR is
-# recomputed on contact ticks; otherwise the cached Δv is replayed.
+# turns on delayed-glideslope semantics inside the tree: the guards'
+# command is recomputed on contact ticks; otherwise the cached Δv is
+# replayed.
 mcts_bandit = MCTSPolicy(
     env_model=adapter,
     side=Side.BANDIT,
     action_grid=bandit_action_grid,
-    opponent_model=guard_flat_lqr_for_mcts,
+    opponent_model=guard_flat_glide_for_mcts,
     opponent_action_grid=guard_action_grid,
     opponent_schedule=schedule,
     num_simulations=64,  # bumped from 16 so MCTS can actually find
@@ -692,27 +692,27 @@ bandit_inner_mcts = BeliefAdaptedMCTSPolicy(
 print(
     f"Bandit MCTS: A={bandit_action_grid.shape[0]} actions, "
     f"num_simulations={mcts_bandit.num_simulations}, "
-    f"opponent_model=delayed-FlatStateLQR (via opponent_schedule)"
+    f"opponent_model=delayed-FlatStateGlideslope (via opponent_schedule)"
 )
 
 
 # %% [markdown]
 # ## 9. Policy wrappers
 #
-# **Guards** wrap their LQR inner in `PlanCachePolicy` with a
+# **Guards** wrap their glideslope inner in `PlanCachePolicy` with a
 # configurable `replan_contacts_lag`. Default lag=1: plan uplinked this
 # contact was computed from the belief synced last contact.
 #
 # **Bandit** runs `BeliefAdaptedMCTSPolicy` directly — no
 # `PlanCachePolicy` wrapper. The bandit replans every tick; the
 # delayed-comms constraint is encoded *inside* MCTS via
-# `opponent_schedule=schedule`, which models the guards as a delayed-LQR
-# controller (LQR command frozen between contacts, recomputed on contact).
+# `opponent_schedule=schedule`, which models the guards as a delayed-glideslope
+# controller (glideslope command frozen between contacts, recomputed on contact).
 
 
 # %%
 # Plan horizon: tuned to span the longest expected inter-contact gap so
-# the cached LQR plan stays active through every off-contact period.
+# the cached glideslope plan stays active through every off-contact period.
 # At MJD 60067.5 with our 5-station network the longest gap in the 12-h
 # horizon is ~5500s (~1 orbit). H=250 ticks @ dt=30s = 7500s ≈ 1.3
 # orbits, so the plan covers slightly more than the longest gap. If the
@@ -727,7 +727,7 @@ print(
 
 def make_guard_policy(replan_contacts_lag: int) -> PlanCachePolicy:
     return PlanCachePolicy(
-        inner=guard_inner_lqr,
+        inner=guard_inner_glide,
         plan_horizon=GUARD_PLAN_HORIZON,
         schedule=schedule,
         dt=DT,
@@ -743,10 +743,10 @@ bandit_policy = bandit_inner_mcts
 
 
 print("Default policies (guard lag=1):")
-print("  Guards:  PlanCachePolicy[BeliefAwareLQR] (H-tick plan, zero-fallback after expiry)")
+print("  Guards:  PlanCachePolicy[BeliefAwareGlideslope] (H-tick plan, zero-fallback after expiry)")
 print(
     "  Bandit:  BeliefAdaptedMCTSPolicy (per-tick), "
-    "opp_model=FlatStateLQR + opponent_schedule (delayed-LQR)"
+    "opp_model=FlatStateGlideslope + opponent_schedule (delayed-glideslope)"
 )
 
 
@@ -762,10 +762,10 @@ def make_guard_init_ps_fn(lag: int):
     """Return a guard `(cfg, env_state, key) -> PlanCacheState` initializer.
 
     The PlanCacheState carries a belief_history ring buffer shaped
-    against the KF belief mean. The guards' LQR inner is stateless under
+    against the KF belief mean. The guards' glideslope inner is stateless under
     our protocol — pass ``inner_init_state=None``. We pass ``key`` so
     `init_state` can compute the initial plan against the seed belief
-    (LQR is deterministic, but the API requires a key for non-
+    (the glideslope is deterministic, but the API requires a key for non-
     deterministic inner planners).
     """
 
@@ -966,7 +966,7 @@ scene = RolloutScene(
     traj=traj_for_scene,
     cfg=cfg,
     dt=DT,
-    show_planned_trajectory=True,  # show guards' cached LQR plan as dashed magenta line
+    show_planned_trajectory=True,  # show guards' cached plan as dashed magenta line
     show_contact_state=True,  # bright outline ring on agents in contact
     show_thrust=True,
     show_reference_marker=True,
@@ -1212,14 +1212,14 @@ plt.show()
 # the guards (real defense-system reality): their thrust commands are
 # gated by the comms schedule via `PlanCachePolicy`. The bandit's task
 # is to exploit those gaps. Inside MCTS the bandit predicts how the
-# delayed-LQR guards will behave by passing
-# `opponent_schedule=schedule` to `MCTSPolicy`: the guards' LQR command
+# delayed-glideslope guards will behave by passing
+# `opponent_schedule=schedule` to `MCTSPolicy`: the guards' glideslope command
 # is recomputed on contact ticks, and the cached command is replayed
 # between contacts. The cached Δv is carried as part of the MCTS
 # embedding so it persists across tree-edge advances.
 #
 # **As guard lag grows**, the guards' uplinked plans go increasingly
-# stale: the LQR is solving against a belief from `lag` contacts ago,
+# stale: the glideslope is solving against a belief from `lag` contacts ago,
 # which mismatches the bandit's actual trajectory more and more. The
 # bandit, planning every tick against fresh beliefs, finds it easier to
 # slip past the guards' chase.
@@ -1236,11 +1236,11 @@ plt.show()
 #   `bandit_inner_mcts` in `PlanCachePolicy` analogously.
 # - **Belief-staleness inside the tree**: the current
 #   `opponent_schedule` machinery threads a *cached Δv* between
-#   contacts, which captures the operational essence of delayed-LQR
+#   contacts, which captures the operational essence of delayed-glideslope
 #   (the guards keep thrusting with their last uplinked command).
 #   A more faithful version would thread the full `PlanCacheState`
 #   (including a stale belief) through `recurrent_fn` so MCTS also
-#   simulates the lagged-belief input to the LQR solve directly.
+#   simulates the lagged-belief input to the glideslope solve directly.
 # - **Animation overlays**: `RolloutScene(show_contact_state=True)`
 #   requires the renderer to read `traj.sides.guard.policy_state.in_contact_prev`.
 #   The guard `PlanCacheState` is logged but not yet plumbed into the

@@ -9,11 +9,8 @@ import flax.struct
 import jax
 import jax.numpy as jnp
 
-from orbitalgym.policies.heuristic.lqr_avoid import (
-    IN_PLANE_RTN,
-    LQRGoToLadyWithAvoidance,
-    mean_from_view,
-)
+from orbitalgym.policies.heuristic.glideslope import GlideslopeToLady, glideslope_dv
+from orbitalgym.policies.heuristic.views import IN_PLANE_RTN, mean_from_view
 from orbitalgym.registry import PolicyKey, register
 
 COAST = 0
@@ -84,18 +81,20 @@ class PhasedBandit:
     lady.
 
     1. ``coast`` — zero delta-v for ``t_coast_s`` seconds.
-    2. ``transfer`` — regulate the in-plane state onto the natural 2:1 ellipse
-       of radial amplitude ``standoff_m`` at the vehicle's current phase angle
-       (see :func:`_ring_target`) with the infinite-horizon HCW gain of
-       :class:`~orbitalgym.policies.heuristic.lqr_avoid.LQRGoToLadyWithAvoidance`.
-       Ends when the state is within ``settle_tol_m`` in position and
+    2. ``transfer`` — glide onto the natural 2:1 ellipse of radial amplitude
+       ``standoff_m`` at the vehicle's current phase angle (see
+       :func:`_ring_target`), using
+       :func:`~orbitalgym.policies.heuristic.glideslope.glideslope_dv` with the
+       commit policy's ``slope_s`` and ``brake_fraction`` and an arrival speed
+       of zero, so the vehicle arrives on the ring state rather than through
+       it. Ends when the state is within ``settle_tol_m`` in position and
        ``settle_tol_mps`` in velocity of that target, or after
        ``t_transfer_max_s`` seconds.
     3. ``hold`` — zero delta-v for ``t_hold_s`` seconds. The ring is a bounded
        relative orbit with no secular drift, so holding costs no fuel; a hold
        at a fixed RTN point would have to be paid for every step.
     4. ``commit`` — the
-       :class:`~orbitalgym.policies.heuristic.lqr_avoid.LQRGoToLadyWithAvoidance`
+       :class:`~orbitalgym.policies.heuristic.glideslope.GlideslopeToLady`
        command, with avoidance as configured, until the episode ends.
 
     Phases are per-vehicle and live in ``policy_state``; transitions are
@@ -110,25 +109,25 @@ class PhasedBandit:
     transfer ends sets how far the vehicle walks off the ring during the very
     phase the schedule exists to create. Measured on a 2 km standoff ring
     approached from 3 km at a 0.4545 m/s per-step cap, over six start phases,
-    ``settle_tol_mps=0.2`` settles in 470 to 840 s and holds the amplitude
-    within 1.6 to 5.5 percent of the standoff over an orbit. The default 0.02
-    is that behaviour with margin: it keeps the hold within about 5 percent
-    across start phases rather than depending on where in the ellipse the
+    ``settle_tol_mps=0.2`` settles in 1220 to 1420 s and holds the amplitude
+    within 18 to 30 percent of the standoff over an orbit. The default 0.02
+    settles in 1660 to 1780 s and holds within 2.7 to 8.0 percent, so the hold
+    stays near the ring rather than depending on where in the ellipse the
     looser threshold happens to stop the transfer.
 
     The transfer carries no avoidance term by design. Pushing away from a guard
-    while regulating onto the ring would fight the ring target and leave the
+    while gliding onto the ring would fight the ring target and leave the
     vehicle short of it when the phase ends. Avoidance acts in the commit
-    phase, through the wrapped policy's ``avoidance_gain`` and
+    phase, through the wrapped policy's ``avoidance_gain_mps`` and
     ``avoidance_sigma_m``.
 
-    Every phase's command is capped at ``max_dv_mps`` by the same norm clip
-    the LQR policies use. The agent view is a belief with
+    Every phase's command is capped at ``max_dv_mps`` by the norm clip the
+    glideslope law applies. The agent view is a belief with
     ``mean (N_obs, N_total, d)`` or a flat observation of the same numbers, as
-    :func:`~orbitalgym.policies.heuristic.lqr_avoid.mean_from_view` describes.
+    :func:`~orbitalgym.policies.heuristic.views.mean_from_view` describes.
     """
 
-    commit: LQRGoToLadyWithAvoidance
+    commit: GlideslopeToLady
     mean_motion: float
     dt: float
     t_coast_s: float
@@ -155,13 +154,14 @@ class PhasedBandit:
         settle_tol_m: float = 20.0,
         settle_tol_mps: float = 0.02,
         t_transfer_max_s: float = 3000.0,
-        avoidance_gain: float = 0.0,
+        slope_s: float = 300.0,
+        arrival_mps: float = 0.3,
+        brake_fraction: float = 0.5,
+        avoidance_gain_mps: float = 0.0,
         avoidance_sigma_m: float = 50.0,
-        r_scale_m: float = 100.0,
-        v_scale_mps: float = 1.0,
     ) -> PhasedBandit:
         return cls(
-            commit=LQRGoToLadyWithAvoidance.build(
+            commit=GlideslopeToLady.build(
                 mean_motion=mean_motion,
                 dt=dt,
                 n_vehicles=n_vehicles,
@@ -169,9 +169,10 @@ class PhasedBandit:
                 state_dim=state_dim,
                 command_cls=command_cls,
                 max_dv_mps=max_dv_mps,
-                r_scale_m=r_scale_m,
-                v_scale_mps=v_scale_mps,
-                avoidance_gain=avoidance_gain,
+                slope_s=slope_s,
+                arrival_mps=arrival_mps,
+                brake_fraction=brake_fraction,
+                avoidance_gain_mps=avoidance_gain_mps,
                 avoidance_sigma_m=avoidance_sigma_m,
             ),
             mean_motion=float(mean_motion),
@@ -208,9 +209,15 @@ class PhasedBandit:
 
         target = _ring_target(own_rt, self.standoff_m, self.mean_motion)
         error = own_rt - target
-        u_transfer = -error @ inner.gain.T
-        u_norm = jnp.linalg.norm(u_transfer, axis=-1, keepdims=True)
-        dv_transfer = u_transfer * jnp.minimum(1.0, inner.max_dv_mps / jnp.maximum(u_norm, 1e-12))
+        dv_transfer = glideslope_dv(
+            own_rt,
+            target,
+            max_dv_mps=inner.max_dv_mps,
+            dt=self.dt,
+            slope_s=inner.slope_s,
+            arrival_mps=0.0,
+            brake_fraction=inner.brake_fraction,
+        )
 
         commit_command, _ = inner(None, agent_view, key, t)
         dv_commit = commit_command.dv

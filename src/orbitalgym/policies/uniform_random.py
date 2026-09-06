@@ -7,7 +7,7 @@ the side's command ``dv_dim`` and emitted as a Command.
 
 This is *not* a competitive policy in the real game — it is a deliberately
 cheap default for the searcher's *belief about the opponent*. Real-game
-play should wire a stronger Policy (e.g. ``LQRBanditPolicy`` or
+play should wire a stronger Policy (e.g. ``GlideslopeToLady`` or
 ``LeadInterceptPursuer``) on the opposing side.
 """
 
