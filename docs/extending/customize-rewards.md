@@ -57,6 +57,10 @@ knobs):
 The potentials and the separation charge are module-level functions, so a
 custom reward or a value estimate can reuse the same geometry:
 
+::: orbitalgym.rewards.lbg_zero_sum.lbg_distances
+
+::: orbitalgym.rewards.lbg_zero_sum.lbg_potential_from_distances
+
 ::: orbitalgym.rewards.lbg_zero_sum.lbg_potential
 
 ::: orbitalgym.rewards.lbg_zero_sum.guard_separation_cost

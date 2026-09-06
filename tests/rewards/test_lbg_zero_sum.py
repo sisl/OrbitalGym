@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import jax.numpy as jnp
+import numpy as np
 import pytest
 
 from orbitalgym.actions.components import G0
@@ -129,8 +130,10 @@ def test_shaping_telescopes_to_that_sides_endpoint_potentials(side):
         float(reward(prev, None, nxt, side, cfg, nxt.step))
         for prev, nxt in zip(states[:-1], states[1:], strict=True)
     )
-    expected = float(reward.potential(states[-1], side) - reward.potential(states[0], side))
-    assert total == pytest.approx(expected, abs=1e-4)
+    expected = reward.shaping_gain * float(
+        reward.potential(states[-1], side) - reward.potential(states[0], side)
+    )
+    assert total == pytest.approx(expected, abs=1e-3)
 
 
 def test_the_shaping_is_not_zero_sum_between_the_sides():
@@ -170,8 +173,10 @@ def test_shaping_discount_scales_the_next_state_potential(side):
     cfg = _Cfg()
     prev, nxt = _shaping_sequence()[:2]
     got = float(reward(prev, None, nxt, side, cfg, nxt.step))
-    expected = float(0.9 * reward.potential(nxt, side) - reward.potential(prev, side))
-    assert got == pytest.approx(expected, abs=1e-4)
+    expected = reward.shaping_gain * float(
+        0.9 * reward.potential(nxt, side) - reward.potential(prev, side)
+    )
+    assert got == pytest.approx(expected, abs=1e-3)
 
 
 @pytest.mark.parametrize(
@@ -215,7 +220,7 @@ def test_the_separation_cost_falls_on_the_guard_alone():
 
 def test_breach_bonus_paid_in_the_step_termination_fires():
     """The reward and the termination read the same within-step event."""
-    reward = LbgZeroSumReward(breach_radius_m=5.0, breach_speed_mps=0.5)
+    reward = LbgZeroSumReward(shaping_gain=0.0, breach_radius_m=5.0, breach_speed_mps=0.5)
     term = LbgEventTermination(breach_radius_m=5.0, breach_speed_mps=0.5)
     cfg = _Cfg(dt=40.0)
     prev = _state(_FAR_GUARD, [[-6.0, 4.9, 0.0]])
@@ -228,7 +233,7 @@ def test_breach_bonus_paid_in_the_step_termination_fires():
 
 
 def test_breach_bonus_withheld_when_speed_gate_blocks_termination():
-    reward = LbgZeroSumReward(breach_radius_m=5.0, breach_speed_mps=0.5)
+    reward = LbgZeroSumReward(shaping_gain=0.0, breach_radius_m=5.0, breach_speed_mps=0.5)
     term = LbgEventTermination(breach_radius_m=5.0, breach_speed_mps=0.5)
     cfg = _Cfg(dt=4.0)
     prev = _state(_FAR_GUARD, [[-6.0, 4.9, 0.0]])
@@ -241,7 +246,7 @@ def test_breach_bonus_withheld_when_speed_gate_blocks_termination():
 
 
 def test_catch_bonus_paid_in_the_step_termination_fires():
-    reward = LbgZeroSumReward(catch_radius_m=50.0, breach_radius_m=5.0)
+    reward = LbgZeroSumReward(shaping_gain=0.0, catch_radius_m=50.0, breach_radius_m=5.0)
     term = LbgEventTermination(breach_radius_m=5.0, catch_radius_m=50.0)
     cfg = _Cfg()
     prev = _state(_CATCHING_GUARD, [[-400.0, 30.0, 0.0]])
@@ -251,6 +256,55 @@ def test_catch_bonus_paid_in_the_step_termination_fires():
     guard, bandit = _rewards(reward, prev, nxt, cfg)
     assert guard > reward.r_catch - 1.0
     assert bandit < -reward.r_catch + 1.0
+
+
+@pytest.mark.parametrize("side", [Side.GUARD, Side.BANDIT])
+def test_a_terminating_step_pays_the_bonus_less_that_sides_potential(side):
+    """The potential is zero at an absorbing state, so the step returns Phi(s) and no more."""
+    reward = LbgZeroSumReward(catch_radius_m=50.0, breach_radius_m=5.0, separation_cost=0.0)
+    cfg = _Cfg()
+    prev = _state(_CATCHING_GUARD, [[-400.0, 30.0, 0.0]])
+    nxt = _state(_CATCHING_GUARD, [[400.0, 30.0, 0.0]], step=1)
+    bonus = reward.r_catch if side is Side.GUARD else -reward.r_catch
+    expected = bonus - reward.shaping_gain * float(reward.potential(prev, side))
+    got = float(reward(prev, None, nxt, side, cfg, nxt.step))
+    assert got == pytest.approx(expected, abs=1e-3)
+
+
+def test_the_shaping_over_a_terminating_episode_is_a_constant_of_the_start():
+    """Telescoping with Phi(absorbing) = 0 leaves exactly -gain * Phi(s_0)."""
+    reward = LbgZeroSumReward(
+        shaping_discount=1.0,
+        r_catch=0.0,
+        r_breach=0.0,
+        separation_cost=0.0,
+        catch_radius_m=50.0,
+    )
+    cfg = _Cfg()
+    # A guard closing on a stationary bandit until the catch fires on the last step.
+    states = [
+        _state([[d, 0.0, 0.0]], [[1000.0, 0.0, 0.0]], step=i)
+        for i, d in enumerate([1600.0, 1400.0, 1200.0, 1040.0])
+    ]
+    total = sum(
+        float(reward(prev, None, nxt, Side.GUARD, cfg, nxt.step))
+        for prev, nxt in zip(states[:-1], states[1:], strict=True)
+    )
+    expected = -reward.shaping_gain * float(reward.potential(states[0], Side.GUARD))
+    assert total == pytest.approx(expected, abs=1e-3)
+
+
+def test_a_guard_parked_on_the_lady_leaves_the_bandit_a_positive_shaping_step():
+    """The GPU finding: a shared potential went flat here; a per-side one does not."""
+    reward = LbgZeroSumReward(r_catch=0.0, r_breach=0.0, breach_radius_m=5.0)
+    cfg = _Cfg()
+    approach = np.linspace(3000.0, 100.0, 30)
+    states = [_state([[0.0, 0.0, 0.0]], [[d, 0.0, 0.0]], step=i) for i, d in enumerate(approach)]
+    steps = [
+        float(reward(prev, None, nxt, Side.BANDIT, cfg, nxt.step))
+        for prev, nxt in zip(states[:-1], states[1:], strict=True)
+    ]
+    assert all(x > 0.0 for x in steps)
 
 
 def test_terminal_payoffs_are_zero_sum():
@@ -267,7 +321,7 @@ def test_terminal_payoffs_are_zero_sum():
 
 def test_repelled_step_pays_the_guard_the_catch_bonus():
     """A bandit driven beyond the escape radius pays the same as a catch."""
-    reward = LbgZeroSumReward(escape_radius_m=5000.0)
+    reward = LbgZeroSumReward(shaping_gain=0.0, escape_radius_m=5000.0)
     prev = _state(_FAR_GUARD, [[6000.0, 0.0, 0.0]])
     nxt = _state(_FAR_GUARD, [[6000.0, 10.0, 0.0]], step=1)
     guard, bandit = _rewards(reward, prev, nxt, _Cfg())
@@ -277,7 +331,7 @@ def test_repelled_step_pays_the_guard_the_catch_bonus():
 
 def test_repelled_and_termination_agree():
     """The reward pays the bonus on exactly the step the termination fires."""
-    reward = LbgZeroSumReward(escape_radius_m=5000.0)
+    reward = LbgZeroSumReward(shaping_gain=0.0, escape_radius_m=5000.0)
     term = LbgEventTermination(breach_radius_m=5.0, escape_radius_m=5000.0)
 
     inside_prev = _state(_FAR_GUARD, [[4000.0, 0.0, 0.0]])
@@ -378,3 +432,8 @@ def test_dv_cost_is_skipped_for_a_side_without_a_mass_component():
     )
     assert charged_bandit == pytest.approx(free_bandit)
     assert charged_guard < 0.0
+
+
+def test_a_nonpositive_shaping_scale_is_rejected():
+    with pytest.raises(ValueError, match="shaping_scale_m"):
+        LbgZeroSumReward(shaping_scale_m=0.0)

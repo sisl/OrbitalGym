@@ -20,6 +20,7 @@ Each side has its own potential, expressing what that side is trying to close:
     Phi_g(s) = (-d_guard_bandit_min - home_weight * d_guard_lady_min)
                / shaping_scale_m
     Phi_b(s) = -d_bandit_lady_min / shaping_scale_m
+    Phi_side(s) = 0                                   (s absorbing)
 
 so the guard's potential rises as it closes on the nearest bandit and — with
 ``home_weight`` above zero — as it stays near the lady it defends, while the
@@ -42,11 +43,18 @@ unchanged, whatever the potentials and gains, and that a side's shaped value is
 its unshaped value minus its own potential. ``shaping_gain = 0`` removes the
 term and leaves a terminal-only game.
 
-The shaping is therefore *not* zero-sum between the sides: the two potentials
-are unrelated functions and their differences do not cancel. The terminal
-payoffs remain exactly zero-sum, which is what makes the game a zero-sum game;
-the shaping only redistributes each side's own return along the path to the
-same equilibria.
+The potential is zero at an absorbing state, which is the remaining condition
+those results ask of an episodic game: on the step that terminates — a catch, a
+breach, or the bandits repelled — the shaping pays ``-gain * Phi(s)`` and
+nothing more, so a whole episode's shaping sums to ``-gain * Phi(s_0)``, a
+constant of the initial state, with no residual ``gain * g^T * Phi(s_T)`` left
+to bias which terminal state a side steers toward.
+
+The shaping is *not* zero-sum between the sides: the two potentials are
+unrelated functions and their differences do not cancel, so both sides can gain
+on the same step. The terminal payoffs remain exactly zero-sum, which is what
+makes the game a zero-sum game; the shaping only redistributes each side's own
+return along the path to the same equilibria.
 
 A search does not want the value identity applied at its leaves: subtracting a
 side's potential there would cancel the shaping that telescoped along the path
@@ -75,11 +83,12 @@ Catch and breach events come from
 :func:`orbitalgym.games.proximity.lbg_events` over the step from
 ``prev_state`` to ``next_state``, the same source
 :class:`~orbitalgym.termination.lbg_events.LbgEventTermination` reads, so a
-terminal bonus is paid in exactly the step the episode ends. The potentials and
-the separation cost are state functions of the step endpoints rather than of
-the within-step closest approach: the shaping differences a potential at
-``prev_state`` and ``next_state``, and the separation cost is charged on
-``next_state``, the configuration the step arrives at.
+terminal bonus is paid in exactly the step the episode ends, and the same
+booleans are what make ``next_state`` absorbing for the shaping. The potentials
+and the separation cost are otherwise state functions of the step endpoints
+rather than of the within-step closest approach: the shaping differences a
+potential at ``prev_state`` and ``next_state``, and the separation cost is
+charged on ``next_state``, the configuration the step arrives at.
 
 Lady is virtual — fixed at the RTN origin (the reference orbit). The reward is
 scope=PER_SIDE: returns a scalar per side and is JIT-friendly (no Python branches
@@ -100,6 +109,47 @@ from orbitalgym.registry import RewardFnKey, register
 from orbitalgym.rewards.base import RewardScope
 
 
+def lbg_distances(state) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """``(d_gb, d_bl, d_gl)`` minima from the vehicle positions in ``state``.
+
+    ``d_gb`` is the nearest guard-bandit distance over all pairs, ``d_bl`` the
+    nearest bandit-lady distance, and ``d_gl`` the nearest guard-lady distance.
+    Leading axes of the side states pass through. Both potentials and any value
+    estimate built on them read these three numbers, so computing them once and
+    passing them to :func:`lbg_potential_from_distances` avoids repeating the
+    pairwise reduction.
+    """
+    guards = positions(state.guards)
+    bandits = positions(state.bandits)
+    d_gb = jnp.min(
+        jnp.linalg.norm(guards[..., :, None, :] - bandits[..., None, :, :], axis=-1),
+        axis=(-2, -1),
+    )
+    d_bl = jnp.min(jnp.linalg.norm(bandits, axis=-1), axis=-1)
+    d_gl = jnp.min(jnp.linalg.norm(guards, axis=-1), axis=-1)
+    return d_gb, d_bl, d_gl
+
+
+def lbg_potential_from_distances(
+    side: Side,
+    d_gb: jax.Array,
+    d_bl: jax.Array,
+    d_gl: jax.Array,
+    shaping_scale_m: float,
+    home_weight: float,
+) -> jax.Array:
+    """The potential ``side`` sees, from distances already reduced.
+
+    The guard's is ``(-d_gb - home_weight * d_gl) / shaping_scale_m`` and the
+    bandit's is ``-d_bl / shaping_scale_m``, so each side's potential rises as
+    that side closes what it is chasing. ``home_weight`` reaches the guard's
+    potential only; the bandit's does not read where the guard is.
+    """
+    if side is Side.BANDIT:
+        return -d_bl / shaping_scale_m
+    return (-d_gb - home_weight * d_gl) / shaping_scale_m
+
+
 def lbg_potential(
     state,
     side: Side,
@@ -108,24 +158,12 @@ def lbg_potential(
 ) -> jax.Array:
     """The shaping potential ``side`` sees at ``state``.
 
-    The guard's is ``(-d_gb - home_weight * d_gl) / shaping_scale_m`` and the
-    bandit's is ``-d_bl / shaping_scale_m``, with ``d_gb`` the nearest
-    guard-bandit distance over all pairs, ``d_gl`` the nearest guard-lady
-    distance, and ``d_bl`` the nearest bandit-lady distance, all taken from the
-    vehicle positions in ``state``. Each side's potential rises as that side
-    closes what it is chasing. Leading axes of the side states pass through.
+    :func:`lbg_potential_from_distances` applied to :func:`lbg_distances`. The
+    potential is defined as zero at an absorbing state; the reward applies that
+    on the terminating transition rather than here, because whether a step
+    terminates is a property of the transition, not of the arriving state alone.
     """
-    bandits = positions(state.bandits)
-    if side is Side.BANDIT:
-        d_bl = jnp.min(jnp.linalg.norm(bandits, axis=-1), axis=-1)
-        return -d_bl / shaping_scale_m
-    guards = positions(state.guards)
-    d_gb = jnp.min(
-        jnp.linalg.norm(guards[..., :, None, :] - bandits[..., None, :, :], axis=-1),
-        axis=(-2, -1),
-    )
-    d_gl = jnp.min(jnp.linalg.norm(guards, axis=-1), axis=-1)
-    return (-d_gb - home_weight * d_gl) / shaping_scale_m
+    return lbg_potential_from_distances(side, *lbg_distances(state), shaping_scale_m, home_weight)
 
 
 def _hinge(d: jax.Array, radius_m: float) -> jax.Array:
@@ -164,7 +202,9 @@ class LbgZeroSumReward:
     gets a potential over the distance it is trying to close. The shaping gives
     each side a dense gradient toward the right behavior without moving the
     game's equilibria, while the terminal events dominate the cumulative return
-    when triggered.
+    when triggered. The potential is zero at an absorbing state, so the step
+    that ends the episode pays no shaping beyond returning the potential the
+    side had.
 
     ``shaping_scale_m`` is the distance that makes a potential unity,
     ``shaping_gain`` scales the shaping term (zero for a terminal-only game),
@@ -181,7 +221,7 @@ class LbgZeroSumReward:
     """
 
     shaping_scale_m: float = 300.0
-    shaping_gain: float = 1.0
+    shaping_gain: float = 50.0
     shaping_discount: float = 1.0
     home_weight: float = 0.0
     guard_separation_m: float = 20.0
@@ -197,6 +237,14 @@ class LbgZeroSumReward:
     repel_on_empty_tank: bool = False
     dv_cost: float = 0.0
     scope: RewardScope = RewardScope.PER_SIDE
+
+    def __post_init__(self):
+        if self.shaping_scale_m <= 0.0:
+            raise ValueError(
+                "shaping_scale_m divides every distance in the shaping potentials, "
+                f"so it must be a positive length in metres; got {self.shaping_scale_m!r}. "
+                "Set shaping_gain=0.0 to turn the shaping off instead."
+            )
 
     def potential(self, state, side: Side) -> jax.Array:
         """:func:`lbg_potential` for ``side`` at this reward's scale and home weight."""
@@ -248,9 +296,14 @@ class LbgZeroSumReward:
         guard_win = jnp.logical_or(caught, repelled).astype(jnp.float32)
         breach_event = breached.astype(jnp.float32)
 
+        # The potential is zero at an absorbing state, so a terminating step
+        # returns the whole of Phi(s) and the shaped return carries no residual
+        # gain * g^T * Phi(s_T). That is the condition under which the
+        # invariance is exact for an episodic game.
+        terminating = jnp.logical_or(jnp.logical_or(caught, breached), repelled)
+        phi_next = jnp.where(terminating, 0.0, self.potential(next_state, side))
         shaping = self.shaping_gain * (
-            self.shaping_discount * self.potential(next_state, side)
-            - self.potential(prev_state, side)
+            self.shaping_discount * phi_next - self.potential(prev_state, side)
         )
         fuel = self._fuel_cost(prev_state, next_state, side, params)
 

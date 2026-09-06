@@ -18,7 +18,7 @@ traj = rollout_single_agent(view, guard, lambda c, s, k: None,
 
 For a full walkthrough see [T1 — First rollout](../tutorials/t1-first-rollout.md).
 
-The guard defends the lady — a virtual point at the reference-orbit origin (the RTN frame) — from one or more bandits. The bandit wins by reaching within `breach_radius_m` of the lady; the guard wins by catching a bandit within `catch_radius_m`, or by repelling every bandit so none can threaten the lady again. Episode termination is event-driven (`LbgEventTermination`); the per-step reward is zero-sum (`LbgZeroSumReward`).
+The guard defends the lady — a virtual point at the reference-orbit origin (the RTN frame) — from one or more bandits. The bandit wins by reaching within `breach_radius_m` of the lady; the guard wins by catching a bandit within `catch_radius_m`, or by repelling every bandit so none can threaten the lady again. Episode termination is event-driven (`LbgEventTermination`); the reward (`LbgZeroSumReward`) pays zero-sum terminal payoffs on those events plus a per-side shaping term that is not zero-sum.
 
 ## What the reward shapes
 
@@ -40,6 +40,8 @@ A single zero-sum potential `(d_bl − d_gb)/L` reads more elegantly but is flat
 
 Only the *difference* of a side's potential is paid, which makes this potential-based shaping in the sense of [Ng, Harada and Russell (1999)](https://people.eecs.berkeley.edu/~russell/papers/ml99-shaping.pdf), applied per agent. [Devlin and Kudenko (AAMAS 2011)](https://dl.acm.org/doi/10.5555/2031678.2031716) show that giving each agent its own potential in a multi-agent setting leaves the Nash equilibria of the underlying game unchanged, whatever the potentials and gains, and that a side's shaped value is its unshaped value less its own potential when `shaping_discount` matches the planner's per-step discount. `shaping_gain=0` recovers a purely terminal game.
 
+Each potential is **zero at an absorbing state**, the remaining condition those results ask of an episodic game. On the step that terminates — a catch, a breach, or the bandits repelled, read from the same events the termination uses — the shaping pays `−shaping_gain·Φ_side(s)` and nothing more, so a whole episode's shaping sums to `−shaping_gain·Φ_side(s₀)`, a constant of the initial state, with no residual `shaping_gain·g^T·Φ_side(s_T)` left to bias which terminal state a side steers toward.
+
 Because the two potentials are unrelated functions, **the shaping is not zero-sum between the sides** — their differences do not cancel, and both sides can gain on the same step. The terminal payoffs stay exactly zero-sum, which is what makes this a zero-sum game; the shaping only redistributes each side's own return along the path to the same equilibria.
 
 Search leaves take the other side of the same equivalence. Shaping a reward with a potential and initializing values with that potential produce the same greedy behavior (Wiewiora 2003), so the leaf values in `orbitalgym.policies.leaf_values` *add* `shaping_gain·Φ_side` to their terminal estimate. Subtracting it would cancel the shaping that telescoped along the search path and leave the ranking with the terminal estimate alone.
@@ -51,9 +53,9 @@ Two further terms are genuine per-side costs rather than shaping, and they *do* 
 - **Fuel.** With `dv_cost > 0` each side pays `dv_cost` reward units per m/s of delta-v **its own** vehicles spent over the step, recovered from the propellant drawn down through the rocket equation rather than from the commanded impulse — thrust limits and an empty tank both clip a command, so the commanded magnitude would overstate the spend. A side whose state carries no `MASS` component has no propellant trace and pays nothing.
 - **Separation.** The guard side alone pays `separation_cost·(1 − d/r)²` for every guard pair closer than `r = guard_separation_m` and for every guard closer than `r = lady_keepout_m` to the lady. The charge is zero at the radius, grows quadratically inward, and reaches `separation_cost` at zero distance. It buys a spread-out formation that does not fly through the asset it protects. A one-guard side has no pairs and pays only the lady term.
 
-Neither cost is mirrored, so each side bears only what it incurs and the geometry terms stay zero-sum.
+Neither cost is mirrored, so each side bears only what it incurs. Of the four terms, only the terminal payoffs are zero-sum.
 
-`shaping_scale_m=300.0`, `shaping_gain=1.0`, `shaping_discount=1.0`, `home_weight=0.0`, `guard_separation_m=lady_keepout_m=20.0`, `separation_cost=10.0`, `R_catch=R_breach=1000.0`, `dv_cost=0.0` by default; the radii and the speed gates come from `cfg.game`. The potential and the separation cost are state functions read off the step endpoints; the catch and breach events are resolved over the whole step, and the reward and the termination read the same ones, so a terminal bonus is paid in exactly the step the episode ends.
+`shaping_scale_m=300.0`, `shaping_gain=50.0`, `shaping_discount=1.0`, `home_weight=0.0`, `guard_separation_m=lady_keepout_m=20.0`, `separation_cost=10.0`, `R_catch=R_breach=1000.0`, `dv_cost=0.0` by default; `shaping_scale_m` must be positive. The radii and the speed gates come from `cfg.game`. The potentials and the separation cost are state functions read off the step endpoints; the catch and breach events are resolved over the whole step, and the reward and the termination read the same ones, so a terminal bonus is paid in exactly the step the episode ends and the same booleans are what make the arriving state absorbing for the shaping.
 
 ## Termination
 
@@ -95,7 +97,7 @@ cfg = make_lady_bandit_guard(
     repel_on_empty_tank=False,
     dv_cost=0.0,
     shaping_scale_m=300.0,
-    shaping_gain=1.0,
+    shaping_gain=50.0,
     shaping_discount=1.0,
     home_weight=0.0,
     guard_separation_m=20.0,
@@ -158,7 +160,7 @@ explicit `reward_fn` that scores both.
 
 - **Sanity baseline.** Run with zero control on both sides — neither side wins, the episode ends at `max_steps` and cumulative return is dominated by the dense distance terms.
 - **Bandit attack.** Wire `examples/policies/lqr_bandit.py`'s `LQRBanditPolicy` as the bandit's policy — the bandit closes on the lady; the zero-control guard should eventually lose by breach.
-- **Guard interception.** Train a guard policy (e.g. MCTS, see `examples/lbg_ring_intercept.ipynb`) to maximize zero-sum return — the guard should learn to close on the bandit before it reaches the lady.
+- **Guard interception.** Train a guard policy (e.g. MCTS, see `examples/lbg_ring_intercept.ipynb`) to maximize guard return — the guard should learn to close on the bandit before it reaches the lady.
 
 ## Variants
 

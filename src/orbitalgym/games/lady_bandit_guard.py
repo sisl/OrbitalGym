@@ -56,7 +56,9 @@ class LadyBanditGuard(Game):
             for its own fuel; a side without a MASS component pays nothing.
         shaping_scale_m: distance that makes the shaping potential unity.
         shaping_gain: scale on the potential-difference shaping term. Zero
-            leaves a terminal-only reward.
+            leaves a terminal-only reward. The default is large enough that the
+            shaping steers a horizon-limited planner rather than being lost
+            under the terminal payoffs.
         shaping_discount: discount inside the potential difference. Matching
             the planner's per-step discount makes the shaped value exactly
             the unshaped value minus the potential.
@@ -79,7 +81,7 @@ class LadyBanditGuard(Game):
     repel_on_empty_tank: bool = False
     dv_cost: float = 0.0
     shaping_scale_m: float = 300.0
-    shaping_gain: float = 1.0
+    shaping_gain: float = 50.0
     shaping_discount: float = 1.0
     home_weight: float = 0.0
     guard_separation_m: float = 20.0
@@ -87,6 +89,12 @@ class LadyBanditGuard(Game):
     separation_cost: float = 10.0
 
     def validate(self, cfg: Any) -> None:
+        if self.shaping_scale_m <= 0.0:
+            raise ValueError(
+                "shaping_scale_m divides every distance in the shaping potentials, "
+                f"so it must be a positive length in metres; got {self.shaping_scale_m!r}. "
+                "Set shaping_gain=0.0 to turn the shaping off instead."
+            )
         if not self.repel_on_empty_tank:
             return
         if cfg.truth_dynamics is not DynamicsKey.HCW_RTN:
@@ -154,7 +162,7 @@ _COMMS_UNSUPPORTED_DEFAULTS = {
     "repel_on_empty_tank": False,
     "dv_cost": 0.0,
     "shaping_scale_m": 300.0,
-    "shaping_gain": 1.0,
+    "shaping_gain": 50.0,
     "shaping_discount": 1.0,
     "home_weight": 0.0,
     "guard_separation_m": 20.0,
@@ -174,7 +182,7 @@ def make_lady_bandit_guard(
     repel_on_empty_tank: bool = False,
     dv_cost: float = 0.0,
     shaping_scale_m: float = 300.0,
-    shaping_gain: float = 1.0,
+    shaping_gain: float = 50.0,
     shaping_discount: float = 1.0,
     home_weight: float = 0.0,
     guard_separation_m: float = 20.0,
