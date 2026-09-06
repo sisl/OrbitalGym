@@ -33,9 +33,13 @@ unshaped games coincide, whatever the gain, and the shaped value function is
     V'(s) = V(s) - Phi(s)
 
 when the shaping discount matches the planner's. ``shaping_gain = 0`` removes
-the term and leaves a terminal-only reward. That identity is what
-:mod:`orbitalgym.policies.leaf_values` uses to keep search leaves on the
-shaped scale.
+the term and leaves a terminal-only reward.
+
+A search does not want that identity applied at its leaves, though: subtracting
+Phi there would cancel the shaping that telescoped along the path and leave the
+ranking with the terminal estimate alone. :mod:`orbitalgym.policies.leaf_values`
+uses the value-initialization equivalence instead and *adds* the potential, so
+Phi guides the search without accumulating along a path.
 
 The remaining two terms are deliberate per-side costs, *not* shaping, and they
 do change the optimal policies:

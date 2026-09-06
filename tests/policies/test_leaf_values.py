@@ -99,21 +99,36 @@ def test_the_two_sides_are_exact_mirrors():
     assert guard + bandit == pytest.approx(0.0, abs=1e-4)
 
 
-def test_the_leaf_is_the_terminal_estimate_less_the_potential():
-    """``V' = V - Phi``: the shaped leaf is the unshaped one minus the potential."""
+def test_the_leaf_is_the_terminal_estimate_plus_the_potential():
+    """The value-initialization form: the leaf carries Phi rather than cancelling it."""
     adapter = _adapter()
     s = _state_with(adapter, guard_r=-1000.0, bandit_r=800.0)
-    unshaped = float(guard_leaf_value(adapter, **dict(PARAMS, shaping_gain=0.0))(s))
-    shaped = float(guard_leaf_value(adapter, **PARAMS)(s))
-    assert shaped == pytest.approx(unshaped - SHAPING_GAIN * _potential(adapter, s), abs=1e-3)
+    bare = float(guard_leaf_value(adapter, **dict(PARAMS, shaping_gain=0.0))(s))
+    with_phi = float(guard_leaf_value(adapter, **PARAMS)(s))
+    assert with_phi == pytest.approx(bare + SHAPING_GAIN * _potential(adapter, s), abs=1e-3)
 
 
-def test_the_gain_scales_the_potential_correction():
+def test_the_gain_scales_the_potential_the_leaf_carries():
     adapter = _adapter()
     s = _state_with(adapter, guard_r=-1000.0, bandit_r=800.0)
-    unshaped = float(guard_leaf_value(adapter, **dict(PARAMS, shaping_gain=0.0))(s))
+    bare = float(guard_leaf_value(adapter, **dict(PARAMS, shaping_gain=0.0))(s))
     doubled = float(guard_leaf_value(adapter, **dict(PARAMS, shaping_gain=2.0))(s))
-    assert doubled == pytest.approx(unshaped - 2.0 * _potential(adapter, s), abs=1e-3)
+    assert doubled == pytest.approx(bare + 2.0 * _potential(adapter, s), abs=1e-3)
+
+
+def test_the_potential_ranks_leaves_whose_terminal_estimates_are_equal():
+    """Beyond the leaf horizon both bonuses weigh nothing and only Phi separates states."""
+    adapter = _adapter(discount=1.0)
+    value = guard_leaf_value(adapter, **PARAMS)
+    # Both events sit past N * v_close * macro_dt, so both weights are zero.
+    close = _state_with(adapter, guard_r=-1000.0, bandit_r=3000.0)
+    distant = _state_with(adapter, guard_r=-3000.0, bandit_r=3000.0)
+    bare = guard_leaf_value(adapter, **dict(PARAMS, shaping_gain=0.0))
+    assert float(bare(close)) == pytest.approx(float(bare(distant)), abs=1e-9)
+    assert float(value(close)) > float(value(distant))
+    assert float(value(close)) - float(value(distant)) == pytest.approx(
+        SHAPING_GAIN * (_potential(adapter, close) - _potential(adapter, distant)), abs=1e-4
+    )
 
 
 def test_values_reduce_to_the_potential_at_huge_distances():
@@ -123,8 +138,8 @@ def test_values_reduce_to_the_potential_at_huge_distances():
     s = _state_with(adapter, guard_r=-d, bandit_r=d)
     phi = _potential(adapter, s)
 
-    assert jnp.allclose(guard_leaf_value(adapter, **PARAMS)(s), -SHAPING_GAIN * phi)
-    assert jnp.allclose(bandit_leaf_value(adapter, **PARAMS)(s), SHAPING_GAIN * phi)
+    assert jnp.allclose(guard_leaf_value(adapter, **PARAMS)(s), SHAPING_GAIN * phi)
+    assert jnp.allclose(bandit_leaf_value(adapter, **PARAMS)(s), -SHAPING_GAIN * phi)
 
 
 def test_terminal_bonus_is_undiscounted_inside_the_radius():
@@ -134,7 +149,7 @@ def test_terminal_bonus_is_undiscounted_inside_the_radius():
     # from the lady: t_catch is zero, so r_catch is paid in full.
     s = _state_with(adapter, guard_r=1.0e7, bandit_r=1.0e7)
     t_breach = (1.0e7 - BREACH_RADIUS_M) / (V_CLOSE * adapter.macro_dt)
-    expected = R_CATCH - R_BREACH * g**t_breach - SHAPING_GAIN * _potential(adapter, s)
+    expected = R_CATCH - R_BREACH * g**t_breach + SHAPING_GAIN * _potential(adapter, s)
     assert jnp.allclose(guard_leaf_value(adapter, **PARAMS)(s), expected)
 
 
@@ -166,11 +181,11 @@ def test_undiscounted_terminal_terms_vary_with_distance():
     near = float(value(s_near))
     far = float(value(s_far))
     # Both catches sit inside the horizon, so only the catch weight and the
-    # potential differ; the catch weight moves by far more than the potential.
+    # potential differ, and they pull the same way.
     gap = R_CATCH * (
         _linear_weight(max(20.0 - CATCH_RADIUS_M, 0.0) / per_macro_step_m)
         - _linear_weight((200.0 - CATCH_RADIUS_M) / per_macro_step_m)
-    ) - SHAPING_GAIN * (_potential(adapter, s_near) - _potential(adapter, s_far))
+    ) + SHAPING_GAIN * (_potential(adapter, s_near) - _potential(adapter, s_far))
     assert near > far
     assert jnp.allclose(near - far, gap)
 

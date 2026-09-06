@@ -35,7 +35,9 @@ The state potential, written with the guard's sign, is
 
 so it rises as the guard closes on a bandit, falls as a bandit closes on the lady, and — with `home_weight` above zero — rewards a guard that stays near the asset it defends. `shaping_scale_m` sets the distance that makes the potential unity, keeping the shaping reward order one per step.
 
-Only the *difference* of the potential is paid, which makes this potential-based shaping in the sense of [Ng, Harada and Russell (1999)](https://people.eecs.berkeley.edu/~russell/papers/ml99-shaping.pdf): the optimal policies of the shaped and the terminal-only game are identical whatever the gain, and the shaped value satisfies `V′(s) = V(s) − Φ(s)` when `shaping_discount` matches the planner's per-step discount. `shaping_gain=0` recovers a purely terminal reward. The leaf values in `orbitalgym.policies.leaf_values` apply exactly that correction, so search leaves and rollout returns stay on the same scale.
+Only the *difference* of the potential is paid, which makes this potential-based shaping in the sense of [Ng, Harada and Russell (1999)](https://people.eecs.berkeley.edu/~russell/papers/ml99-shaping.pdf): the optimal policies of the shaped and the terminal-only game are identical whatever the gain, and the shaped value satisfies `V′(s) = V(s) − Φ(s)` when `shaping_discount` matches the planner's per-step discount. `shaping_gain=0` recovers a purely terminal reward.
+
+Search leaves take the other side of the same equivalence. Shaping a reward with Φ and initializing values with Φ produce the same greedy behavior (Wiewiora 2003), so the leaf values in `orbitalgym.policies.leaf_values` *add* `shaping_gain·Φ` to their terminal estimate. Subtracting it would cancel the shaping that telescoped along the search path and leave the ranking with the terminal estimate alone.
 
 Repelling the bandits pays the guard exactly what a catch pays: either way the bandit team is out of the fight, so the guard is indifferent between intercepting a bandit and driving it off.
 
