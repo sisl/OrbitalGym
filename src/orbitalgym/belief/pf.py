@@ -616,7 +616,7 @@ class ParticleFilterRingInitializer:
     ----------
     layout:
         ``cfg.layout`` from a built ``ScenarioConfig``.
-    ring_radius_m:
+    ring_radius_m (scalar, or one radius per opposing vehicle):
         Radial-ellipse semi-major axis (matches the bandit's
         ``RelativeEllipse.radial_ellipse_m``). Along-track amplitude is
         2× this under HCW 2:1 motion.
@@ -632,7 +632,7 @@ class ParticleFilterRingInitializer:
     """
 
     layout: Any
-    ring_radius_m: float
+    ring_radius_m: float | jax.Array
     mean_motion_rad_s: float
     n_particles: int
     truth_jitter_scale: float = 1e-3
@@ -662,7 +662,7 @@ class ParticleFilterRingInitializer:
         phases = jax.random.uniform(k_phase, phase_shape, minval=0.0, maxval=2.0 * jnp.pi)
         cp = jnp.cos(phases)
         sp = jnp.sin(phases)
-        a = self.ring_radius_m
+        a = jnp.reshape(jnp.asarray(self.ring_radius_m, dtype=cp.dtype), (1, -1, 1))
         n_motion = self.mean_motion_rad_s
         # Closed-form natural-motion ring (matches sampling.side.RelativeEllipse,
         # along_track_offset_m=0, drift=0):
