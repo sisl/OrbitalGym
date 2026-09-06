@@ -18,7 +18,17 @@ or pass the flat state directly when calling the policy manually.
 
 ### Search policies
 
+Both planners take a `coordination` mode for multi-vehicle teams. `"joint"`
+plans the whole fleet at once: one MCTS tree over the joint action space, or
+one MPPI sampler over the fleet's Delta-v sequence. `"independent"` plans one
+vehicle at a time and models the teammates with `teammate_model`, the
+same-side analogue of `opponent_model`; cost then grows linearly rather than
+exponentially in the fleet size, and the per-vehicle results are stacked into
+one command. The modes coincide for a single vehicle.
+
 ::: orbitalgym.policies.mcts.MCTSPolicy
+
+::: orbitalgym.policies.mppi.MPPIPolicy
 
 ### Heuristic-policy gallery
 

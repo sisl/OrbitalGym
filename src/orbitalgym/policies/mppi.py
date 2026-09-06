@@ -6,13 +6,35 @@ them by negative discounted side reward (plus an optional discounted terminal
 value), standardizes the costs by their spread, and updates the mean with
 softmax weights at ``temperature`` applied to the standardized costs. The mean
 sequence is the policy state, shifted by one step after each call.
+
+Multi-vehicle teams (``n_vehicles > 1``):
+
+- ``coordination="joint"`` (default) — one sampler over the whole fleet's
+  Delta-v sequence, shape ``(horizon, n_vehicles, dv_dim)``. Every sample
+  perturbs all vehicles at once, so the weighted mean is a coordinated plan.
+- ``coordination="independent"`` — one sampler per own vehicle, vmapped over
+  the fleet. Vehicle ``i`` perturbs only its own ``(horizon, dv_dim)``
+  sequence; its teammates' Delta-v at every rollout step comes from
+  ``teammate_model``, the same-side analogue of ``opponent_model``. The
+  per-vehicle first actions are stacked into one fleet command. Sampling cost
+  is linear in ``n_vehicles`` and each vehicle keeps its own warm start (its
+  slice of the shared mean array), at the price of no coordination between
+  teammates.
+
+For ``n_vehicles == 1`` the two modes are the same computation, and the
+independent mode dispatches to the joint path so the results match exactly.
+
+``teammate_model`` is evaluated at every rollout step rather than once at the
+root: it costs one policy evaluation per step, the same order as the opponent
+model already on that path, and it keeps the modelled teammates reactive to
+the trajectory each sample explores.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import jax
 import jax.numpy as jnp
@@ -34,7 +56,10 @@ def _clip_norm(u: jax.Array, dv_max: float) -> jax.Array:
 @register(PolicyKey.MPPI)
 @dataclass(frozen=True)
 class MPPIPolicy:
-    """Sampling-based receding-horizon planner conforming to the Policy protocol."""
+    """Sampling-based receding-horizon planner conforming to the Policy protocol.
+
+    See the module docstring for the joint and independent coordination modes.
+    """
 
     env_model: Any
     side: Side
@@ -52,11 +77,36 @@ class MPPIPolicy:
     command_cls: Any = None
     template_env_state: Any = None
 
+    # Multi-vehicle coordination. "joint" samples the whole fleet's Delta-v
+    # sequence at once; "independent" runs one sampler per own vehicle with
+    # teammates modelled by `teammate_model`. Equivalent for n_vehicles == 1.
+    coordination: Literal["joint", "independent"] = "joint"
+    # Required when coordination=="independent" and n_vehicles>1. A Policy
+    # whose `__call__` outputs the whole self-side fleet's per-vehicle Delta-v;
+    # the planning vehicle's slot is overwritten by its sampled Delta-v.
+    teammate_model: Any = None
+
     def __post_init__(self) -> None:
         if self.command_cls is None or self.n_vehicles == 0:
             raise ValueError("MPPIPolicy requires command_cls and n_vehicles > 0")
         if self.temperature <= 0.0:
             raise ValueError("temperature must be positive")
+        if self.coordination not in ("joint", "independent"):
+            raise ValueError(
+                f"MPPIPolicy.coordination must be 'joint' or 'independent', "
+                f"got {self.coordination!r}."
+            )
+        if (
+            self.coordination == "independent"
+            and self.n_vehicles > 1
+            and self.teammate_model is None
+        ):
+            raise ValueError(
+                "coordination='independent' with n_vehicles>1 requires a "
+                "`teammate_model` (a Policy returning the whole self side's "
+                "Delta-v during the rollouts). ZeroControl(n_vehicles=n_self, "
+                "command_cls=env.<side>_command_cls) is a cheap default."
+            )
 
     @property
     def dv_dim(self) -> int:
@@ -76,16 +126,32 @@ class MPPIPolicy:
             raise ValueError("MPPIPolicy needs template_env_state to plan from a belief view")
         return belief_mean_to_flat_state(mean, self.side, self.env_model, self.template_env_state)
 
-    def _rollout_cost(self, s0: jax.Array, u_seq: jax.Array, key: jax.Array) -> jax.Array:
+    def _rollout_cost(
+        self,
+        s0: jax.Array,
+        u_seq: jax.Array,
+        key: jax.Array,
+        self_index: jax.Array | None = None,
+    ) -> jax.Array:
+        """Discounted cost of one sampled control sequence.
+
+        ``self_index`` picks the mode. ``None`` means ``u_seq`` is the whole
+        fleet's ``(horizon, n_vehicles, dv_dim)`` sequence. An index means
+        ``u_seq`` is that one vehicle's ``(horizon, dv_dim)`` sequence and the
+        rest of the fleet is driven by ``teammate_model``.
+        """
         adapter = self.env_model
         env = adapter.env
-        opp_side = self.side.opposite()
+        side = self.side
+        opp_side = side.opposite()
+        self_obs_fn = env.guard_observation_fn if side is Side.GUARD else env.bandit_observation_fn
         opp_obs_fn = (
             env.guard_observation_fn if opp_side is Side.GUARD else env.bandit_observation_fn
         )
         opp_cls = env.guard_command_cls if opp_side is Side.GUARD else env.bandit_command_cls
         n_opp = env.config.n_guards if opp_side is Side.GUARD else env.config.n_bandits
         own_template = self.command_cls.zeros(self.n_vehicles)
+        teammate_model = self.teammate_model
         identity = Actions(
             sides=BySide(
                 guard=env.guard_command_cls.zeros(env.config.n_guards),
@@ -93,22 +159,32 @@ class MPPIPolicy:
             )
         )
 
+        def own_dv(s: jax.Array, u: jax.Array, k: jax.Array) -> jax.Array:
+            """Whole self-side Delta-v for one step. Shape ``(n_vehicles, dv_dim)``."""
+            if self_index is None:
+                return u.astype(own_template.dv.dtype)
+            state = adapter.unpack(s)
+            self_obs = self_obs_fn(state, identity, side, env.config, k, state.t)
+            cmd, _ = teammate_model(None, flatten_observations(self_obs), k, state.t)
+            fleet = cmd.dv.astype(own_template.dv.dtype)
+            return fleet.at[self_index].set(u.astype(fleet.dtype))
+
         def step(carry, inputs):
             (s,) = carry
             u, k = inputs
-            k_opp, k_step = jax.random.split(k)
+            k_opp, k_team, k_step = jax.random.split(k, 3)
             state = adapter.unpack(s)
             opp_obs = opp_obs_fn(state, identity, opp_side, env.config, k_opp, state.t)
             opp_cmd, _ = self.opponent_model(None, flatten_observations(opp_obs), k_opp, state.t)
-            own_cmd = own_template.replace(dv=u.astype(own_template.dv.dtype))
+            own_cmd = own_template.replace(dv=own_dv(s, u, k_team))
             opp_flat = flatten_command(opp_cls.zeros(n_opp).replace(dv=opp_cmd.dv))
             own_flat = flatten_command(own_cmd)
             a_flat = (
                 jnp.concatenate([own_flat, opp_flat])
-                if self.side is Side.GUARD
+                if side is Side.GUARD
                 else jnp.concatenate([opp_flat, own_flat])
             )
-            s_next, r = adapter.step(s, a_flat, k_step, self.side)
+            s_next, r = adapter.step(s, a_flat, k_step, side)
             return (s_next,), r
 
         keys = jax.random.split(key, self.horizon)
@@ -122,10 +198,15 @@ class MPPIPolicy:
             ) ** self.horizon * self.terminal_value_fn(s_h)
         return cost
 
-    def __call__(self, policy_state: Any, agent_view: Any, key: jax.Array, t: jax.Array):
-        del t
-        s0 = self._flat_state(agent_view)
-        u_mean = policy_state if policy_state is not None else self.init_state()
+    def _weighted_mean(self, u: jax.Array, costs: jax.Array) -> jax.Array:
+        """Softmax-weighted average of the sampled sequences ``u`` over its leading axis."""
+        centered = costs - jnp.min(costs)
+        scale = jnp.maximum(jnp.std(costs), 1e-6)
+        weights = jax.nn.softmax(-centered / (scale * self.temperature))
+        return jnp.tensordot(weights, u, axes=(0, 0))
+
+    def _plan_joint(self, s0: jax.Array, u_mean: jax.Array, key: jax.Array) -> jax.Array:
+        """One sampler over the fleet. ``u_mean`` and the result are ``(H, n, dv_dim)``."""
         k_noise, k_roll = jax.random.split(key)
         eps = self.noise_sigma * jax.random.normal(
             k_noise, (self.n_samples,) + u_mean.shape, u_mean.dtype
@@ -133,10 +214,41 @@ class MPPIPolicy:
         u = _clip_norm(u_mean[None] + eps, self.dv_max)  # (K, H, n, dv_dim)
         roll_keys = jax.random.split(k_roll, self.n_samples)
         costs = jax.vmap(lambda uk, kk: self._rollout_cost(s0, uk, kk))(u, roll_keys)
-        centered = costs - jnp.min(costs)
-        scale = jnp.maximum(jnp.std(costs), 1e-6)
-        weights = jax.nn.softmax(-centered / (scale * self.temperature))
-        u_new = jnp.einsum("k,khnd->hnd", weights, u).astype(u_mean.dtype)
+        return self._weighted_mean(u, costs).astype(u_mean.dtype)
+
+    def _plan_one_vehicle(
+        self,
+        s0: jax.Array,
+        u_mean_i: jax.Array,
+        key: jax.Array,
+        self_index: jax.Array,
+    ) -> jax.Array:
+        """Sampler for one vehicle. ``u_mean_i`` and the result are ``(H, dv_dim)``."""
+        k_noise, k_roll = jax.random.split(key)
+        eps = self.noise_sigma * jax.random.normal(
+            k_noise, (self.n_samples,) + u_mean_i.shape, u_mean_i.dtype
+        )
+        u = _clip_norm(u_mean_i[None] + eps, self.dv_max)  # (K, H, dv_dim)
+        roll_keys = jax.random.split(k_roll, self.n_samples)
+        costs = jax.vmap(lambda uk, kk: self._rollout_cost(s0, uk, kk, self_index))(u, roll_keys)
+        return self._weighted_mean(u, costs).astype(u_mean_i.dtype)
+
+    def _plan_independent(self, s0: jax.Array, u_mean: jax.Array, key: jax.Array) -> jax.Array:
+        """One sampler per own vehicle. ``u_mean`` and the result are ``(H, n, dv_dim)``."""
+        keys = jax.random.split(key, self.n_vehicles)
+        per_vehicle = jax.vmap(self._plan_one_vehicle, in_axes=(None, 1, 0, 0))(
+            s0, u_mean, keys, jnp.arange(self.n_vehicles)
+        )  # (n, H, dv_dim)
+        return jnp.swapaxes(per_vehicle, 0, 1)
+
+    def __call__(self, policy_state: Any, agent_view: Any, key: jax.Array, t: jax.Array):
+        del t
+        s0 = self._flat_state(agent_view)
+        u_mean = policy_state if policy_state is not None else self.init_state()
+        if self.coordination == "joint" or self.n_vehicles == 1:
+            u_new = self._plan_joint(s0, u_mean, key)
+        else:
+            u_new = self._plan_independent(s0, u_mean, key)
         action = u_new[0]
         next_state = jnp.concatenate([u_new[1:], jnp.zeros_like(u_new[:1])], axis=0)
         cmd = self.command_cls.zeros(self.n_vehicles).replace(
