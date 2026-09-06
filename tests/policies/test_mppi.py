@@ -2,6 +2,7 @@
 
 import jax
 import jax.numpy as jnp
+import pytest
 
 from orbitalgym import OrbitalGymEnv, Side, make_lady_bandit_guard
 from orbitalgym.adapters.pomdp import POMDPAdapter
@@ -9,7 +10,7 @@ from orbitalgym.belief.pf import ParticleFilterFromTruthInitializer
 from orbitalgym.env.types import Actions, BySide
 from orbitalgym.eval.conformance import check_policy_conforms
 from orbitalgym.policies.leaf_values import bandit_leaf_value_from_game
-from orbitalgym.policies.mppi import MPPIPolicy
+from orbitalgym.policies.mppi import MPPIPolicy, _clip_norm
 from orbitalgym.policies.zero import ZeroControl
 from orbitalgym.sampling.mass import ConstantMass
 from orbitalgym.sampling.side import RelativeEllipse
@@ -121,4 +122,111 @@ def test_mppi_conforms_with_belief_views():
     belief_policy = policy.__class__(**{**policy.__dict__, "template_env_state": template})
     init = ParticleFilterFromTruthInitializer(layout=env.layout, n_particles=8)
     report = check_policy_conforms(belief_policy, env, Side.BANDIT, init)
+    assert report.command_ok and report.traceable and report.rollout_ok, report.message
+
+
+def _build_multi(
+    n_guards=2,
+    n_bandits=1,
+    coordination="joint",
+    with_teammate=True,
+    n_samples=16,
+    horizon=3,
+):
+    """Guard-side MPPI over a fleet, with a zero bandit opponent model."""
+    cfg = make_lady_bandit_guard(seed=0, n_guards=n_guards, n_bandits=n_bandits)
+    env = OrbitalGymEnv(cfg)
+    adapter = POMDPAdapter(env)
+    state, _ = env.reset(jax.random.PRNGKey(0))
+    teammate = ZeroControl(n_vehicles=n_guards, command_cls=env.guard_command_cls)
+    policy = MPPIPolicy(
+        env_model=adapter,
+        side=Side.GUARD,
+        opponent_model=ZeroControl(n_vehicles=n_bandits, command_cls=env.bandit_command_cls),
+        n_samples=n_samples,
+        horizon=horizon,
+        temperature=0.05,
+        noise_sigma=0.3,
+        dv_max=0.5,
+        n_vehicles=n_guards,
+        command_cls=env.guard_command_cls,
+        coordination=coordination,
+        teammate_model=teammate if with_teammate else None,
+    )
+    return env, adapter, policy, state, cfg
+
+
+def test_mppi_joint_and_independent_share_command_shape():
+    n_g = 2
+    env, adapter, p_joint, state, _ = _build_multi(n_guards=n_g, coordination="joint")
+    _, _, p_ind, _, _ = _build_multi(n_guards=n_g, coordination="independent")
+    s = adapter.pack(state)
+    cmd_j, ps_j = p_joint(None, s, jax.random.PRNGKey(7), state.t)
+    cmd_i, ps_i = p_ind(None, s, jax.random.PRNGKey(7), state.t)
+    expected = env.guard_command_cls.zeros(n_g).dv.shape
+    assert cmd_j.dv.shape == expected
+    assert cmd_i.dv.shape == expected
+    assert ps_j.shape == ps_i.shape == (p_joint.horizon, n_g, p_joint.dv_dim)
+
+
+def test_mppi_independent_equals_single_vehicle_mppi_with_zero_teammate():
+    """With a zero teammate model, vehicle ``i``'s plan must equal a single-vehicle
+    MPPI that perturbs only slot ``i`` of a fleet whose other slots are frozen at
+    zero. The reference below scores its samples with the *joint* rollout, so the
+    match holds when the independent rollout wiring and the per-vehicle key split
+    (``jax.random.split(key, n_vehicles)[i]``) are correct. The tolerance covers
+    float reassociation only: the policy vmaps its sampler over vehicles while
+    the reference runs one vehicle at a time."""
+    n_g = 2
+    _, adapter, p_ind, state, _ = _build_multi(n_guards=n_g, coordination="independent")
+    _, _, p_joint, _, _ = _build_multi(n_guards=n_g, coordination="joint")
+    s = adapter.pack(state)
+    key = jax.random.PRNGKey(11)
+    u_mean = p_ind.init_state()
+    cmd, _ = p_ind(u_mean, s, key, state.t)
+
+    per_vehicle_keys = jax.random.split(key, n_g)
+    for i in range(n_g):
+        k_noise, k_roll = jax.random.split(per_vehicle_keys[i])
+        shape = (p_ind.n_samples, p_ind.horizon, p_ind.dv_dim)
+        eps = p_ind.noise_sigma * jax.random.normal(k_noise, shape, u_mean.dtype)
+        u = _clip_norm(u_mean[None, :, i, :] + eps, p_ind.dv_max)
+        fleet = jnp.zeros((p_ind.n_samples, p_ind.horizon, n_g, p_ind.dv_dim), u.dtype)
+        fleet = fleet.at[:, :, i, :].set(u)
+        roll_keys = jax.random.split(k_roll, p_ind.n_samples)
+        costs = jax.vmap(lambda uk, kk: p_joint._rollout_cost(s, uk, kk))(fleet, roll_keys)
+        weights = jax.nn.softmax(
+            -(costs - jnp.min(costs)) / (jnp.maximum(jnp.std(costs), 1e-6) * p_ind.temperature)
+        )
+        reference = jnp.tensordot(weights, u, axes=(0, 0))[0]
+        assert jnp.allclose(cmd.dv[i], reference.astype(cmd.dv.dtype), rtol=1e-6, atol=1e-7)
+
+
+def test_mppi_independent_matches_joint_for_one_vehicle():
+    _, adapter, p_joint, state, _ = _build_multi(n_guards=1, coordination="joint")
+    _, _, p_ind, _, _ = _build_multi(n_guards=1, coordination="independent")
+    s = adapter.pack(state)
+    cmd_j, ps_j = p_joint(None, s, jax.random.PRNGKey(13), state.t)
+    cmd_i, ps_i = p_ind(None, s, jax.random.PRNGKey(13), state.t)
+    assert jnp.array_equal(cmd_j.dv, cmd_i.dv)
+    assert jnp.array_equal(ps_j, ps_i)
+
+
+def test_mppi_independent_requires_teammate_model_when_multi_vehicle():
+    with pytest.raises(ValueError, match="teammate_model"):
+        _build_multi(n_guards=2, coordination="independent", with_teammate=False)
+
+
+def test_mppi_unknown_coordination_raises():
+    with pytest.raises(ValueError, match="coordination"):
+        _build_multi(n_guards=2, coordination="frobnicate")
+
+
+@pytest.mark.parametrize("coordination", ["joint", "independent"])
+def test_mppi_conforms_in_both_coordination_modes(coordination):
+    env, _, policy, _, _ = _build_multi(n_guards=2, coordination=coordination)
+    template, _ = env.reset(jax.random.PRNGKey(0))
+    belief_policy = policy.__class__(**{**policy.__dict__, "template_env_state": template})
+    init = ParticleFilterFromTruthInitializer(layout=env.layout, n_particles=8)
+    report = check_policy_conforms(belief_policy, env, Side.GUARD, init)
     assert report.command_ok and report.traceable and report.rollout_ok, report.message
