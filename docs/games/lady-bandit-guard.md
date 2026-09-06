@@ -22,26 +22,31 @@ The guard defends the lady — a virtual point at the reference-orbit origin (th
 
 ## What the reward shapes
 
-`LbgZeroSumReward` mirrors guard and bandit signals every step:
+`LbgZeroSumReward` pays each side a shaping term plus the mirrored terminal events:
 
-- **Guard**: `shaping_gain·(g·Φ(s′) − Φ(s)) + R_catch·1[catch or repelled] − R_breach·1[breach]`.
-- **Bandit** (mirror): `−shaping_gain·(g·Φ(s′) − Φ(s)) + R_breach·1[breach] − R_catch·1[catch or repelled]`.
+- **Guard**: `shaping_gain·(g·Φ_g(s′) − Φ_g(s)) + R_catch·1[catch or repelled] − R_breach·1[breach]`.
+- **Bandit**: `shaping_gain·(g·Φ_b(s′) − Φ_b(s)) + R_breach·1[breach] − R_catch·1[catch or repelled]`.
 
-The state potential, written with the guard's sign, is
+Each side has its own potential, over the distance that side is trying to close:
 
 ```
-Φ(s) = (d_bandit_lady_min − d_guard_bandit_min − home_weight·d_guard_lady_min) / shaping_scale_m
+Φ_g(s) = (−d_guard_bandit_min − home_weight·d_guard_lady_min) / shaping_scale_m
+Φ_b(s) = −d_bandit_lady_min / shaping_scale_m
 ```
 
-so it rises as the guard closes on a bandit, falls as a bandit closes on the lady, and — with `home_weight` above zero — rewards a guard that stays near the asset it defends. `shaping_scale_m` sets the distance that makes the potential unity, keeping the shaping reward order one per step.
+The guard's rises as it closes on the nearest bandit and, with `home_weight` above zero, as it stays near the asset it defends; the bandit's rises as it closes on the lady. `shaping_scale_m` sets the distance that makes a potential unity, keeping the shaping reward order one per step.
 
-Only the *difference* of the potential is paid, which makes this potential-based shaping in the sense of [Ng, Harada and Russell (1999)](https://people.eecs.berkeley.edu/~russell/papers/ml99-shaping.pdf): the optimal policies of the shaped and the terminal-only game are identical whatever the gain, and the shaped value satisfies `V′(s) = V(s) − Φ(s)` when `shaping_discount` matches the planner's per-step discount. `shaping_gain=0` recovers a purely terminal reward.
+A single zero-sum potential `(d_bl − d_gb)/L` reads more elegantly but is flat exactly where the game is decided. With the guard parked near the lady, a bandit run at the lady shortens `d_bl` and `d_gb` by nearly the same amount, so the difference barely moves and the bandit sees no gradient at all. Per-side potentials have no such cancellation.
 
-Search leaves take the other side of the same equivalence. Shaping a reward with Φ and initializing values with Φ produce the same greedy behavior (Wiewiora 2003), so the leaf values in `orbitalgym.policies.leaf_values` *add* `shaping_gain·Φ` to their terminal estimate. Subtracting it would cancel the shaping that telescoped along the search path and leave the ranking with the terminal estimate alone.
+Only the *difference* of a side's potential is paid, which makes this potential-based shaping in the sense of [Ng, Harada and Russell (1999)](https://people.eecs.berkeley.edu/~russell/papers/ml99-shaping.pdf), applied per agent. [Devlin and Kudenko (AAMAS 2011)](https://dl.acm.org/doi/10.5555/2031678.2031716) show that giving each agent its own potential in a multi-agent setting leaves the Nash equilibria of the underlying game unchanged, whatever the potentials and gains, and that a side's shaped value is its unshaped value less its own potential when `shaping_discount` matches the planner's per-step discount. `shaping_gain=0` recovers a purely terminal game.
+
+Because the two potentials are unrelated functions, **the shaping is not zero-sum between the sides** — their differences do not cancel, and both sides can gain on the same step. The terminal payoffs stay exactly zero-sum, which is what makes this a zero-sum game; the shaping only redistributes each side's own return along the path to the same equilibria.
+
+Search leaves take the other side of the same equivalence. Shaping a reward with a potential and initializing values with that potential produce the same greedy behavior (Wiewiora 2003), so the leaf values in `orbitalgym.policies.leaf_values` *add* `shaping_gain·Φ_side` to their terminal estimate. Subtracting it would cancel the shaping that telescoped along the search path and leave the ranking with the terminal estimate alone.
 
 Repelling the bandits pays the guard exactly what a catch pays: either way the bandit team is out of the fight, so the guard is indifferent between intercepting a bandit and driving it off.
 
-Two further terms are genuine per-side costs rather than shaping, and they *do* move the optimum:
+Two further terms are genuine per-side costs rather than shaping, and they *do* move the equilibria:
 
 - **Fuel.** With `dv_cost > 0` each side pays `dv_cost` reward units per m/s of delta-v **its own** vehicles spent over the step, recovered from the propellant drawn down through the rocket equation rather than from the commanded impulse — thrust limits and an empty tank both clip a command, so the commanded magnitude would overstate the spend. A side whose state carries no `MASS` component has no propellant trace and pays nothing.
 - **Separation.** The guard side alone pays `separation_cost·(1 − d/r)²` for every guard pair closer than `r = guard_separation_m` and for every guard closer than `r = lady_keepout_m` to the lady. The charge is zero at the radius, grows quadratically inward, and reaches `separation_cost` at zero distance. It buys a spread-out formation that does not fly through the asset it protects. A one-guard side has no pairs and pays only the lady term.

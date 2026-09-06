@@ -8,6 +8,7 @@ import pytest
 
 from orbitalgym import OrbitalGymEnv, make_lady_bandit_guard
 from orbitalgym.adapters.pomdp import POMDPAdapter
+from orbitalgym.env.types import Side
 from orbitalgym.policies.leaf_values import (
     bandit_leaf_value,
     bandit_leaf_value_from_game,
@@ -53,8 +54,8 @@ def _state_with(adapter, guard_r, bandit_r):
     return adapter.pack(state.replace(guards=guards, bandits=bandits))
 
 
-def _potential(adapter, s_flat):
-    return float(lbg_potential(adapter.unpack(s_flat), SHAPING_SCALE_M, HOME_WEIGHT))
+def _potential(adapter, s_flat, side):
+    return float(lbg_potential(adapter.unpack(s_flat), side, SHAPING_SCALE_M, HOME_WEIGHT))
 
 
 def test_guard_value_rises_as_the_guard_closes_on_the_bandit():
@@ -91,32 +92,41 @@ def test_bandit_value_falls_as_the_guard_closes_on_the_bandit():
     assert float(value(chased)) < float(value(free))
 
 
-def test_the_two_sides_are_exact_mirrors():
+def test_the_terminal_estimates_mirror_but_the_potentials_do_not():
+    """The terminal payoffs are zero-sum; each side's potential is its own."""
     adapter = _adapter()
     s = _state_with(adapter, guard_r=-800.0, bandit_r=400.0)
+    bare = dict(PARAMS, shaping_gain=0.0)
+    assert float(guard_leaf_value(adapter, **bare)(s)) + float(
+        bandit_leaf_value(adapter, **bare)(s)
+    ) == pytest.approx(0.0, abs=1e-4)
     guard = float(guard_leaf_value(adapter, **PARAMS)(s))
     bandit = float(bandit_leaf_value(adapter, **PARAMS)(s))
-    assert guard + bandit == pytest.approx(0.0, abs=1e-4)
+    assert abs(guard + bandit) > 1e-2
 
 
-def test_the_leaf_is_the_terminal_estimate_plus_the_potential():
+@pytest.mark.parametrize("side", [Side.GUARD, Side.BANDIT])
+def test_the_leaf_is_the_terminal_estimate_plus_that_sides_potential(side):
     """The value-initialization form: the leaf carries Phi rather than cancelling it."""
     adapter = _adapter()
+    build = guard_leaf_value if side is Side.GUARD else bandit_leaf_value
     s = _state_with(adapter, guard_r=-1000.0, bandit_r=800.0)
-    bare = float(guard_leaf_value(adapter, **dict(PARAMS, shaping_gain=0.0))(s))
-    with_phi = float(guard_leaf_value(adapter, **PARAMS)(s))
-    assert with_phi == pytest.approx(bare + SHAPING_GAIN * _potential(adapter, s), abs=1e-3)
+    bare = float(build(adapter, **dict(PARAMS, shaping_gain=0.0))(s))
+    with_phi = float(build(adapter, **PARAMS)(s))
+    assert with_phi == pytest.approx(bare + SHAPING_GAIN * _potential(adapter, s, side), abs=1e-3)
 
 
-def test_the_gain_scales_the_potential_the_leaf_carries():
+@pytest.mark.parametrize("side", [Side.GUARD, Side.BANDIT])
+def test_the_gain_scales_the_potential_the_leaf_carries(side):
     adapter = _adapter()
+    build = guard_leaf_value if side is Side.GUARD else bandit_leaf_value
     s = _state_with(adapter, guard_r=-1000.0, bandit_r=800.0)
-    bare = float(guard_leaf_value(adapter, **dict(PARAMS, shaping_gain=0.0))(s))
-    doubled = float(guard_leaf_value(adapter, **dict(PARAMS, shaping_gain=2.0))(s))
-    assert doubled == pytest.approx(bare + 2.0 * _potential(adapter, s), abs=1e-3)
+    bare = float(build(adapter, **dict(PARAMS, shaping_gain=0.0))(s))
+    doubled = float(build(adapter, **dict(PARAMS, shaping_gain=2.0))(s))
+    assert doubled == pytest.approx(bare + 2.0 * _potential(adapter, s, side), abs=1e-3)
 
 
-def test_the_potential_ranks_leaves_whose_terminal_estimates_are_equal():
+def test_the_guard_potential_ranks_leaves_whose_terminal_estimates_are_equal():
     """Beyond the leaf horizon both bonuses weigh nothing and only Phi separates states."""
     adapter = _adapter(discount=1.0)
     value = guard_leaf_value(adapter, **PARAMS)
@@ -127,7 +137,25 @@ def test_the_potential_ranks_leaves_whose_terminal_estimates_are_equal():
     assert float(bare(close)) == pytest.approx(float(bare(distant)), abs=1e-9)
     assert float(value(close)) > float(value(distant))
     assert float(value(close)) - float(value(distant)) == pytest.approx(
-        SHAPING_GAIN * (_potential(adapter, close) - _potential(adapter, distant)), abs=1e-4
+        SHAPING_GAIN
+        * (_potential(adapter, close, Side.GUARD) - _potential(adapter, distant, Side.GUARD)),
+        abs=1e-4,
+    )
+
+
+def test_the_bandit_potential_ranks_leaves_past_a_guard_parked_on_the_lady():
+    """The geometry that flattened a shared potential: the guard sits on the asset."""
+    adapter = _adapter(discount=1.0)
+    value = bandit_leaf_value(adapter, **PARAMS)
+    near = _state_with(adapter, guard_r=0.0, bandit_r=1000.0)
+    far = _state_with(adapter, guard_r=0.0, bandit_r=3000.0)
+    bare = bandit_leaf_value(adapter, **dict(PARAMS, shaping_gain=0.0))
+    assert float(bare(near)) == pytest.approx(float(bare(far)), abs=1e-9)
+    assert float(value(near)) > float(value(far))
+    assert float(value(near)) - float(value(far)) == pytest.approx(
+        SHAPING_GAIN
+        * (_potential(adapter, near, Side.BANDIT) - _potential(adapter, far, Side.BANDIT)),
+        abs=1e-4,
     )
 
 
@@ -136,10 +164,15 @@ def test_values_reduce_to_the_potential_at_huge_distances():
     adapter = _adapter(discount=0.9)
     d = 1.0e7
     s = _state_with(adapter, guard_r=-d, bandit_r=d)
-    phi = _potential(adapter, s)
 
-    assert jnp.allclose(guard_leaf_value(adapter, **PARAMS)(s), SHAPING_GAIN * phi)
-    assert jnp.allclose(bandit_leaf_value(adapter, **PARAMS)(s), -SHAPING_GAIN * phi)
+    assert jnp.allclose(
+        guard_leaf_value(adapter, **PARAMS)(s),
+        SHAPING_GAIN * _potential(adapter, s, Side.GUARD),
+    )
+    assert jnp.allclose(
+        bandit_leaf_value(adapter, **PARAMS)(s),
+        SHAPING_GAIN * _potential(adapter, s, Side.BANDIT),
+    )
 
 
 def test_terminal_bonus_is_undiscounted_inside_the_radius():
@@ -149,7 +182,7 @@ def test_terminal_bonus_is_undiscounted_inside_the_radius():
     # from the lady: t_catch is zero, so r_catch is paid in full.
     s = _state_with(adapter, guard_r=1.0e7, bandit_r=1.0e7)
     t_breach = (1.0e7 - BREACH_RADIUS_M) / (V_CLOSE * adapter.macro_dt)
-    expected = R_CATCH - R_BREACH * g**t_breach + SHAPING_GAIN * _potential(adapter, s)
+    expected = R_CATCH - R_BREACH * g**t_breach + SHAPING_GAIN * _potential(adapter, s, Side.GUARD)
     assert jnp.allclose(guard_leaf_value(adapter, **PARAMS)(s), expected)
 
 
@@ -166,7 +199,9 @@ def test_undiscounted_terminal_weights_stay_distance_aware():
     value = float(guard_leaf_value(adapter, **PARAMS)(s))
     w_catch = _linear_weight((200.0 - CATCH_RADIUS_M) / per_macro_step_m)
     w_breach = _linear_weight((200.0 - BREACH_RADIUS_M) / per_macro_step_m)
-    expected = R_CATCH * w_catch - R_BREACH * w_breach - SHAPING_GAIN * _potential(adapter, s)
+    expected = (
+        R_CATCH * w_catch - R_BREACH * w_breach + SHAPING_GAIN * _potential(adapter, s, Side.GUARD)
+    )
     assert jnp.isfinite(value)
     assert jnp.allclose(value, expected)
 
@@ -185,7 +220,9 @@ def test_undiscounted_terminal_terms_vary_with_distance():
     gap = R_CATCH * (
         _linear_weight(max(20.0 - CATCH_RADIUS_M, 0.0) / per_macro_step_m)
         - _linear_weight((200.0 - CATCH_RADIUS_M) / per_macro_step_m)
-    ) + SHAPING_GAIN * (_potential(adapter, s_near) - _potential(adapter, s_far))
+    ) + SHAPING_GAIN * (
+        _potential(adapter, s_near, Side.GUARD) - _potential(adapter, s_far, Side.GUARD)
+    )
     assert near > far
     assert jnp.allclose(near - far, gap)
 

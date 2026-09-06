@@ -45,16 +45,16 @@ when you want a guard-only signal without LBG event semantics:
 
 ::: orbitalgym.rewards.reference.DistanceToReferenceOrbit
 
-`LbgZeroSumReward` is the LBG default — both sides get mirrored
-potential-based shaping plus large terminal events on catch / breach, and
-the guard side pays a separation charge. Reads
+`LbgZeroSumReward` is the LBG default — each side gets potential-based
+shaping over the distance it is trying to close, plus mirrored terminal
+events on catch / breach, and the guard side pays a separation charge. Reads
 `catch_radius_m` and `breach_radius_m` from its own fields (the
 `LadyBanditGuard.default_reward_fn` builder threads those from the game
 knobs):
 
 ::: orbitalgym.rewards.lbg_zero_sum.LbgZeroSumReward
 
-The potential and the separation charge are module-level functions, so a
+The potentials and the separation charge are module-level functions, so a
 custom reward or a value estimate can reuse the same geometry:
 
 ::: orbitalgym.rewards.lbg_zero_sum.lbg_potential
@@ -89,7 +89,7 @@ Wire it onto the cfg:
 
 | Game | Default reward | What's reasonable to swap | Worth varying? |
 |---|---|---|---|
-| Lady-Bandit-Guard | `LbgZeroSumReward` (potential shaping + terminal events) | Sparse breach-only reward, distance + control-effort, single-agent `DistanceToReferenceOrbit` | Yes — sparse vs dense changes learning dynamics fundamentally |
+| Lady-Bandit-Guard | `LbgZeroSumReward` (per-side potential shaping + zero-sum terminal events) | Sparse breach-only reward, distance + control-effort, single-agent `DistanceToReferenceOrbit` | Yes — sparse vs dense changes learning dynamics fundamentally |
 | Pursuit-Evasion | Zero-sum on relative distance | Time-discounted distance, capture-bonus | Yes — capture-bonus speeds up learning |
 | Sun-Blocking | Sun-line geometry score | Add control effort penalty | Less so — geometry term is the load-bearing signal |
 | Observation-Blocking | Visibility-gated geometry | Multi-target reward composition | Yes — multi-target is research-relevant |

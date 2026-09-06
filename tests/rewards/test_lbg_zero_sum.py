@@ -64,20 +64,49 @@ def test_a_frozen_step_pays_nothing():
     assert bandit == pytest.approx(0.0, abs=1e-4)
 
 
-def test_potential_rises_as_the_guard_closes_and_falls_as_the_bandit_does():
+def test_the_guard_potential_rises_as_the_guard_closes_on_a_bandit():
     reward = LbgZeroSumReward()
-    far = reward.potential(_state([[2000.0, 0.0, 0.0]], [[1000.0, 0.0, 0.0]]))
-    near = reward.potential(_state([[1100.0, 0.0, 0.0]], [[1000.0, 0.0, 0.0]]))
-    threatened = reward.potential(_state([[2000.0, 0.0, 0.0]], [[100.0, 0.0, 0.0]]))
+    far = reward.potential(_state([[2000.0, 0.0, 0.0]], [[1000.0, 0.0, 0.0]]), Side.GUARD)
+    near = reward.potential(_state([[1100.0, 0.0, 0.0]], [[1000.0, 0.0, 0.0]]), Side.GUARD)
     assert float(near) > float(far)
-    assert float(threatened) < float(far)
+
+
+def test_the_bandit_potential_rises_as_the_bandit_closes_on_the_lady():
+    reward = LbgZeroSumReward()
+    far = reward.potential(_state([[2000.0, 0.0, 0.0]], [[1000.0, 0.0, 0.0]]), Side.BANDIT)
+    near = reward.potential(_state([[2000.0, 0.0, 0.0]], [[100.0, 0.0, 0.0]]), Side.BANDIT)
+    assert float(near) > float(far)
+
+
+def test_the_bandit_potential_ignores_where_the_guard_is():
+    """The cancellation a shared (d_bl - d_gb) potential suffers cannot happen."""
+    reward = LbgZeroSumReward()
+    guard_near = reward.potential(_state([[10.0, 0.0, 0.0]], [[1000.0, 0.0, 0.0]]), Side.BANDIT)
+    guard_far = reward.potential(_state([[9000.0, 0.0, 0.0]], [[1000.0, 0.0, 0.0]]), Side.BANDIT)
+    assert float(guard_near) == pytest.approx(float(guard_far), abs=1e-6)
+
+
+def test_a_guard_parked_on_the_lady_still_leaves_the_bandit_a_gradient():
+    reward = LbgZeroSumReward()
+    approach = [
+        reward.potential(_state([[0.0, 0.0, 0.0]], [[d, 0.0, 0.0]]), Side.BANDIT)
+        for d in (3000.0, 2000.0, 1000.0)
+    ]
+    assert float(approach[0]) < float(approach[1]) < float(approach[2])
 
 
 def test_home_weight_penalizes_a_guard_that_leaves_the_lady():
     state = _state([[2000.0, 0.0, 0.0]], [[1000.0, 0.0, 0.0]])
-    home = float(lbg_potential(state, 300.0, 0.5))
-    away = float(lbg_potential(state, 300.0, 0.0))
+    home = float(lbg_potential(state, Side.GUARD, 300.0, 0.5))
+    away = float(lbg_potential(state, Side.GUARD, 300.0, 0.0))
     assert home == pytest.approx(away - 0.5 * 2000.0 / 300.0, abs=1e-4)
+
+
+def test_home_weight_does_not_touch_the_bandit_potential():
+    state = _state([[2000.0, 0.0, 0.0]], [[1000.0, 0.0, 0.0]])
+    assert float(lbg_potential(state, Side.BANDIT, 300.0, 0.5)) == pytest.approx(
+        float(lbg_potential(state, Side.BANDIT, 300.0, 0.0)), abs=1e-9
+    )
 
 
 def _shaping_sequence():
@@ -90,27 +119,41 @@ def _shaping_sequence():
     ]
 
 
-def test_shaping_telescopes_to_the_endpoint_potentials():
-    """At g == 1 the shaping rewards over any sequence sum to Phi(s_T) - Phi(s_0)."""
-    reward = LbgZeroSumReward(shaping_discount=1.0, r_catch=0.0, r_breach=0.0)
+@pytest.mark.parametrize("side", [Side.GUARD, Side.BANDIT])
+def test_shaping_telescopes_to_that_sides_endpoint_potentials(side):
+    """At g == 1 a side's shaping rewards sum to Phi(s_T) - Phi(s_0) for its own Phi."""
+    reward = LbgZeroSumReward(shaping_discount=1.0, r_catch=0.0, r_breach=0.0, separation_cost=0.0)
     cfg = _Cfg()
     states = _shaping_sequence()
     total = sum(
-        float(reward(prev, None, nxt, Side.GUARD, cfg, nxt.step))
+        float(reward(prev, None, nxt, side, cfg, nxt.step))
         for prev, nxt in zip(states[:-1], states[1:], strict=True)
     )
-    expected = float(reward.potential(states[-1]) - reward.potential(states[0]))
+    expected = float(reward.potential(states[-1], side) - reward.potential(states[0], side))
     assert total == pytest.approx(expected, abs=1e-4)
 
 
-def test_shaping_is_zero_sum_between_the_sides():
+def test_the_shaping_is_not_zero_sum_between_the_sides():
+    """Each side is paid on its own potential, so the two do not cancel."""
+    reward = LbgZeroSumReward(r_catch=0.0, r_breach=0.0, separation_cost=0.0)
+    cfg = _Cfg()
+    states = _shaping_sequence()
+    sums = [
+        sum(_rewards(reward, prev, nxt, cfg))
+        for prev, nxt in zip(states[:-1], states[1:], strict=True)
+    ]
+    assert all(abs(x) > 1e-3 for x in sums)
+
+
+def test_both_sides_gain_when_both_are_closing():
+    """The guard closing on the bandit and the bandit on the lady both pay off."""
     reward = LbgZeroSumReward(r_catch=0.0, r_breach=0.0, separation_cost=0.0)
     cfg = _Cfg()
     states = _shaping_sequence()
     for prev, nxt in zip(states[:-1], states[1:], strict=True):
         guard, bandit = _rewards(reward, prev, nxt, cfg)
-        assert guard + bandit == pytest.approx(0.0, abs=1e-5)
-        assert guard != pytest.approx(0.0, abs=1e-3)
+        assert guard > 0.0
+        assert bandit > 0.0
 
 
 def test_shaping_gain_of_zero_leaves_a_terminal_only_reward():
@@ -121,13 +164,14 @@ def test_shaping_gain_of_zero_leaves_a_terminal_only_reward():
         assert _rewards(reward, prev, nxt, cfg) == pytest.approx((0.0, 0.0), abs=1e-6)
 
 
-def test_shaping_discount_scales_the_next_state_potential():
-    reward = LbgZeroSumReward(shaping_discount=0.9, r_catch=0.0, r_breach=0.0)
+@pytest.mark.parametrize("side", [Side.GUARD, Side.BANDIT])
+def test_shaping_discount_scales_the_next_state_potential(side):
+    reward = LbgZeroSumReward(shaping_discount=0.9, r_catch=0.0, r_breach=0.0, separation_cost=0.0)
     cfg = _Cfg()
     prev, nxt = _shaping_sequence()[:2]
-    guard, _ = _rewards(reward, prev, nxt, cfg)
-    expected = float(0.9 * reward.potential(nxt) - reward.potential(prev))
-    assert guard == pytest.approx(expected, abs=1e-4)
+    got = float(reward(prev, None, nxt, side, cfg, nxt.step))
+    expected = float(0.9 * reward.potential(nxt, side) - reward.potential(prev, side))
+    assert got == pytest.approx(expected, abs=1e-4)
 
 
 @pytest.mark.parametrize(
@@ -209,9 +253,11 @@ def test_catch_bonus_paid_in_the_step_termination_fires():
     assert bandit < -reward.r_catch + 1.0
 
 
-def test_rewards_are_zero_sum_without_the_per_side_costs():
-    """Shaping and terminal events mirror; only fuel and separation break it."""
-    reward = LbgZeroSumReward(separation_cost=0.0, catch_radius_m=50.0, breach_radius_m=5.0)
+def test_terminal_payoffs_are_zero_sum():
+    """The events mirror exactly; the shaping and the per-side costs do not."""
+    reward = LbgZeroSumReward(
+        shaping_gain=0.0, separation_cost=0.0, catch_radius_m=50.0, breach_radius_m=5.0
+    )
     cfg = _Cfg()
     prev = _state([[0.0, 0.0, 0.0]], [[-400.0, 30.0, 0.0]])
     nxt = _state([[0.0, 0.0, 0.0]], [[400.0, 30.0, 0.0]], step=1)

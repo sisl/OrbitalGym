@@ -52,11 +52,11 @@ opposing side (bandit) is driven internally by
 ```
 
 - `traj.sides.guard.reward.sum()` is the cumulative guard reward —
-  for `make_lady_bandit_guard()` this is `LbgZeroSumReward` (potential
-  shaping on the engagement geometry, plus terminal events at
+  for `make_lady_bandit_guard()` this is `LbgZeroSumReward` (a per-side
+  potential over the engagement geometry, plus terminal events at
   catch / breach). With both sides at zero thrust neither side scores
   a terminal event, so the cumulative return is the shaping term, which
-  telescopes to the change in potential over the drift.
+  telescopes to the change in that side's potential over the drift.
 - `traj.episode_done.argmax() + 1` is the step at which the episode
   terminated. With no terminal event triggering, this equals
   `cfg.max_steps`.

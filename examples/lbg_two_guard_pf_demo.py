@@ -644,16 +644,19 @@ bandit_pf_init = ParticleFilterRingInitializer(
 # `cfg.game`). The default per-step signal:
 #
 # ```text
-# guard:   +shaping_gain * (g * Phi(s') - Phi(s))  + R_catch * 1[caught]  - R_breach * 1[breached]
-# bandit:  -shaping_gain * (g * Phi(s') - Phi(s))  + R_breach * 1[breached] - R_catch * 1[caught]
-# Phi(s) = (d_bandit_lady_min - d_guard_bandit_min) / shaping_scale_m
+# guard:   shaping_gain * (g Phi_g(s') - Phi_g(s)) + R_catch * 1[caught] - R_breach * 1[breached]
+# bandit:  shaping_gain * (g Phi_b(s') - Phi_b(s)) + R_breach * 1[breached] - R_catch * 1[caught]
+# Phi_g(s) = -d_guard_bandit_min / shaping_scale_m
+# Phi_b(s) = -d_bandit_lady_min  / shaping_scale_m
 # ```
 #
 # Where `d_guard_bandit_min = min over (g, b) of guard-bandit distance`
 # and `d_bandit_lady_min = min over b of bandit-to-origin distance`.
-# Paying only the potential *difference* keeps the optimal policies of
-# the shaped and the terminal-only game identical. The guard side also
-# pays a separation charge for crowding a teammate or the lady.
+# Each side is shaped on the distance it is trying to close, and paying
+# only the potential *difference* leaves the equilibria of the
+# terminal-only game where they were. The shaping is therefore not
+# zero-sum between the sides; the terminal payoffs are. The guard side
+# also pays a separation charge for crowding a teammate or the lady.
 # Both terminal radii (`catch_radius_m`, `breach_radius_m`) come from
 # the `LadyBanditGuard` knobs you set in section 1.
 #

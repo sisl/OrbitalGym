@@ -1,27 +1,30 @@
 """Leaf values for search on LBG, in the units of :class:`LbgZeroSumReward`.
 
 A search whose horizon is shorter than an intercept never reaches a catch or
-a breach, so the leaf value has to carry the outcome. The leaf is a
-terminal-event estimate plus the shaping potential::
+a breach, so the leaf value has to carry the outcome. The leaf is that side's
+terminal-event estimate plus that side's own shaping potential::
 
-    guard:   terminal_estimate(s) + shaping_gain * Phi(s)
-    bandit: -terminal_estimate(s) - shaping_gain * Phi(s)
+    guard:   terminal_estimate(s) + shaping_gain * Phi_g(s)
+    bandit: -terminal_estimate(s) + shaping_gain * Phi_b(s)
 
-with ``Phi`` from :func:`orbitalgym.rewards.lbg_zero_sum.lbg_potential` on the
-reward's own ``shaping_scale_m`` and ``home_weight``. The bandit's potential
-is ``-Phi``, so each side adds its own, and the two leaves stay exact mirrors.
+with the potentials from
+:func:`orbitalgym.rewards.lbg_zero_sum.lbg_potential` on the reward's own
+``shaping_scale_m`` and ``home_weight``. The terminal estimates mirror, since
+the terminal payoffs do; the potentials do not, since the reward gives each
+side a potential over the distance that side is trying to close.
 
 The plus sign is the value-initialization equivalence (Wiewiora 2003):
-shaping a reward with ``Phi`` and initializing the value function with ``Phi``
-produce the same greedy behavior, so a leaf that already carries ``Phi``
-plays the role the shaping would have played beyond the horizon. Ranking a
-depth-``D`` guard path by shaped rewards plus this leaf gives
+shaping a reward with a potential and initializing the value function with the
+same potential produce the same greedy behavior, so a leaf that already
+carries the potential plays the role the shaping would have played beyond the
+horizon. Ranking a depth-``D`` path for one side by that side's shaped rewards
+plus this leaf gives
 
     terminal_estimate(leaf) + (1 + g^D) Phi(leaf) - Phi(root)
 
 up to the unshaped rewards collected on the way: the potential at the leaf
 survives, and ``Phi(root)`` is a constant across the actions being compared.
-Subtracting ``Phi`` instead would cancel it against the shaping that
+Subtracting the potential instead would cancel it against the shaping that
 telescoped along the path, leaving the search with the terminal estimate
 alone and no guidance wherever that estimate is flat.
 
@@ -67,6 +70,7 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 
+from orbitalgym.env.types import Side
 from orbitalgym.games.proximity import positions
 from orbitalgym.rewards.lbg_zero_sum import LbgZeroSumReward, lbg_potential
 
@@ -104,7 +108,7 @@ def _event_weight(t_hit: jax.Array, discount: float, n_remaining: int) -> jax.Ar
 
 def _leaf_value(
     adapter: Any,
-    sign: float,
+    side: Side,
     *,
     shaping_gain: float,
     shaping_scale_m: float,
@@ -118,9 +122,10 @@ def _leaf_value(
     discount: float | None,
     n_remaining: int,
 ) -> Callable[[jax.Array], jax.Array]:
-    """``sign * (terminal_estimate + shaping_gain * Phi)``, guard sign ``+1``."""
+    """``side``'s terminal estimate plus ``shaping_gain`` times ``side``'s potential."""
     g = adapter.discount() if discount is None else discount
     macro_dt = adapter.macro_dt
+    sign = 1.0 if side is Side.GUARD else -1.0
 
     def value(s_flat: jax.Array) -> jax.Array:
         state = adapter.unpack(s_flat)
@@ -130,8 +135,8 @@ def _leaf_value(
         terminal = r_catch * _event_weight(t_catch, g, n_remaining) - r_breach * _event_weight(
             t_breach, g, n_remaining
         )
-        phi = lbg_potential(state, shaping_scale_m, home_weight)
-        return (sign * (terminal + shaping_gain * phi)).astype(s_flat.dtype)
+        phi = lbg_potential(state, side, shaping_scale_m, home_weight)
+        return (sign * terminal + shaping_gain * phi).astype(s_flat.dtype)
 
     return value
 
@@ -155,8 +160,8 @@ def guard_leaf_value(
 
     ``r_catch`` weighted by the estimated macro steps to a catch, less
     ``r_breach`` weighted by the estimated macro steps to a breach, plus
-    ``shaping_gain`` times the potential at the leaf. ``discount`` defaults to
-    ``adapter.discount()``, the per-macro-step discount.
+    ``shaping_gain`` times the guard's potential at the leaf. ``discount``
+    defaults to ``adapter.discount()``, the per-macro-step discount.
 
     The reward weights and radii are required: an estimate built on
     weights the reward does not use orders states by a game nobody is
@@ -164,7 +169,7 @@ def guard_leaf_value(
     """
     return _leaf_value(
         adapter,
-        1.0,
+        Side.GUARD,
         shaping_gain=shaping_gain,
         shaping_scale_m=shaping_scale_m,
         home_weight=home_weight,
@@ -196,13 +201,14 @@ def bandit_leaf_value(
 ) -> Callable[[jax.Array], jax.Array]:
     """Bandit-side value estimate in reward units.
 
-    The negation of :func:`guard_leaf_value`, matching the zero-sum geometry
-    terms of the reward. The reward weights and radii are required;
+    The negation of :func:`guard_leaf_value`'s terminal estimate, matching the
+    zero-sum terminal payoffs, plus the bandit's own potential rather than the
+    guard's. The reward weights and radii are required;
     :func:`bandit_leaf_value_from_game` reads them off a scenario.
     """
     return _leaf_value(
         adapter,
-        -1.0,
+        Side.BANDIT,
         shaping_gain=shaping_gain,
         shaping_scale_m=shaping_scale_m,
         home_weight=home_weight,

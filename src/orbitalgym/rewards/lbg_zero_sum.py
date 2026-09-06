@@ -1,48 +1,62 @@
-"""Zero-sum LBG reward: potential-based shaping plus terminal events.
+"""LBG reward: per-side potential shaping plus zero-sum terminal events.
 
 Both sides receive a per-step signal:
 
     guard:
-        + shaping_gain * (shaping_discount * Phi(s') - Phi(s))
+        + shaping_gain * (shaping_discount * Phi_g(s') - Phi_g(s))
         + R_catch  * 1[catch event]                  (caught bandit terminal bonus)
         + R_catch  * 1[repelled]                     (bandits repelled terminal bonus)
         - R_breach * 1[breach event]                 (lady breached terminal penalty)
         - separation cost                            (guard-side crowding charge)
 
-    bandit (mirror of the geometry terms):
-        - shaping_gain * (shaping_discount * Phi(s') - Phi(s))
+    bandit:
+        + shaping_gain * (shaping_discount * Phi_b(s') - Phi_b(s))
         + R_breach * 1[breach event]                 (intercepted lady terminal bonus)
         - R_catch  * 1[catch event]                  (caught by guard terminal penalty)
         - R_catch  * 1[repelled]                     (repelled terminal penalty)
 
-The state potential, written with the guard's sign, is
+Each side has its own potential, expressing what that side is trying to close:
 
-    Phi(s) = (d_bandit_lady_min - d_guard_bandit_min) / shaping_scale_m
-             - home_weight * d_guard_lady_min / shaping_scale_m
+    Phi_g(s) = (-d_guard_bandit_min - home_weight * d_guard_lady_min)
+               / shaping_scale_m
+    Phi_b(s) = -d_bandit_lady_min / shaping_scale_m
 
-so Phi rises as the guard closes on a bandit, falls as a bandit closes on the
-lady, and — with ``home_weight`` above zero — rewards a guard that stays near
-the lady it defends. ``shaping_scale_m`` puts the potential in units of a
-typical engagement distance, so the shaping reward is order one per step.
+so the guard's potential rises as it closes on the nearest bandit and — with
+``home_weight`` above zero — as it stays near the lady it defends, while the
+bandit's rises as it closes on the lady. ``shaping_scale_m`` puts both in units
+of a typical engagement distance, so the shaping reward is order one per step.
 
-Because the shaping term is the potential difference
-``g Phi(s') - Phi(s)`` and nothing else, it is potential-based shaping in the
-sense of Ng, Harada and Russell (1999): the optimal policies of the shaped and
-unshaped games coincide, whatever the gain, and the shaped value function is
+A single zero-sum potential ``(d_bl - d_gb) / L`` looks tidier but is flat
+exactly where it matters: with the guard parked near the lady, a bandit run at
+the lady shortens ``d_bl`` and ``d_gb`` by nearly the same amount, so the
+difference barely moves and the bandit gets no gradient at all. Per-side
+potentials do not have that cancellation.
 
-    V'(s) = V(s) - Phi(s)
+Because each side's shaping term is that side's potential difference
+``g Phi(s') - Phi(s)`` and nothing else, this is potential-based shaping in the
+sense of Ng, Harada and Russell (1999), applied per agent. Devlin and Kudenko
+("Theoretical considerations of potential-based reward shaping for multi-agent
+systems", AAMAS 2011) show that giving each agent its own potential in a
+multi-agent setting leaves the Nash equilibria of the underlying game
+unchanged, whatever the potentials and gains, and that a side's shaped value is
+its unshaped value minus its own potential. ``shaping_gain = 0`` removes the
+term and leaves a terminal-only game.
 
-when the shaping discount matches the planner's. ``shaping_gain = 0`` removes
-the term and leaves a terminal-only reward.
+The shaping is therefore *not* zero-sum between the sides: the two potentials
+are unrelated functions and their differences do not cancel. The terminal
+payoffs remain exactly zero-sum, which is what makes the game a zero-sum game;
+the shaping only redistributes each side's own return along the path to the
+same equilibria.
 
-A search does not want that identity applied at its leaves, though: subtracting
-Phi there would cancel the shaping that telescoped along the path and leave the
-ranking with the terminal estimate alone. :mod:`orbitalgym.policies.leaf_values`
-uses the value-initialization equivalence instead and *adds* the potential, so
-Phi guides the search without accumulating along a path.
+A search does not want the value identity applied at its leaves: subtracting a
+side's potential there would cancel the shaping that telescoped along the path
+and leave the ranking with the terminal estimate alone.
+:mod:`orbitalgym.policies.leaf_values` uses the value-initialization
+equivalence instead and *adds* each side's own potential, so it guides the
+search without accumulating along a path.
 
-The remaining two terms are deliberate per-side costs, *not* shaping, and they
-do change the optimal policies:
+Two further terms are deliberate per-side costs, not shaping, and they do move
+the equilibria:
 
 * ``dv_cost`` per m/s of delta-v *its own* vehicles spent over the step,
   recovered from the propellant drawn down by the rocket equation. A side
@@ -55,16 +69,15 @@ do change the optimal policies:
   that does not fly through the asset it protects. A one-guard side has no
   pairs and pays only the lady term.
 
-Neither cost is mirrored, so each side bears only what it incurs and the
-geometry terms stay zero-sum.
+Neither cost is mirrored, so each side bears only what it incurs.
 
 Catch and breach events come from
 :func:`orbitalgym.games.proximity.lbg_events` over the step from
 ``prev_state`` to ``next_state``, the same source
 :class:`~orbitalgym.termination.lbg_events.LbgEventTermination` reads, so a
-terminal bonus is paid in exactly the step the episode ends. The potential and
+terminal bonus is paid in exactly the step the episode ends. The potentials and
 the separation cost are state functions of the step endpoints rather than of
-the within-step closest approach: the shaping differences the potential at
+the within-step closest approach: the shaping differences a potential at
 ``prev_state`` and ``next_state``, and the separation cost is charged on
 ``next_state``, the configuration the step arrives at.
 
@@ -87,24 +100,32 @@ from orbitalgym.registry import RewardFnKey, register
 from orbitalgym.rewards.base import RewardScope
 
 
-def lbg_potential(state, shaping_scale_m: float, home_weight: float) -> jax.Array:
-    """The LBG shaping potential at ``state``, with the guard's sign.
+def lbg_potential(
+    state,
+    side: Side,
+    shaping_scale_m: float,
+    home_weight: float,
+) -> jax.Array:
+    """The shaping potential ``side`` sees at ``state``.
 
-    ``(d_bl - d_gb - home_weight * d_gl) / shaping_scale_m``, with ``d_bl`` the
-    nearest bandit-lady distance, ``d_gb`` the nearest guard-bandit distance
-    over all pairs, and ``d_gl`` the nearest guard-lady distance, all taken
-    from the vehicle positions in ``state``. Leading axes of the side states
-    pass through.
+    The guard's is ``(-d_gb - home_weight * d_gl) / shaping_scale_m`` and the
+    bandit's is ``-d_bl / shaping_scale_m``, with ``d_gb`` the nearest
+    guard-bandit distance over all pairs, ``d_gl`` the nearest guard-lady
+    distance, and ``d_bl`` the nearest bandit-lady distance, all taken from the
+    vehicle positions in ``state``. Each side's potential rises as that side
+    closes what it is chasing. Leading axes of the side states pass through.
     """
-    guards = positions(state.guards)
     bandits = positions(state.bandits)
+    if side is Side.BANDIT:
+        d_bl = jnp.min(jnp.linalg.norm(bandits, axis=-1), axis=-1)
+        return -d_bl / shaping_scale_m
+    guards = positions(state.guards)
     d_gb = jnp.min(
         jnp.linalg.norm(guards[..., :, None, :] - bandits[..., None, :, :], axis=-1),
         axis=(-2, -1),
     )
-    d_bl = jnp.min(jnp.linalg.norm(bandits, axis=-1), axis=-1)
     d_gl = jnp.min(jnp.linalg.norm(guards, axis=-1), axis=-1)
-    return (d_bl - d_gb - home_weight * d_gl) / shaping_scale_m
+    return (-d_gb - home_weight * d_gl) / shaping_scale_m
 
 
 def _hinge(d: jax.Array, radius_m: float) -> jax.Array:
@@ -137,17 +158,20 @@ def guard_separation_cost(
 @register(RewardFnKey.LBG_ZERO_SUM)
 @dataclass(frozen=True)
 class LbgZeroSumReward:
-    """Potential-shaped zero-sum reward for the Lady-Bandit-Guard game.
+    """Potential-shaped reward with zero-sum terminal events for Lady-Bandit-Guard.
 
-    The two sides receive mirrored geometry signals: the shaping term gives a
-    dense gradient toward the right behavior without moving the optimum, while
-    the terminal events dominate the cumulative return when triggered.
+    The terminal events are mirrored; the shaping is not, because each side
+    gets a potential over the distance it is trying to close. The shaping gives
+    each side a dense gradient toward the right behavior without moving the
+    game's equilibria, while the terminal events dominate the cumulative return
+    when triggered.
 
-    ``shaping_scale_m`` is the distance that makes the potential unity,
+    ``shaping_scale_m`` is the distance that makes a potential unity,
     ``shaping_gain`` scales the shaping term (zero for a terminal-only game),
-    ``shaping_discount`` must match the planner's per-step discount for
-    ``V' = V - Phi`` to hold exactly, and ``home_weight`` prices a guard's
-    distance from the lady inside the potential.
+    ``shaping_discount`` must match the planner's per-step discount for a
+    side's shaped value to be exactly its unshaped value less its own
+    potential, and ``home_weight`` prices a guard's distance from the lady
+    inside the guard's potential.
 
     ``guard_separation_m``, ``lady_keepout_m`` and ``separation_cost`` set the
     guard-side crowding charge; ``dv_cost`` is the price of fuel in reward
@@ -174,9 +198,9 @@ class LbgZeroSumReward:
     dv_cost: float = 0.0
     scope: RewardScope = RewardScope.PER_SIDE
 
-    def potential(self, state) -> jax.Array:
-        """:func:`lbg_potential` at this reward's scale and home weight."""
-        return lbg_potential(state, self.shaping_scale_m, self.home_weight)
+    def potential(self, state, side: Side) -> jax.Array:
+        """:func:`lbg_potential` for ``side`` at this reward's scale and home weight."""
+        return lbg_potential(state, side, self.shaping_scale_m, self.home_weight)
 
     def _fuel_cost(self, prev_state, next_state, side, params):
         """Cost of the delta-v ``side`` spent over the step, in reward units.
@@ -225,7 +249,8 @@ class LbgZeroSumReward:
         breach_event = breached.astype(jnp.float32)
 
         shaping = self.shaping_gain * (
-            self.shaping_discount * self.potential(next_state) - self.potential(prev_state)
+            self.shaping_discount * self.potential(next_state, side)
+            - self.potential(prev_state, side)
         )
         fuel = self._fuel_cost(prev_state, next_state, side, params)
 
@@ -243,4 +268,4 @@ class LbgZeroSumReward:
                 - separation
                 - fuel
             )
-        return -shaping + self.r_breach * breach_event - self.r_catch * guard_win - fuel
+        return shaping + self.r_breach * breach_event - self.r_catch * guard_win - fuel
