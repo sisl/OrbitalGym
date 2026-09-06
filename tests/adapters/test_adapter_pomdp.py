@@ -192,5 +192,5 @@ def test_pomdp_adapter_action_repeat_one_matches_single_env_step():
     assert jnp.array_equal(s_step, s1)
     assert jnp.array_equal(r_step, r)
     # Pinned single-step numbers for the reference scenario at these seeds.
-    assert jnp.allclose(r, -2.0073959691824728)
+    assert jnp.allclose(r, -0.0002716821673331)
     assert jnp.allclose(s1[0], -998.0730644985427)

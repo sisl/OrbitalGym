@@ -14,9 +14,12 @@ from orbitalgym.policies.leaf_values import (
     guard_leaf_value,
     guard_leaf_value_from_game,
 )
+from orbitalgym.rewards.lbg_zero_sum import lbg_potential
 from orbitalgym.rewards.reference import DistanceToReferenceOrbit
 
-ALPHA = 1e-3
+SHAPING_GAIN = 1.0
+SHAPING_SCALE_M = 300.0
+HOME_WEIGHT = 0.0
 R_CATCH = 1000.0
 R_BREACH = 1000.0
 CATCH_RADIUS_M = 50.0
@@ -25,7 +28,9 @@ V_CLOSE = 0.5
 N_REMAINING = 32
 
 PARAMS = dict(
-    alpha=ALPHA,
+    shaping_gain=SHAPING_GAIN,
+    shaping_scale_m=SHAPING_SCALE_M,
+    home_weight=HOME_WEIGHT,
     r_catch=R_CATCH,
     r_breach=R_BREACH,
     catch_radius_m=CATCH_RADIUS_M,
@@ -46,6 +51,10 @@ def _state_with(adapter, guard_r, bandit_r):
     guards = state.guards.replace(rtn=jnp.array([[guard_r, 0.0, 0.0, 0.0, 0.0, 0.0]]))
     bandits = state.bandits.replace(rtn=jnp.array([[bandit_r, 0.0, 0.0, 0.0, 0.0, 0.0]]))
     return adapter.pack(state.replace(guards=guards, bandits=bandits))
+
+
+def _potential(adapter, s_flat):
+    return float(lbg_potential(adapter.unpack(s_flat), SHAPING_SCALE_M, HOME_WEIGHT))
 
 
 def test_guard_value_rises_as_the_guard_closes_on_the_bandit():
@@ -82,16 +91,40 @@ def test_bandit_value_falls_as_the_guard_closes_on_the_bandit():
     assert float(value(chased)) < float(value(free))
 
 
-def test_values_reduce_to_the_shaping_sum_at_huge_distances():
+def test_the_two_sides_are_exact_mirrors():
+    adapter = _adapter()
+    s = _state_with(adapter, guard_r=-800.0, bandit_r=400.0)
+    guard = float(guard_leaf_value(adapter, **PARAMS)(s))
+    bandit = float(bandit_leaf_value(adapter, **PARAMS)(s))
+    assert guard + bandit == pytest.approx(0.0, abs=1e-4)
+
+
+def test_the_leaf_is_the_terminal_estimate_less_the_potential():
+    """``V' = V - Phi``: the shaped leaf is the unshaped one minus the potential."""
+    adapter = _adapter()
+    s = _state_with(adapter, guard_r=-1000.0, bandit_r=800.0)
+    unshaped = float(guard_leaf_value(adapter, **dict(PARAMS, shaping_gain=0.0))(s))
+    shaped = float(guard_leaf_value(adapter, **PARAMS)(s))
+    assert shaped == pytest.approx(unshaped - SHAPING_GAIN * _potential(adapter, s), abs=1e-3)
+
+
+def test_the_gain_scales_the_potential_correction():
+    adapter = _adapter()
+    s = _state_with(adapter, guard_r=-1000.0, bandit_r=800.0)
+    unshaped = float(guard_leaf_value(adapter, **dict(PARAMS, shaping_gain=0.0))(s))
+    doubled = float(guard_leaf_value(adapter, **dict(PARAMS, shaping_gain=2.0))(s))
+    assert doubled == pytest.approx(unshaped - 2.0 * _potential(adapter, s), abs=1e-3)
+
+
+def test_values_reduce_to_the_potential_at_huge_distances():
     """Terminal terms discount away when both events are far in the future."""
     adapter = _adapter(discount=0.9)
-    g = adapter.discount()
-    horizon = (1.0 - g**N_REMAINING) / (1.0 - g)
     d = 1.0e7
-    s = _state_with(adapter, guard_r=0.0, bandit_r=d)
+    s = _state_with(adapter, guard_r=-d, bandit_r=d)
+    phi = _potential(adapter, s)
 
-    assert jnp.allclose(guard_leaf_value(adapter, **PARAMS)(s), -ALPHA * d * horizon)
-    assert jnp.allclose(bandit_leaf_value(adapter, **PARAMS)(s), -ALPHA * d * horizon)
+    assert jnp.allclose(guard_leaf_value(adapter, **PARAMS)(s), -SHAPING_GAIN * phi)
+    assert jnp.allclose(bandit_leaf_value(adapter, **PARAMS)(s), SHAPING_GAIN * phi)
 
 
 def test_terminal_bonus_is_undiscounted_inside_the_radius():
@@ -101,7 +134,7 @@ def test_terminal_bonus_is_undiscounted_inside_the_radius():
     # from the lady: t_catch is zero, so r_catch is paid in full.
     s = _state_with(adapter, guard_r=1.0e7, bandit_r=1.0e7)
     t_breach = (1.0e7 - BREACH_RADIUS_M) / (V_CLOSE * adapter.macro_dt)
-    expected = R_CATCH - R_BREACH * g**t_breach
+    expected = R_CATCH - R_BREACH * g**t_breach - SHAPING_GAIN * _potential(adapter, s)
     assert jnp.allclose(guard_leaf_value(adapter, **PARAMS)(s), expected)
 
 
@@ -109,8 +142,8 @@ def _linear_weight(t_hit):
     return max(0.0, 1.0 - t_hit / N_REMAINING)
 
 
-def test_undiscounted_horizon_uses_the_arithmetic_sum():
-    """At g == 1 the shaping is the arithmetic sum and the bonuses stay distance-aware."""
+def test_undiscounted_terminal_weights_stay_distance_aware():
+    """At g == 1 the bonuses fall off linearly in the estimated time to go."""
     adapter = _adapter(discount=1.0)
     assert adapter.discount() == 1.0
     per_macro_step_m = V_CLOSE * adapter.macro_dt
@@ -118,7 +151,7 @@ def test_undiscounted_horizon_uses_the_arithmetic_sum():
     value = float(guard_leaf_value(adapter, **PARAMS)(s))
     w_catch = _linear_weight((200.0 - CATCH_RADIUS_M) / per_macro_step_m)
     w_breach = _linear_weight((200.0 - BREACH_RADIUS_M) / per_macro_step_m)
-    expected = -ALPHA * 200.0 * N_REMAINING + R_CATCH * w_catch - R_BREACH * w_breach
+    expected = R_CATCH * w_catch - R_BREACH * w_breach - SHAPING_GAIN * _potential(adapter, s)
     assert jnp.isfinite(value)
     assert jnp.allclose(value, expected)
 
@@ -128,29 +161,26 @@ def test_undiscounted_terminal_terms_vary_with_distance():
     adapter = _adapter(discount=1.0)
     value = guard_leaf_value(adapter, **PARAMS)
     per_macro_step_m = V_CLOSE * adapter.macro_dt
-    near = float(value(_state_with(adapter, guard_r=980.0, bandit_r=1000.0)))
-    far = float(value(_state_with(adapter, guard_r=800.0, bandit_r=1000.0)))
+    s_near = _state_with(adapter, guard_r=980.0, bandit_r=1000.0)
+    s_far = _state_with(adapter, guard_r=800.0, bandit_r=1000.0)
+    near = float(value(s_near))
+    far = float(value(s_far))
     # Both catches sit inside the horizon, so only the catch weight and the
-    # shaping differ; the catch weight moves by far more than the shaping.
-    gap = (
-        R_CATCH
-        * (
-            _linear_weight(max(20.0 - CATCH_RADIUS_M, 0.0) / per_macro_step_m)
-            - _linear_weight((200.0 - CATCH_RADIUS_M) / per_macro_step_m)
-        )
-        - ALPHA * (20.0 - 200.0) * N_REMAINING
-    )
+    # potential differ; the catch weight moves by far more than the potential.
+    gap = R_CATCH * (
+        _linear_weight(max(20.0 - CATCH_RADIUS_M, 0.0) / per_macro_step_m)
+        - _linear_weight((200.0 - CATCH_RADIUS_M) / per_macro_step_m)
+    ) - SHAPING_GAIN * (_potential(adapter, s_near) - _potential(adapter, s_far))
     assert near > far
     assert jnp.allclose(near - far, gap)
 
 
 def test_macro_step_shortens_the_estimated_time_to_an_event():
     """A longer macro step covers the same distance in fewer macro steps."""
-    fine = _adapter(action_repeat=1)
-    coarse = _adapter(action_repeat=4)
-    params = dict(PARAMS, discount=0.99)
-    v_fine = float(bandit_leaf_value(fine, **params)(_state_with(fine, 0.0, 500.0)))
-    v_coarse = float(bandit_leaf_value(coarse, **params)(_state_with(coarse, 0.0, 500.0)))
+    fine = _adapter(action_repeat=1, discount=1.0)
+    coarse = _adapter(action_repeat=4, discount=1.0)
+    v_fine = float(bandit_leaf_value(fine, **PARAMS)(_state_with(fine, -500.0, 500.0)))
+    v_coarse = float(bandit_leaf_value(coarse, **PARAMS)(_state_with(coarse, -500.0, 500.0)))
     assert v_coarse > v_fine
 
 
@@ -158,10 +188,12 @@ def test_from_game_matches_explicit_reward_weights():
     cfg = make_lady_bandit_guard()
     env = OrbitalGymEnv(cfg)
     adapter = POMDPAdapter(env)
-    s = _state_with(adapter, guard_r=800.0, bandit_r=400.0)
+    s = _state_with(adapter, guard_r=-800.0, bandit_r=400.0)
     speeds = dict(v_close_guard_mps=V_CLOSE, v_close_bandit_mps=V_CLOSE, n_remaining=N_REMAINING)
     explicit = dict(
-        alpha=cfg.reward_fn.alpha,
+        shaping_gain=cfg.reward_fn.shaping_gain,
+        shaping_scale_m=cfg.reward_fn.shaping_scale_m,
+        home_weight=cfg.reward_fn.home_weight,
         r_catch=cfg.reward_fn.r_catch,
         r_breach=cfg.reward_fn.r_breach,
         catch_radius_m=cfg.reward_fn.catch_radius_m,
@@ -177,9 +209,11 @@ def test_from_game_matches_explicit_reward_weights():
 
 def test_from_game_tracks_a_retuned_reward():
     cfg = make_lady_bandit_guard()
-    retuned = dataclasses.replace(cfg, reward_fn=dataclasses.replace(cfg.reward_fn, alpha=1.0))
+    retuned = dataclasses.replace(
+        cfg, reward_fn=dataclasses.replace(cfg.reward_fn, shaping_gain=25.0)
+    )
     adapter = POMDPAdapter(OrbitalGymEnv(cfg))
-    s = _state_with(adapter, guard_r=800.0, bandit_r=400.0)
+    s = _state_with(adapter, guard_r=-800.0, bandit_r=400.0)
     speeds = dict(v_close_guard_mps=V_CLOSE, v_close_bandit_mps=V_CLOSE, n_remaining=N_REMAINING)
     assert float(guard_leaf_value_from_game(adapter, retuned, **speeds)(s)) != float(
         guard_leaf_value_from_game(adapter, cfg, **speeds)(s)

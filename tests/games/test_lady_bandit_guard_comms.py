@@ -48,6 +48,13 @@ def test_lbg_comms_charges_cost_when_active():
         ("escape_radius_m", 5000.0),
         ("repel_on_empty_tank", True),
         ("dv_cost", 0.1),
+        ("shaping_scale_m", 100.0),
+        ("shaping_gain", 0.0),
+        ("shaping_discount", 0.99),
+        ("home_weight", 0.5),
+        ("guard_separation_m", 50.0),
+        ("lady_keepout_m", 50.0),
+        ("separation_cost", 0.0),
     ],
 )
 def test_lbg_comms_rejects_event_geometry_knobs(knob, value):

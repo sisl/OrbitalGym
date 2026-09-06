@@ -644,12 +644,16 @@ bandit_pf_init = ParticleFilterRingInitializer(
 # `cfg.game`). The default per-step signal:
 #
 # ```text
-# guard:   -alpha * d_guard_bandit_min  + R_catch * 1[caught]  - R_breach * 1[breached]
-# bandit:  -alpha * d_bandit_lady_min   + R_breach * 1[breached] - R_catch * 1[caught]
+# guard:   +shaping_gain * (g * Phi(s') - Phi(s))  + R_catch * 1[caught]  - R_breach * 1[breached]
+# bandit:  -shaping_gain * (g * Phi(s') - Phi(s))  + R_breach * 1[breached] - R_catch * 1[caught]
+# Phi(s) = (d_bandit_lady_min - d_guard_bandit_min) / shaping_scale_m
 # ```
 #
 # Where `d_guard_bandit_min = min over (g, b) of guard-bandit distance`
 # and `d_bandit_lady_min = min over b of bandit-to-origin distance`.
+# Paying only the potential *difference* keeps the optimal policies of
+# the shaped and the terminal-only game identical. The guard side also
+# pays a separation charge for crowding a teammate or the lady.
 # Both terminal radii (`catch_radius_m`, `breach_radius_m`) come from
 # the `LadyBanditGuard` knobs you set in section 1.
 #
@@ -659,7 +663,7 @@ bandit_pf_init = ParticleFilterRingInitializer(
 #
 # ```python
 # from orbitalgym.rewards.lbg_zero_sum import LbgZeroSumReward
-# my_reward = LbgZeroSumReward(alpha=1e-2, r_catch=2000.0, r_breach=2000.0,
+# my_reward = LbgZeroSumReward(shaping_gain=10.0, r_catch=2000.0, r_breach=2000.0,
 #                              catch_radius_m=CATCH_RADIUS_M,
 #                              breach_radius_m=BREACH_RADIUS_M)
 # cfg = ScenarioConfig(..., reward_fn=my_reward)
@@ -670,9 +674,10 @@ bandit_pf_init = ParticleFilterRingInitializer(
 
 # %%
 print(f"reward_fn:      {cfg.reward_fn.__class__.__name__}")
-print(f"  alpha       = {cfg.reward_fn.alpha:g}")
-print(f"  r_catch     = {cfg.reward_fn.r_catch:g}")
-print(f"  r_breach    = {cfg.reward_fn.r_breach:g}")
+print(f"  shaping_gain    = {cfg.reward_fn.shaping_gain:g}")
+print(f"  shaping_scale_m = {cfg.reward_fn.shaping_scale_m:g}")
+print(f"  r_catch         = {cfg.reward_fn.r_catch:g}")
+print(f"  r_breach        = {cfg.reward_fn.r_breach:g}")
 print(f"  catch_radius_m  = {cfg.reward_fn.catch_radius_m:g}")
 print(f"  breach_radius_m = {cfg.reward_fn.breach_radius_m:g}")
 print(f"termination_fn: {cfg.termination_fn.__class__.__name__}")

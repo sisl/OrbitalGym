@@ -54,6 +54,19 @@ class LadyBanditGuard(Game):
             repelled. Requires a mass-tracked bandit in an RTN frame.
         dv_cost: reward units charged per m/s of delta-v. Each side pays only
             for its own fuel; a side without a MASS component pays nothing.
+        shaping_scale_m: distance that makes the shaping potential unity.
+        shaping_gain: scale on the potential-difference shaping term. Zero
+            leaves a terminal-only reward.
+        shaping_discount: discount inside the potential difference. Matching
+            the planner's per-step discount makes the shaped value exactly
+            the unshaped value minus the potential.
+        home_weight: weight on the guard-lady distance inside the potential,
+            pulling the guard back toward the asset it defends.
+        guard_separation_m: guard-guard distance below which the guard side
+            pays a crowding hinge.
+        lady_keepout_m: guard-lady distance below which the guard side pays
+            the same hinge.
+        separation_cost: reward units at the bottom of either hinge.
 
     The episode is a guard win by repulsion once *every* bandit is repelled.
     """
@@ -65,6 +78,13 @@ class LadyBanditGuard(Game):
     escape_radius_m: float = 0.0
     repel_on_empty_tank: bool = False
     dv_cost: float = 0.0
+    shaping_scale_m: float = 300.0
+    shaping_gain: float = 1.0
+    shaping_discount: float = 1.0
+    home_weight: float = 0.0
+    guard_separation_m: float = 20.0
+    lady_keepout_m: float = 20.0
+    separation_cost: float = 10.0
 
     def validate(self, cfg: Any) -> None:
         if not self.repel_on_empty_tank:
@@ -100,6 +120,13 @@ class LadyBanditGuard(Game):
             escape_radius_m=self.escape_radius_m,
             repel_on_empty_tank=self.repel_on_empty_tank,
             dv_cost=self.dv_cost,
+            shaping_scale_m=self.shaping_scale_m,
+            shaping_gain=self.shaping_gain,
+            shaping_discount=self.shaping_discount,
+            home_weight=self.home_weight,
+            guard_separation_m=self.guard_separation_m,
+            lady_keepout_m=self.lady_keepout_m,
+            separation_cost=self.separation_cost,
         )
 
     def default_termination_fn(self):
@@ -115,8 +142,9 @@ class LadyBanditGuard(Game):
         )
 
 
-# LBG event geometry the comms reward does not read, with the builder defaults
-# that leave it inert. Kept beside the builder signature they mirror.
+# LBG event geometry and reward shaping the comms reward does not read, with
+# the builder defaults that leave it inert. Kept beside the builder signature
+# they mirror.
 _COMMS_UNSUPPORTED_DEFAULTS = {
     "breach_radius_m": 5.0,
     "catch_radius_m": 50.0,
@@ -125,6 +153,13 @@ _COMMS_UNSUPPORTED_DEFAULTS = {
     "escape_radius_m": 0.0,
     "repel_on_empty_tank": False,
     "dv_cost": 0.0,
+    "shaping_scale_m": 300.0,
+    "shaping_gain": 1.0,
+    "shaping_discount": 1.0,
+    "home_weight": 0.0,
+    "guard_separation_m": 20.0,
+    "lady_keepout_m": 20.0,
+    "separation_cost": 10.0,
 }
 
 
@@ -138,6 +173,13 @@ def make_lady_bandit_guard(
     escape_radius_m: float = 0.0,
     repel_on_empty_tank: bool = False,
     dv_cost: float = 0.0,
+    shaping_scale_m: float = 300.0,
+    shaping_gain: float = 1.0,
+    shaping_discount: float = 1.0,
+    home_weight: float = 0.0,
+    guard_separation_m: float = 20.0,
+    lady_keepout_m: float = 20.0,
+    separation_cost: float = 10.0,
     # Fleet sizing
     n_guards: int = 1,
     n_bandits: int = 1,
@@ -235,9 +277,10 @@ def make_lady_bandit_guard(
         from orbitalgym.rewards.lbg_with_comms import LbgWithCommsReward
 
         # LbgWithCommsReward scores distance to the reference orbit plus a
-        # per-broadcast charge. It reads none of the LBG event geometry, so a
-        # scenario that tunes that geometry would get a reward that ignores it
-        # while the termination still enforces it.
+        # per-broadcast charge. It reads none of the LBG event geometry and
+        # carries no shaping potential, so a scenario that tunes either would
+        # get a reward that ignores it while the termination still enforces
+        # the event geometry.
         passed = {
             "breach_radius_m": breach_radius_m,
             "catch_radius_m": catch_radius_m,
@@ -246,6 +289,13 @@ def make_lady_bandit_guard(
             "escape_radius_m": escape_radius_m,
             "repel_on_empty_tank": repel_on_empty_tank,
             "dv_cost": dv_cost,
+            "shaping_scale_m": shaping_scale_m,
+            "shaping_gain": shaping_gain,
+            "shaping_discount": shaping_discount,
+            "home_weight": home_weight,
+            "guard_separation_m": guard_separation_m,
+            "lady_keepout_m": lady_keepout_m,
+            "separation_cost": separation_cost,
         }
         for name, default in _COMMS_UNSUPPORTED_DEFAULTS.items():
             value = passed[name]
@@ -253,8 +303,9 @@ def make_lady_bandit_guard(
                 raise ValueError(
                     f"with_communication=True installs LbgWithCommsReward, which "
                     f"scores distance to the reference orbit plus a per-broadcast "
-                    f"charge and carries no LBG event geometry, so {name}={value!r} "
-                    f"would shape the termination but not the reward. Leave {name} "
+                    f"charge and carries neither LBG event geometry nor a shaping "
+                    f"potential, so {name}={value!r} would not reach the reward. "
+                    f"Leave {name} "
                     f"at its default {default!r}, or build the scenario with "
                     f"with_communication=False and pass an explicit reward_fn."
                 )
@@ -292,6 +343,13 @@ def make_lady_bandit_guard(
             escape_radius_m=escape_radius_m,
             repel_on_empty_tank=repel_on_empty_tank,
             dv_cost=dv_cost,
+            shaping_scale_m=shaping_scale_m,
+            shaping_gain=shaping_gain,
+            shaping_discount=shaping_discount,
+            home_weight=home_weight,
+            guard_separation_m=guard_separation_m,
+            lady_keepout_m=lady_keepout_m,
+            separation_cost=separation_cost,
         ),
         **extra_kwargs,
         **config_kwargs,

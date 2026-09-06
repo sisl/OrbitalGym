@@ -15,6 +15,8 @@ from orbitalgym.sampling.mass import ConstantMass
 from orbitalgym.sampling.side import RelativeEllipse
 from orbitalgym.sampling.spec import ICSpec
 
+LEAF_N_REMAINING = 32
+
 
 def _build(n_samples=256, horizon=8, temperature=0.05, noise_sigma=0.3, dv_max=0.5):
     ic = ICSpec(
@@ -44,8 +46,13 @@ def _build(n_samples=256, horizon=8, temperature=0.05, noise_sigma=0.3, dv_max=0
         terminal_value_fn=bandit_leaf_value_from_game(
             adapter,
             cfg,
+            # The guard is ZeroControl: it never thrusts, so its estimated
+            # closing speed is the one-second-of-thrust figure and a catch
+            # stays outside the leaf's horizon. The bandit gains dv_max every
+            # step, so over that horizon it averages dv_max * N / 2.
             v_close_guard_mps=dv_max / cfg.dt,
-            v_close_bandit_mps=dv_max / cfg.dt,
+            v_close_bandit_mps=dv_max * LEAF_N_REMAINING / 2.0,
+            n_remaining=LEAF_N_REMAINING,
         ),
         n_vehicles=1,
         command_cls=env.bandit_command_cls,

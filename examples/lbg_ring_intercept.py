@@ -8,7 +8,7 @@ Composes existing primitives to produce a scenario where:
 - Both sides use HCW_RT (2D in-plane) dynamics with mass tracking.
 - Vehicle parameters reflect a Moog 58E143-style 3.6 N high-thrust cold-gas
   thruster (GN2, Isp ~65 s) on a small inspector class with ~3 kg propellant.
-- Reward is `LbgZeroSumReward` (dense distance shaping + terminal events at
+- Reward is `LbgZeroSumReward` (potential-based shaping + terminal events at
   catch_radius / breach_radius).
 
 The bandit and guard policies are wired separately by the caller — see

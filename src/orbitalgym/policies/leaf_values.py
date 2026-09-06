@@ -1,13 +1,25 @@
 """Leaf values for search on LBG, in the units of :class:`LbgZeroSumReward`.
 
 A search whose horizon is shorter than an intercept never reaches a catch or
-a breach, so the leaf value has to carry the outcome. These estimates are on
-the reward scale: they predict the shaping the side accrues over the
-remaining macro steps plus the discounted terminal events, using the same
-``alpha`` / ``r_catch`` / ``r_breach`` / radii the reward function uses.
+a breach, so the leaf value has to carry the outcome. The reward is
+potential-shaped, ``r' = r + g Phi(s') - Phi(s)``, so the shaped value of a
+state is the unshaped value minus the potential::
 
-Those five terms are required arguments, because a leaf value built on
-weights the reward does not use orders states by a different game.
+    V'(s) = V(s) - Phi(s)
+
+exactly when the reward's shaping discount equals the planner's. The leaf is
+therefore a terminal-event estimate of ``V`` corrected by the potential::
+
+    guard:   terminal_estimate(s) - shaping_gain * Phi(s)
+    bandit: -terminal_estimate(s) + shaping_gain * Phi(s)
+
+with ``Phi`` from :func:`orbitalgym.rewards.lbg_zero_sum.lbg_potential` on the
+reward's own ``shaping_scale_m`` and ``home_weight``. Mismatched discounts
+leave the correction approximate, which costs accuracy but not soundness: the
+ordering the estimate induces over states is what the search consumes.
+
+The reward weights and radii are required arguments, because a leaf value
+built on weights the reward does not use orders states by a different game.
 :func:`guard_leaf_value_from_game` and :func:`bandit_leaf_value_from_game`
 read them off a scenario's ``cfg.reward_fn`` so the two cannot drift apart.
 
@@ -20,19 +32,12 @@ approximation::
 the caller supplies: its per-step delta-v cap divided by ``dt``. This ignores
 orbital curvature, the opponent's evasion, and the burn geometry, so it is
 optimistic for a mover that must first null a relative velocity and
-pessimistic for one already closing fast. It is a value *estimate*; the
-ordering it induces over states is what the search consumes.
+pessimistic for one already closing fast.
 
-With ``g`` the per-macro-step discount, ``N`` the remaining macro steps, and
-``d`` the shaped distance, the guard's estimate is::
+With ``g`` the per-macro-step discount and ``N`` the remaining macro steps,
+the guard's terminal estimate is::
 
-    V = -alpha * d_gb * (1 - g^N) / (1 - g) + r_catch * w(t_catch)
-        - r_breach * w(t_breach)
-
-and the bandit's is the mirror image::
-
-    V = -alpha * d_bl * (1 - g^N) / (1 - g) + r_breach * w(t_breach)
-        - r_catch * w(t_catch)
+    terminal_estimate = r_catch * w(t_catch) - r_breach * w(t_breach)
 
 ``w`` is the weight the terminal bonus carries at an event ``t_hit`` macro
 steps away. For ``g < 1`` it is the discount factor ``g^t_hit``. For
@@ -42,9 +47,7 @@ time-to-go weight of an undiscounted finite-horizon reach estimate::
     w(t_hit) = max(0, 1 - t_hit / N)
 
 which pays the bonus in full at the radius, falls off linearly as the event
-recedes, and pays nothing for an event beyond the horizon. The shaping
-factor ``(1 - g^N) / (1 - g)`` likewise becomes the arithmetic sum ``N``
-when ``g == 1``.
+recedes, and pays nothing for an event beyond the horizon.
 """
 
 from __future__ import annotations
@@ -55,29 +58,17 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 
-from orbitalgym.rewards.lbg_zero_sum import LbgZeroSumReward
+from orbitalgym.games.proximity import positions
+from orbitalgym.rewards.lbg_zero_sum import LbgZeroSumReward, lbg_potential
 
 
-def _positions(side_state: Any) -> jax.Array:
-    if hasattr(side_state, "rtn"):
-        return side_state.rtn[:, :3]
-    return side_state.rt[:, :2]
-
-
-def _distances(adapter: Any, s_flat: jax.Array) -> tuple[jax.Array, jax.Array]:
-    state = adapter.unpack(s_flat)
-    guards = _positions(state.guards)
-    bandits = _positions(state.bandits)
+def _distances(state: Any) -> tuple[jax.Array, jax.Array]:
+    """Nearest guard-bandit and bandit-lady distances at the step endpoints."""
+    guards = positions(state.guards)
+    bandits = positions(state.bandits)
     d_gb = jnp.min(jnp.linalg.norm(guards[:, None, :] - bandits[None, :, :], axis=-1))
     d_bl = jnp.min(jnp.linalg.norm(bandits, axis=-1))
     return d_gb, d_bl
-
-
-def _shaping_horizon(discount: float, n_remaining: int) -> float:
-    """Sum of ``g^i`` over the remaining macro steps; arithmetic when ``g == 1``."""
-    if discount == 1.0:
-        return float(n_remaining)
-    return (1.0 - discount**n_remaining) / (1.0 - discount)
 
 
 def _time_to_radius(
@@ -102,10 +93,46 @@ def _event_weight(t_hit: jax.Array, discount: float, n_remaining: int) -> jax.Ar
     return discount**t_hit
 
 
+def _leaf_value(
+    adapter: Any,
+    sign: float,
+    *,
+    shaping_gain: float,
+    shaping_scale_m: float,
+    home_weight: float,
+    r_catch: float,
+    r_breach: float,
+    catch_radius_m: float,
+    breach_radius_m: float,
+    v_close_guard_mps: float,
+    v_close_bandit_mps: float,
+    discount: float | None,
+    n_remaining: int,
+) -> Callable[[jax.Array], jax.Array]:
+    """``sign * (terminal_estimate - shaping_gain * Phi)``, guard sign ``+1``."""
+    g = adapter.discount() if discount is None else discount
+    macro_dt = adapter.macro_dt
+
+    def value(s_flat: jax.Array) -> jax.Array:
+        state = adapter.unpack(s_flat)
+        d_gb, d_bl = _distances(state)
+        t_catch = _time_to_radius(d_gb, catch_radius_m, v_close_guard_mps, macro_dt)
+        t_breach = _time_to_radius(d_bl, breach_radius_m, v_close_bandit_mps, macro_dt)
+        terminal = r_catch * _event_weight(t_catch, g, n_remaining) - r_breach * _event_weight(
+            t_breach, g, n_remaining
+        )
+        phi = lbg_potential(state, shaping_scale_m, home_weight)
+        return (sign * (terminal - shaping_gain * phi)).astype(s_flat.dtype)
+
+    return value
+
+
 def guard_leaf_value(
     adapter: Any,
     *,
-    alpha: float,
+    shaping_gain: float,
+    shaping_scale_m: float,
+    home_weight: float,
     r_catch: float,
     r_breach: float,
     catch_radius_m: float,
@@ -115,37 +142,40 @@ def guard_leaf_value(
     discount: float | None = None,
     n_remaining: int = 32,
 ) -> Callable[[jax.Array], jax.Array]:
-    """Guard-side value estimate in reward units.
+    """Guard-side shaped value estimate in reward units.
 
-    Sums the remaining guard-bandit shaping, ``r_catch`` weighted by the
-    estimated macro steps to a catch, and ``-r_breach`` weighted by the
-    estimated macro steps to a breach. ``discount`` defaults to
+    ``r_catch`` weighted by the estimated macro steps to a catch, less
+    ``r_breach`` weighted by the estimated macro steps to a breach, less
+    ``shaping_gain`` times the potential at the leaf. ``discount`` defaults to
     ``adapter.discount()``, the per-macro-step discount.
 
     The reward weights and radii are required: an estimate built on
     weights the reward does not use orders states by a game nobody is
     playing. :func:`guard_leaf_value_from_game` reads them off a scenario.
     """
-    g = adapter.discount() if discount is None else discount
-    horizon = _shaping_horizon(g, n_remaining)
-    macro_dt = adapter.macro_dt
-
-    def value(s_flat: jax.Array) -> jax.Array:
-        d_gb, d_bl = _distances(adapter, s_flat)
-        t_catch = _time_to_radius(d_gb, catch_radius_m, v_close_guard_mps, macro_dt)
-        t_breach = _time_to_radius(d_bl, breach_radius_m, v_close_bandit_mps, macro_dt)
-        w_catch = _event_weight(t_catch, g, n_remaining)
-        w_breach = _event_weight(t_breach, g, n_remaining)
-        v = -alpha * d_gb * horizon + r_catch * w_catch - r_breach * w_breach
-        return v.astype(s_flat.dtype)
-
-    return value
+    return _leaf_value(
+        adapter,
+        1.0,
+        shaping_gain=shaping_gain,
+        shaping_scale_m=shaping_scale_m,
+        home_weight=home_weight,
+        r_catch=r_catch,
+        r_breach=r_breach,
+        catch_radius_m=catch_radius_m,
+        breach_radius_m=breach_radius_m,
+        v_close_guard_mps=v_close_guard_mps,
+        v_close_bandit_mps=v_close_bandit_mps,
+        discount=discount,
+        n_remaining=n_remaining,
+    )
 
 
 def bandit_leaf_value(
     adapter: Any,
     *,
-    alpha: float,
+    shaping_gain: float,
+    shaping_scale_m: float,
+    home_weight: float,
     r_catch: float,
     r_breach: float,
     catch_radius_m: float,
@@ -155,28 +185,27 @@ def bandit_leaf_value(
     discount: float | None = None,
     n_remaining: int = 32,
 ) -> Callable[[jax.Array], jax.Array]:
-    """Bandit-side value estimate in reward units.
+    """Bandit-side shaped value estimate in reward units.
 
-    The mirror of :func:`guard_leaf_value`: remaining bandit-lady shaping,
-    ``r_breach`` weighted by the estimated macro steps to a breach, and
-    ``-r_catch`` weighted by the estimated macro steps to a catch. The
-    reward weights and radii are required; :func:`bandit_leaf_value_from_game`
-    reads them off a scenario.
+    The negation of :func:`guard_leaf_value`, matching the zero-sum geometry
+    terms of the reward. The reward weights and radii are required;
+    :func:`bandit_leaf_value_from_game` reads them off a scenario.
     """
-    g = adapter.discount() if discount is None else discount
-    horizon = _shaping_horizon(g, n_remaining)
-    macro_dt = adapter.macro_dt
-
-    def value(s_flat: jax.Array) -> jax.Array:
-        d_gb, d_bl = _distances(adapter, s_flat)
-        t_catch = _time_to_radius(d_gb, catch_radius_m, v_close_guard_mps, macro_dt)
-        t_breach = _time_to_radius(d_bl, breach_radius_m, v_close_bandit_mps, macro_dt)
-        w_catch = _event_weight(t_catch, g, n_remaining)
-        w_breach = _event_weight(t_breach, g, n_remaining)
-        v = -alpha * d_bl * horizon + r_breach * w_breach - r_catch * w_catch
-        return v.astype(s_flat.dtype)
-
-    return value
+    return _leaf_value(
+        adapter,
+        -1.0,
+        shaping_gain=shaping_gain,
+        shaping_scale_m=shaping_scale_m,
+        home_weight=home_weight,
+        r_catch=r_catch,
+        r_breach=r_breach,
+        catch_radius_m=catch_radius_m,
+        breach_radius_m=breach_radius_m,
+        v_close_guard_mps=v_close_guard_mps,
+        v_close_bandit_mps=v_close_bandit_mps,
+        discount=discount,
+        n_remaining=n_remaining,
+    )
 
 
 def _reward_terms(cfg: Any) -> dict[str, float]:
@@ -196,7 +225,9 @@ def _reward_terms(cfg: Any) -> dict[str, float]:
             "bandit_leaf_value with explicit weights and radii instead."
         )
     return {
-        "alpha": reward_fn.alpha,
+        "shaping_gain": reward_fn.shaping_gain,
+        "shaping_scale_m": reward_fn.shaping_scale_m,
+        "home_weight": reward_fn.home_weight,
         "r_catch": reward_fn.r_catch,
         "r_breach": reward_fn.r_breach,
         "catch_radius_m": reward_fn.catch_radius_m,

@@ -45,13 +45,21 @@ when you want a guard-only signal without LBG event semantics:
 
 ::: orbitalgym.rewards.reference.DistanceToReferenceOrbit
 
-`LbgZeroSumReward` is the LBG default — both sides get mirrored dense
-distance shaping plus large terminal events on catch / breach. Reads
+`LbgZeroSumReward` is the LBG default — both sides get mirrored
+potential-based shaping plus large terminal events on catch / breach, and
+the guard side pays a separation charge. Reads
 `catch_radius_m` and `breach_radius_m` from its own fields (the
 `LadyBanditGuard.default_reward_fn` builder threads those from the game
 knobs):
 
 ::: orbitalgym.rewards.lbg_zero_sum.LbgZeroSumReward
+
+The potential and the separation charge are module-level functions, so a
+custom reward or a value estimate can reuse the same geometry:
+
+::: orbitalgym.rewards.lbg_zero_sum.lbg_potential
+
+::: orbitalgym.rewards.lbg_zero_sum.guard_separation_cost
 
 Pursuit-Evasion ships its own zero-sum reward (`PursuitEvasionReward`)
 that reads `cfg.game.capture_distance_m`. Sun-Blocking ships
@@ -60,7 +68,7 @@ that reads `cfg.game.capture_distance_m`. Sun-Blocking ships
 
 ## Worked example: a sparse "breach happened" reward
 
-Replace dense distance shaping with a sparse penalty that fires only on
+Replace the shaped default with a sparse penalty that fires only on
 the breach step:
 
 ```python
@@ -81,7 +89,7 @@ Wire it onto the cfg:
 
 | Game | Default reward | What's reasonable to swap | Worth varying? |
 |---|---|---|---|
-| Lady-Bandit-Guard | `LbgZeroSumReward` (dense distance + terminal events) | Sparse breach-only reward, distance + control-effort, single-agent `DistanceToReferenceOrbit` | Yes — sparse vs dense changes learning dynamics fundamentally |
+| Lady-Bandit-Guard | `LbgZeroSumReward` (potential shaping + terminal events) | Sparse breach-only reward, distance + control-effort, single-agent `DistanceToReferenceOrbit` | Yes — sparse vs dense changes learning dynamics fundamentally |
 | Pursuit-Evasion | Zero-sum on relative distance | Time-discounted distance, capture-bonus | Yes — capture-bonus speeds up learning |
 | Sun-Blocking | Sun-line geometry score | Add control effort penalty | Less so — geometry term is the load-bearing signal |
 | Observation-Blocking | Visibility-gated geometry | Multi-target reward composition | Yes — multi-target is research-relevant |

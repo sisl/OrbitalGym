@@ -1,12 +1,20 @@
-"""One-shot generator for tests/fixtures/phase_0_baseline.npz."""
+"""One-shot generator for tests/fixtures/phase_0_baseline.npz.
+
+Run from the repository root so ``examples`` is importable::
+
+    JAX_PLATFORMS=cpu PYTHONPATH=. uv run python \
+        tests/fixtures/_generate_phase_0_baseline.py
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 
+import orbitalgym
 from examples.reference_scenario import build_config
 from orbitalgym.env.core import OrbitalGymEnv
 from orbitalgym.env.types import BySide
@@ -15,6 +23,9 @@ from orbitalgym.rollout import rollout
 
 
 def main():
+    # The test session runs at float64 (tests/conftest.py); the fixture has to
+    # be captured at the same precision to compare byte for byte.
+    orbitalgym.set_precision(jnp.float64)
     cfg = build_config()
     env = OrbitalGymEnv(cfg)
 

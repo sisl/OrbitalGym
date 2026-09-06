@@ -24,14 +24,29 @@ The guard defends the lady — a virtual point at the reference-orbit origin (th
 
 `LbgZeroSumReward` mirrors guard and bandit signals every step:
 
-- **Guard**: `−α·d_guard_bandit_min + R_catch·1[catch or repelled] − R_breach·1[breach]`. The dense term pulls the guard toward the closest bandit; the terminal events dominate cumulative return when triggered.
-- **Bandit** (mirror): `−α·d_bandit_lady_min + R_breach·1[breach] − R_catch·1[catch or repelled]`. The dense term pulls the bandit toward the lady; terminal events flip the sign of the guard's reward.
+- **Guard**: `shaping_gain·(g·Φ(s′) − Φ(s)) + R_catch·1[catch or repelled] − R_breach·1[breach]`.
+- **Bandit** (mirror): `−shaping_gain·(g·Φ(s′) − Φ(s)) + R_breach·1[breach] − R_catch·1[catch or repelled]`.
+
+The state potential, written with the guard's sign, is
+
+```
+Φ(s) = (d_bandit_lady_min − d_guard_bandit_min − home_weight·d_guard_lady_min) / shaping_scale_m
+```
+
+so it rises as the guard closes on a bandit, falls as a bandit closes on the lady, and — with `home_weight` above zero — rewards a guard that stays near the asset it defends. `shaping_scale_m` sets the distance that makes the potential unity, keeping the shaping reward order one per step.
+
+Only the *difference* of the potential is paid, which makes this potential-based shaping in the sense of [Ng, Harada and Russell (1999)](https://people.eecs.berkeley.edu/~russell/papers/ml99-shaping.pdf): the optimal policies of the shaped and the terminal-only game are identical whatever the gain, and the shaped value satisfies `V′(s) = V(s) − Φ(s)` when `shaping_discount` matches the planner's per-step discount. `shaping_gain=0` recovers a purely terminal reward. The leaf values in `orbitalgym.policies.leaf_values` apply exactly that correction, so search leaves and rollout returns stay on the same scale.
 
 Repelling the bandits pays the guard exactly what a catch pays: either way the bandit team is out of the fight, so the guard is indifferent between intercepting a bandit and driving it off.
 
-With `dv_cost > 0` each side additionally pays `dv_cost` reward units per m/s of delta-v **its own** vehicles spent over the step, recovered from the propellant drawn down through the rocket equation rather than from the commanded impulse — thrust limits and an empty tank both clip a command, so the commanded magnitude would overstate the spend. The geometry terms stay zero-sum and the fuel terms do not mirror, so each side bears only the cost of the fuel it burnt and neither gains from the other's thrift. A side whose state carries no `MASS` component has no propellant trace and pays nothing.
+Two further terms are genuine per-side costs rather than shaping, and they *do* move the optimum:
 
-`α=1e-3`, `R_catch=R_breach=1000.0`, `dv_cost=0.0` by default; the radii and the speed gates come from `cfg.game`, and both the reward and the termination read the same closest-approach events, so a terminal bonus is paid in exactly the step the episode ends.
+- **Fuel.** With `dv_cost > 0` each side pays `dv_cost` reward units per m/s of delta-v **its own** vehicles spent over the step, recovered from the propellant drawn down through the rocket equation rather than from the commanded impulse — thrust limits and an empty tank both clip a command, so the commanded magnitude would overstate the spend. A side whose state carries no `MASS` component has no propellant trace and pays nothing.
+- **Separation.** The guard side alone pays `separation_cost·(1 − d/r)²` for every guard pair closer than `r = guard_separation_m` and for every guard closer than `r = lady_keepout_m` to the lady. The charge is zero at the radius, grows quadratically inward, and reaches `separation_cost` at zero distance. It buys a spread-out formation that does not fly through the asset it protects. A one-guard side has no pairs and pays only the lady term.
+
+Neither cost is mirrored, so each side bears only what it incurs and the geometry terms stay zero-sum.
+
+`shaping_scale_m=300.0`, `shaping_gain=1.0`, `shaping_discount=1.0`, `home_weight=0.0`, `guard_separation_m=lady_keepout_m=20.0`, `separation_cost=10.0`, `R_catch=R_breach=1000.0`, `dv_cost=0.0` by default; the radii and the speed gates come from `cfg.game`. The potential and the separation cost are state functions read off the step endpoints; the catch and breach events are resolved over the whole step, and the reward and the termination read the same ones, so a terminal bonus is paid in exactly the step the episode ends.
 
 ## Termination
 
@@ -72,6 +87,13 @@ cfg = make_lady_bandit_guard(
     escape_radius_m=0.0,
     repel_on_empty_tank=False,
     dv_cost=0.0,
+    shaping_scale_m=300.0,
+    shaping_gain=1.0,
+    shaping_discount=1.0,
+    home_weight=0.0,
+    guard_separation_m=20.0,
+    lady_keepout_m=20.0,
+    separation_cost=10.0,
     max_horizon_s=2000.0,
     seed=0,
 )
