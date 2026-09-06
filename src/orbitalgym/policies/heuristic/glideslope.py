@@ -15,9 +15,12 @@ command the same impulse wherever neither the braking curve nor the clip binds.
 
 Defaults are ``slope_s = 100 s``, ``arrival_mps = 0.3 m/s`` and
 ``brake_fraction = 0.5``. At the guard cap of 0.4545 m/s per 10 s step the two
-curves cross near 390 m, so the braking curve is the smaller one over the rest
-of an engagement and the approach speed is set by the vehicle's own
-deceleration rather than by the time constant.
+curves cross near 390 m: inside that range the linear glideslope is the smaller
+of the two and sets the approach, and beyond it the braking curve is the
+smaller, so over most of an engagement the approach speed is set by the
+vehicle's own deceleration rather than by the time constant. Below about 2 m
+the braking curve is the smaller once more, which is what takes the arrival
+speed to zero.
 
 Reference: Hablani, Tapper, and Dana-Bashian, "Guidance and Relative Navigation
 for Autonomous Rendezvous in a Circular Orbit," Journal of Guidance, Control,

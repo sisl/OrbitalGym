@@ -34,8 +34,8 @@
 # - 2 guards on small co-orbiting rings near the lady (RTN origin),
 #   phases sampled uniformly at random per run.
 # - 1 bandit on the outer 2:1 RT-plane natural-motion ring; the bandit
-#   runs a glideslope policy that drives toward the lady (terminal-position
-#   regulator → origin = lady).
+#   runs a glideslope policy that closes on the lady at a speed set by
+#   the range and by its own braking authority.
 # - Each guard runs a `RangeLimitedObservation` with a tunable sensor
 #   range and measurement noise; the bandit's sensor parameters are
 #   tuned independently.
@@ -176,13 +176,14 @@ BREACH_RADIUS_M = 5.0  # bandit "breaches" the lady when within this distance
 MAX_DISTANCE_TERMINATION_M = 20000.0  # 20 km — about 2.5x the along-track ring extent
 
 # ---- Bandit thrust authority ------------------------------------------------
-# Per-step Δv cap (m/s) on the bandit's glideslope controller. The
-# unclipped glideslope recommendation for a state 8 km from the origin is on
-# the order of m/s (much larger than 0.05); too tight a clip turns the
-# glideslope into a saturated bang-bang that behaves like the naïve "thrust
-# toward origin" policy, which fails under HCW Coriolis. The default
-# 0.5 m/s gives the glideslope enough authority to actually close on the lady
-# in roughly one orbital period.
+# Per-step Δv cap (m/s) on the bandit's glideslope controller. The cap
+# also sets the braking curve `sqrt(2 * brake_fraction * max_dv / dt * rho)`,
+# so it bounds the closing speed the controller is willing to build up as
+# well as the impulse it can spend in one step. Too tight a cap leaves the
+# bandit thrusting flat out for the whole approach, which behaves like the
+# naïve "thrust toward origin" policy and fails under HCW Coriolis. The
+# default 0.5 m/s lets it come off the cap early enough to fly the
+# glideslope and close on the lady in roughly one orbital period.
 BANDIT_MAX_DV_MPS = 0.5
 
 # ---- Bandit guard-avoidance (APF) -------------------------------------------
@@ -193,8 +194,7 @@ BANDIT_MAX_DV_MPS = 0.5
 # action. `BANDIT_AVOIDANCE_SIGMA_M` is the Gaussian length scale: at
 # `~3*sigma` the repulsion is essentially zero, at `~sigma` it is ~37%,
 # at zero it is full `gain`. Set `BANDIT_AVOIDANCE_GAIN=0` to turn
-# avoidance off and recover the the pure lady-seeking glideslope (matches the
-# previous demo behavior).
+# avoidance off and recover the pure lady-seeking glideslope.
 #
 # Tuning intuition: with sigma=300m and gain=1.0, the bandit feels a
 # repulsion of >0.1 m/s within ~700m of a guard. The guards on the 200m
