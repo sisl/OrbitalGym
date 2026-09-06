@@ -476,7 +476,7 @@ print(f"Action grids: guard={guard_action_grid.shape}, bandit={bandit_action_gri
 # linear glideslope in range and the braking curve the per-tick Δv cap can
 # shed, so the gain is independent of the cap: the cap enters only through
 # the braking curve and the norm clip.
-GLIDE_SLOPE_S = 300.0
+GLIDE_SLOPE_S = 100.0
 GLIDE_ARRIVAL_MPS = 0.3
 GLIDE_BRAKE_FRACTION = 0.5
 

@@ -55,7 +55,7 @@ class GlideslopeBanditPolicy:
         cls,
         env,
         *,
-        slope_s: float = 300.0,
+        slope_s: float = 100.0,
         arrival_mps: float = 0.3,
         brake_fraction: float = 0.5,
         dv_max: float = 1.0,

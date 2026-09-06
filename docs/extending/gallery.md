@@ -96,9 +96,9 @@ the vehicle's current phase angle, and ends only once both are inside
 hold is: a residual `dv` leaves an along-track drift of about
 `2 pi dv / (1.5 n)` metres per orbit. Measured on a 2 km standoff ring
 approached from 3 km at a 0.4545 m/s per-step cap, over six start phases,
-`settle_tol_mps=0.2` settles in 1220 to 1420 s and holds the amplitude within
-18 to 30 percent of the standoff over an orbit; the default 0.02 settles in
-1660 to 1780 s and keeps the hold within 2.7 to 8.0 percent.
+`settle_tol_mps=0.2` settles in 510 to 630 s and holds the amplitude within
+47 to 75 percent of the standoff over an orbit; the default 0.02 settles in
+750 to 840 s and keeps the hold within 3.4 to 7.7 percent.
 
 Avoidance applies only in the commit phase. The transfer glides onto the
 ring with no repulsion term, so a nearby guard cannot push the vehicle off the

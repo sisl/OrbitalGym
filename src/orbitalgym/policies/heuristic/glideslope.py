@@ -13,8 +13,11 @@ the budget enters only through the braking curve and the final clip, both
 physical limits of the vehicle. Two vehicles with different budgets therefore
 command the same impulse wherever neither the braking curve nor the clip binds.
 
-Defaults are ``slope_s = 300 s``, ``arrival_mps = 0.3 m/s`` and
-``brake_fraction = 0.5``.
+Defaults are ``slope_s = 100 s``, ``arrival_mps = 0.3 m/s`` and
+``brake_fraction = 0.5``. At the guard cap of 0.4545 m/s per 10 s step the two
+curves cross near 390 m, so the braking curve is the smaller one over the rest
+of an engagement and the approach speed is set by the vehicle's own
+deceleration rather than by the time constant.
 
 Reference: Hablani, Tapper, and Dana-Bashian, "Guidance and Relative Navigation
 for Autonomous Rendezvous in a Circular Orbit," Journal of Guidance, Control,
@@ -151,7 +154,7 @@ class GlideslopeToLady:
         state_dim: int,
         command_cls: Any,
         max_dv_mps: float,
-        slope_s: float = 300.0,
+        slope_s: float = 100.0,
         arrival_mps: float = 0.3,
         brake_fraction: float = 0.5,
         avoidance_gain_mps: float = 0.0,
@@ -244,7 +247,7 @@ class GlideslopeIntercept:
         state_dim: int,
         command_cls: Any,
         max_dv_mps: float,
-        slope_s: float = 300.0,
+        slope_s: float = 100.0,
         arrival_mps: float = 0.3,
         brake_fraction: float = 0.5,
     ) -> GlideslopeIntercept:

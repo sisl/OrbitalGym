@@ -10,7 +10,7 @@ from tests.policies._helpers import make_impulsive_maneuver_command_cls
 MEAN_MOTION = 0.0010780076263472438
 DT = 10.0
 GUARD_CAP = 0.4545
-SLOPE_S = 300.0
+SLOPE_S = 100.0
 ARRIVAL_MPS = 0.3
 BRAKE_FRACTION = 0.5
 
@@ -139,7 +139,10 @@ def test_free_space_approach_arrives_slowly():
 
 
 def test_gain_independent_of_cap():
-    x = np.array([60.0, 0.0, -0.2, 0.0])
+    # 60 m out and already closing at 0.7 m/s: the glideslope is the smaller of
+    # the two speeds and the residual impulse is inside both caps, so neither
+    # the braking curve nor the clip can bind for either vehicle.
+    x = np.array([60.0, 0.0, -0.7, 0.0])
     far_opponent = np.array([0.0, 5.0e5, 0.0, 0.0])
     slow = _command(_to_lady(GUARD_CAP), x, far_opponent)
     fast = _command(_to_lady(2.0 * GUARD_CAP), x, far_opponent)

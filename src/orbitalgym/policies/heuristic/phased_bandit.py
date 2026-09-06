@@ -109,9 +109,9 @@ class PhasedBandit:
     transfer ends sets how far the vehicle walks off the ring during the very
     phase the schedule exists to create. Measured on a 2 km standoff ring
     approached from 3 km at a 0.4545 m/s per-step cap, over six start phases,
-    ``settle_tol_mps=0.2`` settles in 1220 to 1420 s and holds the amplitude
-    within 18 to 30 percent of the standoff over an orbit. The default 0.02
-    settles in 1660 to 1780 s and holds within 2.7 to 8.0 percent, so the hold
+    ``settle_tol_mps=0.2`` settles in 510 to 630 s and holds the amplitude
+    within 47 to 75 percent of the standoff over an orbit. The default 0.02
+    settles in 750 to 840 s and holds within 3.4 to 7.7 percent, so the hold
     stays near the ring rather than depending on where in the ellipse the
     looser threshold happens to stop the transfer.
 
@@ -154,7 +154,7 @@ class PhasedBandit:
         settle_tol_m: float = 20.0,
         settle_tol_mps: float = 0.02,
         t_transfer_max_s: float = 3000.0,
-        slope_s: float = 300.0,
+        slope_s: float = 100.0,
         arrival_mps: float = 0.3,
         brake_fraction: float = 0.5,
         avoidance_gain_mps: float = 0.0,

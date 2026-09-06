@@ -458,7 +458,7 @@ class GlideslopeToLadyWithAvoidance:
         cls,
         *,
         dt,
-        slope_s=300.0,
+        slope_s=100.0,
         arrival_mps=0.3,
         brake_fraction=0.5,
         max_dv_mps=0.5,
