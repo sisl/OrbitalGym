@@ -34,7 +34,7 @@
 # - 2 guards on small co-orbiting rings near the lady (RTN origin),
 #   phases sampled uniformly at random per run.
 # - 1 bandit on the outer 2:1 RT-plane natural-motion ring; the bandit
-#   runs an glideslope policy that drives toward the lady (terminal-position
+#   runs a glideslope policy that drives toward the lady (terminal-position
 #   regulator → origin = lady).
 # - Each guard runs a `RangeLimitedObservation` with a tunable sensor
 #   range and measurement noise; the bandit's sensor parameters are
