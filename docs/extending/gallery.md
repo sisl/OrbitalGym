@@ -15,6 +15,7 @@ class directly, or read its source as a starting point for your own.
 | [`SunTrackerBlocker`](#suntrackerblocker) | Heuristic | SB | Maintains Sun-line geometry vs. opponent. |
 | [`LQRGoToLadyWithAvoidance`](#lqrgotoladywithavoidance) | Heuristic | LBG | In-plane HCW LQR to the lady plus Gaussian repulsion from opponents. |
 | [`LQRIntercept`](#lqrintercept) | Heuristic | LBG, PE | In-plane HCW LQR driving the relative state to the nearest opponent to zero. |
+| [`PhasedBandit`](#phasedbandit) | Heuristic | LBG | Coast, transfer onto a standoff ring, hold there for free, then commit to the lady. |
 | [`JitteredPolicy`](#jitteredpolicy) | Heuristic (wrapper) | All | Wraps any policy and adds Gaussian jitter. |
 | [`HeuristicWithFallbackPolicy`](#heuristicwithfallbackpolicy) | Controlled (wrapper) | All | Confidence-gated routing between primary and fallback. |
 | [`CompositeActionPolicy`](#compositeactionpolicy) | Controlled (wrapper) | All | Sums actions from a base and offset policy. |
@@ -29,6 +30,7 @@ from orbitalgym.policies.heuristic import (
     LQRGoToLadyWithAvoidance,
     LQRIntercept,
     OrthogonalEvader,
+    PhasedBandit,
     SunTrackerBlocker,
     JitteredPolicy,
 )
@@ -74,6 +76,31 @@ walkthrough; the API entry below is the bare class reference.
 ### LQRIntercept
 
 ::: orbitalgym.policies.heuristic.lqr_intercept.LQRIntercept
+
+### PhasedBandit
+
+A bandit on a schedule: it stays quiet for `t_coast_s`, spends fuel once to
+move onto a standoff ring of radial amplitude `standoff_m`, waits there for
+`t_hold_s`, and only then closes on the lady with the
+`LQRGoToLadyWithAvoidance` command. Timing and information matter to the
+guards, and a game runs across several ground passes rather than resolving in
+one approach.
+
+The hold is free because the standoff ring is a natural bounded relative
+orbit — the same 2:1 ellipse family `RelativeEllipse` samples for the initial
+conditions, with no secular drift — so a vehicle that reaches it coasts around
+it. Holding station at a fixed RTN point would have to be paid for every step.
+The transfer therefore targets the ellipse *state*, position and velocity, at
+the vehicle's current phase angle, and ends only once both are inside
+`settle_tol_m` and `settle_tol_mps`. The velocity tolerance sets how tight the
+hold is: a residual `dv` leaves an along-track drift of about
+`2 pi dv / (1.5 n)` metres per orbit.
+
+Phases are per-vehicle and live in the policy state, so each bandit in a fleet
+runs its own schedule; transitions are `jnp.where` selects on traced values,
+so the policy runs under `jit` and `vmap`.
+
+::: orbitalgym.policies.heuristic.phased_bandit.PhasedBandit
 
 ### JitteredPolicy
 

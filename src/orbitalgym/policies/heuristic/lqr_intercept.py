@@ -8,7 +8,11 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 
-from orbitalgym.policies.heuristic.lqr_avoid import IN_PLANE_RTN, _steady_state_gain
+from orbitalgym.policies.heuristic.lqr_avoid import (
+    IN_PLANE_RTN,
+    _steady_state_gain,
+    mean_from_view,
+)
 from orbitalgym.registry import PolicyKey, register
 
 
@@ -78,24 +82,7 @@ class LQRIntercept:
         )
 
     def _mean(self, agent_view: Any) -> jax.Array:
-        if isinstance(agent_view, jax.Array):
-            n_total = self.n_vehicles + self.n_opponents
-            expected_size = self.n_vehicles * n_total * self.state_dim
-            size = agent_view.size
-            if size == expected_size:
-                flat = agent_view
-            elif size % expected_size == 0:
-                flat = agent_view.reshape((-1, expected_size))[-1]
-            else:
-                raise ValueError(
-                    f"Flat observation size {size} is not a multiple of expected "
-                    f"{expected_size} ({self.n_vehicles} vehicles × {n_total} entities × "
-                    f"{self.state_dim} dims). Flat-observation path requires one or more "
-                    f"equal-sized full-state channels; position-only channels must use a "
-                    f"belief view."
-                )
-            return flat.reshape((self.n_vehicles, n_total, self.state_dim))
-        return agent_view.mean
+        return mean_from_view(agent_view, self.n_vehicles, self.n_opponents, self.state_dim)
 
     def __call__(self, policy_state: Any, agent_view: Any, key: jax.Array, t: jax.Array):
         del key, t

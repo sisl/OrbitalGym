@@ -89,6 +89,7 @@ class PolicyKey(StrEnum):
     POINTING = "pointing_policy"
     LQR_AVOID = "lqr_go_to_lady_with_avoidance"
     LQR_INTERCEPT = "lqr_intercept"
+    PHASED_BANDIT = "phased_bandit"
     MPPI = "mppi"
 
 
