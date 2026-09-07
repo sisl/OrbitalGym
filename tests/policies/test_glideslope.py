@@ -1,4 +1,4 @@
-"""Glideslope guidance: approach, intercept, and cap-independence of the gain."""
+"""Glideslope guidance: approach, intercept, sustainable speed, and gain independence."""
 
 import jax
 import jax.numpy as jnp
@@ -13,6 +13,8 @@ GUARD_CAP = 0.4545
 SLOPE_S = 100.0
 ARRIVAL_MPS = 0.3
 BRAKE_FRACTION = 0.5
+HCW_FRACTION = 0.5
+S_HCW = HCW_FRACTION * GUARD_CAP / (2.0 * MEAN_MOTION * DT)
 
 
 def _hcw_rt_ab(mean_motion: float, dt: float) -> tuple[np.ndarray, np.ndarray]:
@@ -35,10 +37,11 @@ def _hcw_rt_ab(mean_motion: float, dt: float) -> tuple[np.ndarray, np.ndarray]:
 A_HCW, _ = _hcw_rt_ab(MEAN_MOTION, DT)
 
 
-def _commanded_speed(rho: float, cap: float) -> float:
+def _commanded_speed(rho: float, cap: float, hcw_fraction: float = HCW_FRACTION) -> float:
     """The glideslope's commanded closing speed at range `rho` for a vehicle with cap `cap`."""
     a_brake = BRAKE_FRACTION * cap / DT
-    return float(min(rho / SLOPE_S + ARRIVAL_MPS, np.sqrt(2.0 * a_brake * rho)))
+    s_hcw = hcw_fraction * cap / (2.0 * MEAN_MOTION * DT)
+    return float(min(rho / SLOPE_S + ARRIVAL_MPS, np.sqrt(2.0 * a_brake * rho), s_hcw))
 
 
 def _ellipse_state(amplitude_m: float, phase_rad: float) -> np.ndarray:
@@ -62,7 +65,11 @@ def _view(own_rt: np.ndarray, opp_rt: np.ndarray) -> jax.Array:
     return jnp.asarray(mean.reshape(-1), dtype=jnp.float32)
 
 
-def _to_lady(cap: float, avoidance_gain_mps: float = 0.0) -> GlideslopeToLady:
+def _to_lady(
+    cap: float,
+    avoidance_gain_mps: float = 0.0,
+    hcw_fraction: float = HCW_FRACTION,
+) -> GlideslopeToLady:
     return GlideslopeToLady.build(
         mean_motion=MEAN_MOTION,
         dt=DT,
@@ -71,6 +78,7 @@ def _to_lady(cap: float, avoidance_gain_mps: float = 0.0) -> GlideslopeToLady:
         state_dim=6,
         command_cls=make_impulsive_maneuver_command_cls(1),
         max_dv_mps=cap,
+        hcw_fraction=hcw_fraction,
         avoidance_gain_mps=avoidance_gain_mps,
     )
 
@@ -209,3 +217,68 @@ def test_runs_under_jit_and_vmap():
     dv_dim = command_cls.zeros(n_vehicles).dv.shape[-1]
     assert dv.shape == (3, n_vehicles, dv_dim)
     assert bool(jnp.all(jnp.isfinite(dv)))
+
+
+def test_long_range_approach_stays_on_the_line_of_sight():
+    """From 20 km the sustainable speed keeps the approach inside the vehicle's budget.
+
+    Holding a relative velocity that is not natural motion costs about
+    ``2 n v dt`` of impulse per step, so at the guard cap a straight approach
+    can be held only up to ``S_HCW``. Asking for more than the budget can hold
+    lets the Coriolis coupling carry the vehicle off the line of sight, and the
+    range grows instead of closing. The approach is started on the drift-free
+    ring so that the initial state is one the dynamics would sustain by itself.
+    """
+    policy = _to_lady(GUARD_CAP)
+    far_opponent = np.array([0.0, 5.0e5, 0.0, 0.0])
+    starts = [
+        np.array([0.0, 20000.0, 0.0, 0.0]),
+        np.array([-1000.0, 20000.0, 0.0, 2.0 * MEAN_MOTION * 1000.0]),
+        np.array([0.0, 22000.0, 1000.0 * MEAN_MOTION, 0.0]),
+    ]
+
+    for start in starts:
+        x = start.copy()
+        arrival_step = None
+        max_rho = 0.0
+        max_speed = 0.0
+        for step in range(4000):
+            dv = _command(policy, x, far_opponent)
+            rho = float(np.linalg.norm(x[:2]))
+            max_rho = max(max_rho, rho)
+            post = x.copy()
+            post[2:] += dv
+            max_speed = max(max_speed, float(np.linalg.norm(post[2:])))
+            if arrival_step is None and rho < 5.0:
+                arrival_step = step
+                break
+            x = A_HCW @ post
+
+        assert arrival_step is not None, f"never reached 5 m from {start}"
+        assert max_rho < 25000.0, f"drifted out to {max_rho:.0f} m from {start}"
+        assert max_speed <= S_HCW + 0.05, (
+            f"commanded {max_speed:.3f} m/s over the sustainable {S_HCW:.3f} m/s from {start}"
+        )
+
+
+def test_sustainable_speed_binds_at_three_kilometres():
+    """At 3 km the sustainable speed is the smallest of the three terms at the default fraction.
+
+    Both states are already closing near their own commanded speed, so the
+    residual impulse is inside the cap and the post-impulse velocity is exactly
+    the commanded one.
+    """
+    far_opponent = np.array([0.0, 5.0e5, 0.0, 0.0])
+    a_brake = BRAKE_FRACTION * GUARD_CAP / DT
+    s_brake = float(np.sqrt(2.0 * a_brake * 3000.0))
+    assert s_brake > S_HCW, "the sustainable speed does not bind at 3 km"
+
+    loose = np.array([3000.0, 0.0, -s_brake - 0.2, 0.0])
+    dv = _command(_to_lady(GUARD_CAP, hcw_fraction=10.0), loose, far_opponent)
+    assert np.linalg.norm(dv) < GUARD_CAP - 1e-3, "test state is saturated"
+    np.testing.assert_allclose(loose[2:] + dv, [-s_brake, 0.0], atol=1e-4)
+
+    tight = np.array([3000.0, 0.0, -S_HCW - 0.2, 0.0])
+    dv = _command(_to_lady(GUARD_CAP), tight, far_opponent)
+    assert np.linalg.norm(dv) < GUARD_CAP - 1e-3, "test state is saturated"
+    np.testing.assert_allclose(tight[2:] + dv, [-S_HCW, 0.0], atol=1e-4)

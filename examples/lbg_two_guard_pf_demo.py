@@ -413,9 +413,11 @@ class GlideslopeToLadyWithAvoidance:
     """
 
     dt: float
+    mean_motion: float
     slope_s: float
     arrival_mps: float
     brake_fraction: float
+    hcw_fraction: float
     max_dv_mps: float
     avoidance_gain: float
     avoidance_sigma_m: float
@@ -427,9 +429,11 @@ class GlideslopeToLadyWithAvoidance:
         cls,
         *,
         dt,
+        mean_motion,
         slope_s=100.0,
         arrival_mps=0.3,
         brake_fraction=0.5,
+        hcw_fraction=0.5,
         max_dv_mps=0.5,
         avoidance_gain=1.0,
         avoidance_sigma_m=300.0,
@@ -438,9 +442,11 @@ class GlideslopeToLadyWithAvoidance:
     ):
         return cls(
             dt=float(dt),
+            mean_motion=float(mean_motion),
             slope_s=float(slope_s),
             arrival_mps=float(arrival_mps),
             brake_fraction=float(brake_fraction),
+            hcw_fraction=float(hcw_fraction),
             max_dv_mps=float(max_dv_mps),
             avoidance_gain=float(avoidance_gain),
             avoidance_sigma_m=float(avoidance_sigma_m),
@@ -460,9 +466,11 @@ class GlideslopeToLadyWithAvoidance:
             jnp.zeros_like(bandit_rt),
             max_dv_mps=self.max_dv_mps,
             dt=self.dt,
+            mean_motion=self.mean_motion,
             slope_s=self.slope_s,
             arrival_mps=self.arrival_mps,
             brake_fraction=self.brake_fraction,
+            hcw_fraction=self.hcw_fraction,
         )
 
         # ---- Guard avoidance (APF) ----
@@ -511,6 +519,7 @@ class GoToLadyPolicyNaive:
 
 bandit_policy = GlideslopeToLadyWithAvoidance.build(
     dt=cfg.dt,
+    mean_motion=N_MOTION,
     max_dv_mps=BANDIT_MAX_DV_MPS,
     avoidance_gain=BANDIT_AVOIDANCE_GAIN,
     avoidance_sigma_m=BANDIT_AVOIDANCE_SIGMA_M,
@@ -1175,6 +1184,7 @@ def run_one_episode(seed: int):
     env_seed = OrbitalGymEnv(cfg_seed)
     bandit_policy_seed = GlideslopeToLadyWithAvoidance.build(
         dt=cfg_seed.dt,
+        mean_motion=N_MOTION,
         max_dv_mps=BANDIT_MAX_DV_MPS,
         avoidance_gain=BANDIT_AVOIDANCE_GAIN,
         avoidance_sigma_m=BANDIT_AVOIDANCE_SIGMA_M,

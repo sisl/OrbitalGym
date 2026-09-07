@@ -157,6 +157,7 @@ class PhasedBandit:
         slope_s: float = 100.0,
         arrival_mps: float = 0.3,
         brake_fraction: float = 0.5,
+        hcw_fraction: float = 0.5,
         avoidance_gain_mps: float = 0.0,
         avoidance_sigma_m: float = 50.0,
     ) -> PhasedBandit:
@@ -172,6 +173,7 @@ class PhasedBandit:
                 slope_s=slope_s,
                 arrival_mps=arrival_mps,
                 brake_fraction=brake_fraction,
+                hcw_fraction=hcw_fraction,
                 avoidance_gain_mps=avoidance_gain_mps,
                 avoidance_sigma_m=avoidance_sigma_m,
             ),
@@ -214,9 +216,11 @@ class PhasedBandit:
             target,
             max_dv_mps=inner.max_dv_mps,
             dt=self.dt,
+            mean_motion=self.mean_motion,
             slope_s=inner.slope_s,
             arrival_mps=0.0,
             brake_fraction=inner.brake_fraction,
+            hcw_fraction=inner.hcw_fraction,
         )
 
         commit_command, _ = inner(None, agent_view, key, t)
