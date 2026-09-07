@@ -3,24 +3,38 @@
 The guidance law commands, once per step, the impulse that puts a vehicle's
 in-plane HCW velocity on a desired velocity: the target's velocity plus a
 closing speed directed along the line of sight. The closing speed is the
-smaller of a linear glideslope ``rho / slope_s + arrival_mps`` and the braking
-curve ``sqrt(2 a_brake rho)`` that the vehicle's own per-step budget can shed,
-where ``a_brake = brake_fraction * max_dv_mps / dt``. The resulting impulse is
-scaled down to Euclidean norm ``max_dv_mps`` when it exceeds it.
+smallest of three terms: a linear glideslope ``rho / slope_s + arrival_mps``,
+the braking curve ``sqrt(2 a_brake rho)`` that the vehicle's own per-step
+budget can shed, where ``a_brake = brake_fraction * max_dv_mps / dt``, and the
+sustainable speed ``hcw_fraction * max_dv_mps / (2 n dt)``. The last term comes
+from the Coriolis coupling of the HCW dynamics: holding a relative velocity
+``v`` that is not natural motion costs about ``2 n v dt`` of impulse every
+step, so ``max_dv_mps / (2 n dt)`` is what the per-step budget can pay for that
+coupling alone. It is not the whole cost. The ``3 n^2 x`` gradient term, the
+rotation of the line of sight as the range closes, and the finite step all add
+to or subtract from it depending on where the vehicle sits, so the law spends
+only the fraction ``hcw_fraction`` of that bound and leaves the rest as margin.
+
+``hcw_fraction = 0.5`` is the default because the full bound has no margin
+left. Over eight start phases on a 2 km ring, offset along-track by 20 km and
+by 40 km, ``hcw_fraction = 1.0`` reaches the lady from 20 km in six of the
+eight cases and from 40 km in none of them, and ``0.75`` in eight and six;
+``0.5`` arrives in all sixteen, taking 1930 to 2670 s from 20 km and 3830 to
+4570 s from 40 km. The resulting impulse is scaled down to Euclidean norm
+``max_dv_mps`` when it exceeds it.
 
 The gain, ``slope_s`` and ``arrival_mps``, does not depend on ``max_dv_mps``:
-the budget enters only through the braking curve and the final clip, both
-physical limits of the vehicle. Two vehicles with different budgets therefore
-command the same impulse wherever neither the braking curve nor the clip binds.
+the budget enters only through the braking curve, the sustainable speed and the
+final clip, all physical limits of the vehicle. Two vehicles with different
+budgets therefore command the same impulse wherever none of the three binds.
 
-Defaults are ``slope_s = 100 s``, ``arrival_mps = 0.3 m/s`` and
-``brake_fraction = 0.5``. At the guard cap of 0.4545 m/s per 10 s step the two
-curves cross near 390 m: inside that range the linear glideslope is the smaller
-of the two and sets the approach, and beyond it the braking curve is the
-smaller, so over most of an engagement the approach speed is set by the
-vehicle's own deceleration rather than by the time constant. Below about 2 m
-the braking curve is the smaller once more, which is what takes the arrival
-speed to zero.
+Defaults are ``slope_s = 100 s``, ``arrival_mps = 0.3 m/s``,
+``brake_fraction = 0.5`` and ``hcw_fraction = 0.5``. At the guard cap of
+0.4545 m/s per 10 s step and a mean motion of 1.078e-3 rad/s the sustainable
+speed term is 10.5 m/s, which binds beyond about 2.4 km. Inside that range the
+braking curve is the smaller until it crosses the linear glideslope near 390 m,
+below which the time constant sets the approach; below about 2 m the braking
+curve is the smaller once more, which is what takes the arrival speed to zero.
 
 Reference: Hablani, Tapper, and Dana-Bashian, "Guidance and Relative Navigation
 for Autonomous Rendezvous in a Circular Orbit," Journal of Guidance, Control,
@@ -52,16 +66,19 @@ def glideslope_u(
     *,
     max_dv_mps: float,
     dt: float,
+    mean_motion: float,
     slope_s: float,
     arrival_mps: float,
     brake_fraction: float,
+    hcw_fraction: float = 0.5,
 ) -> jax.Array:
     """The unclipped impulse that puts the in-plane velocity of ``x`` on the desired velocity.
 
     ``x`` and ``x_target`` have shape ``(n, 4)``; the result is ``(n, 2)`` and
     is not bounded by ``max_dv_mps``, which enters only through the braking
-    curve. Callers that add their own terms, such as an avoidance push, add
-    them here and apply :func:`clip_to_cap` once to the sum.
+    curve and the sustainable speed. Callers that add their own terms, such as
+    an avoidance push, add them here and apply :func:`clip_to_cap` once to the
+    sum.
     """
     rho_vec = x[..., :2] - x_target[..., :2]
     rho = jnp.linalg.norm(rho_vec, axis=-1, keepdims=True)
@@ -69,7 +86,8 @@ def glideslope_u(
     a_brake = brake_fraction * max_dv_mps / dt
     s_glide = rho / slope_s + arrival_mps
     s_brake = jnp.sqrt(2.0 * a_brake * rho)
-    s = jnp.minimum(s_glide, s_brake)
+    s_hcw = hcw_fraction * max_dv_mps / (2.0 * mean_motion * dt)
+    s = jnp.minimum(jnp.minimum(s_glide, s_brake), s_hcw)
     v_des = x_target[..., 2:] - s * rho_hat
     return v_des - x[..., 2:]
 
@@ -80,9 +98,11 @@ def glideslope_dv(
     *,
     max_dv_mps: float,
     dt: float,
+    mean_motion: float,
     slope_s: float,
     arrival_mps: float,
     brake_fraction: float,
+    hcw_fraction: float = 0.5,
 ) -> jax.Array:
     """Glideslope impulse for in-plane states ``x``, ``x_target`` of shape ``(n, 4)``.
 
@@ -94,9 +114,11 @@ def glideslope_dv(
         x_target,
         max_dv_mps=max_dv_mps,
         dt=dt,
+        mean_motion=mean_motion,
         slope_s=slope_s,
         arrival_mps=arrival_mps,
         brake_fraction=brake_fraction,
+        hcw_fraction=hcw_fraction,
     )
     return clip_to_cap(u, max_dv_mps)
 
@@ -129,8 +151,8 @@ class GlideslopeToLady:
     channels are all full-state and the same size — in which case the last
     channel is used. Position-only channels must go through a belief.
 
-    ``mean_motion`` is stored for interface symmetry with the other heuristic
-    policies; the law itself does not use it.
+    ``mean_motion`` sets the sustainable-speed term of the law through
+    ``hcw_fraction``.
     """
 
     mean_motion: float
@@ -139,6 +161,7 @@ class GlideslopeToLady:
     slope_s: float
     arrival_mps: float
     brake_fraction: float
+    hcw_fraction: float
     avoidance_gain_mps: float
     avoidance_sigma_m: float
     n_vehicles: int
@@ -160,6 +183,7 @@ class GlideslopeToLady:
         slope_s: float = 100.0,
         arrival_mps: float = 0.3,
         brake_fraction: float = 0.5,
+        hcw_fraction: float = 0.5,
         avoidance_gain_mps: float = 0.0,
         avoidance_sigma_m: float = 50.0,
     ) -> GlideslopeToLady:
@@ -170,6 +194,7 @@ class GlideslopeToLady:
             slope_s=float(slope_s),
             arrival_mps=float(arrival_mps),
             brake_fraction=float(brake_fraction),
+            hcw_fraction=float(hcw_fraction),
             avoidance_gain_mps=float(avoidance_gain_mps),
             avoidance_sigma_m=float(avoidance_sigma_m),
             n_vehicles=n_vehicles,
@@ -195,9 +220,11 @@ class GlideslopeToLady:
             jnp.zeros_like(own_rt),
             max_dv_mps=self.max_dv_mps,
             dt=self.dt,
+            mean_motion=self.mean_motion,
             slope_s=self.slope_s,
             arrival_mps=self.arrival_mps,
             brake_fraction=self.brake_fraction,
+            hcw_fraction=self.hcw_fraction,
         )
         diff = own_rt[:, None, :2] - opp_pos
         dist = jnp.linalg.norm(diff, axis=-1, keepdims=True)
@@ -224,8 +251,8 @@ class GlideslopeIntercept:
     The agent view is read exactly as
     :class:`GlideslopeToLady` reads it.
 
-    ``mean_motion`` is stored for interface symmetry with the other heuristic
-    policies; the law itself does not use it.
+    ``mean_motion`` sets the sustainable-speed term of the law through
+    ``hcw_fraction``.
     """
 
     mean_motion: float
@@ -234,6 +261,7 @@ class GlideslopeIntercept:
     slope_s: float
     arrival_mps: float
     brake_fraction: float
+    hcw_fraction: float
     n_vehicles: int
     n_opponents: int
     state_dim: int
@@ -253,6 +281,7 @@ class GlideslopeIntercept:
         slope_s: float = 100.0,
         arrival_mps: float = 0.3,
         brake_fraction: float = 0.5,
+        hcw_fraction: float = 0.5,
     ) -> GlideslopeIntercept:
         return cls(
             mean_motion=float(mean_motion),
@@ -261,6 +290,7 @@ class GlideslopeIntercept:
             slope_s=float(slope_s),
             arrival_mps=float(arrival_mps),
             brake_fraction=float(brake_fraction),
+            hcw_fraction=float(hcw_fraction),
             n_vehicles=n_vehicles,
             n_opponents=n_opponents,
             state_dim=state_dim,
@@ -293,8 +323,10 @@ class GlideslopeIntercept:
             target_rt,
             max_dv_mps=self.max_dv_mps,
             dt=self.dt,
+            mean_motion=self.mean_motion,
             slope_s=self.slope_s,
             arrival_mps=self.arrival_mps,
             brake_fraction=self.brake_fraction,
+            hcw_fraction=self.hcw_fraction,
         )
         return _pad_and_wrap(dv_rt, self.command_cls, n), policy_state

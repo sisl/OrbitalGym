@@ -71,6 +71,26 @@ walkthrough; the API entry below is the bare class reference.
 
 ### GlideslopeToLady
 
+Both glideslope policies command the closing speed as the smallest of three
+terms: a linear glideslope `rho / slope_s + arrival_mps`, the braking curve
+`sqrt(2 a_brake rho)` the per-step budget can shed, and the sustainable speed
+`hcw_fraction * max_dv_mps / (2 n dt)`. The last term exists because the
+Coriolis coupling of HCW dynamics charges about `2 n v dt` of impulse per step
+to hold a relative velocity `v` that is not natural motion, so a vehicle that
+commands more than its budget can hold walks off the line of sight and the
+range grows instead of closing.
+
+`max_dv_mps / (2 n dt)` bounds the Coriolis term alone, not the whole cost of
+the approach. The `3 n^2 x` gradient term, the rotation of the line of sight as
+the range closes, and the finite step each add to or subtract from it, so the
+law spends only `hcw_fraction` of the bound and keeps the rest as margin. The
+default 0.5 is measured: over eight start phases on a 2 km ring offset
+along-track by 20 km and by 40 km, `hcw_fraction = 1.0` arrives in six of the
+eight 20 km cases and none of the 40 km ones, `0.75` in eight and six, and
+`0.5` in all sixteen. At a 0.4545 m/s per-step cap, a 10 s step and
+`n = 1.078e-3 rad/s`, that leaves a sustainable speed of 10.5 m/s, which binds
+beyond about 2.4 km.
+
 ::: orbitalgym.policies.heuristic.glideslope.GlideslopeToLady
 
 ### GlideslopeIntercept

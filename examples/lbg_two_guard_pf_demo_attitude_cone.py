@@ -428,9 +428,14 @@ class GlideslopeToLadyWithAvoidance:
         guard_pos:   shape (n_guards, 2)  — RT-frame positions only.
 
     The lady-seeking term is the glideslope impulse toward the RTN origin:
-    the commanded closing speed is the smaller of `rho / slope_s +
-    arrival_mps` and the braking curve `sqrt(2 * a_brake * rho)` the
-    per-step cap can shed, with `a_brake = brake_fraction * max_dv_mps / dt`.
+    the commanded closing speed is the smallest of `rho / slope_s +
+    arrival_mps`, the braking curve `sqrt(2 * a_brake * rho)` the per-step cap
+    can shed, with `a_brake = brake_fraction * max_dv_mps / dt`, and the
+    sustainable speed `hcw_fraction * max_dv_mps / (2 * mean_motion * dt)`.
+    The last term is the share of the per-step budget left for the Coriolis
+    coupling, which charges about `2 * mean_motion * v * dt` every step to hold
+    a relative velocity `v` that is not natural motion; without it the bandit
+    commands a closing speed it cannot hold and drifts off the line of sight.
     The repulsion sums a Gaussian decay away from each guard:
         magnitude = avoidance_gain * exp(-d^2 / (2*sigma^2))
         direction = (bandit_pos - guard_pos) / ||bandit_pos - guard_pos||
@@ -440,13 +445,16 @@ class GlideslopeToLadyWithAvoidance:
     glideslope.
 
     The gain, `slope_s` and `arrival_mps`, does not depend on `max_dv_mps`:
-    the cap enters only through the braking curve and the final clip.
+    the cap enters only through the braking curve, the sustainable speed and
+    the final clip.
     """
 
     dt: float
+    mean_motion: float
     slope_s: float
     arrival_mps: float
     brake_fraction: float
+    hcw_fraction: float
     max_dv_mps: float
     avoidance_gain: float
     avoidance_sigma_m: float
@@ -458,9 +466,11 @@ class GlideslopeToLadyWithAvoidance:
         cls,
         *,
         dt,
+        mean_motion,
         slope_s=100.0,
         arrival_mps=0.3,
         brake_fraction=0.5,
+        hcw_fraction=0.5,
         max_dv_mps=0.5,
         avoidance_gain=1.0,
         avoidance_sigma_m=300.0,
@@ -469,9 +479,11 @@ class GlideslopeToLadyWithAvoidance:
     ):
         return cls(
             dt=float(dt),
+            mean_motion=float(mean_motion),
             slope_s=float(slope_s),
             arrival_mps=float(arrival_mps),
             brake_fraction=float(brake_fraction),
+            hcw_fraction=float(hcw_fraction),
             max_dv_mps=float(max_dv_mps),
             avoidance_gain=float(avoidance_gain),
             avoidance_sigma_m=float(avoidance_sigma_m),
@@ -491,9 +503,11 @@ class GlideslopeToLadyWithAvoidance:
             jnp.zeros_like(bandit_rt),
             max_dv_mps=self.max_dv_mps,
             dt=self.dt,
+            mean_motion=self.mean_motion,
             slope_s=self.slope_s,
             arrival_mps=self.arrival_mps,
             brake_fraction=self.brake_fraction,
+            hcw_fraction=self.hcw_fraction,
         )
 
         # ---- Guard avoidance (APF) ----
@@ -514,6 +528,7 @@ class GlideslopeToLadyWithAvoidance:
 
 bandit_policy = GlideslopeToLadyWithAvoidance.build(
     dt=cfg.dt,
+    mean_motion=N_MOTION,
     max_dv_mps=BANDIT_MAX_DV_MPS,
     avoidance_gain=BANDIT_AVOIDANCE_GAIN,
     avoidance_sigma_m=BANDIT_AVOIDANCE_SIGMA_M,
@@ -998,6 +1013,7 @@ def run_one_episode(seed: int):
     env_seed = OrbitalGymEnv(cfg_seed)
     bandit_policy_seed = GlideslopeToLadyWithAvoidance.build(
         dt=cfg_seed.dt,
+        mean_motion=N_MOTION,
         max_dv_mps=BANDIT_MAX_DV_MPS,
         avoidance_gain=BANDIT_AVOIDANCE_GAIN,
         avoidance_sigma_m=BANDIT_AVOIDANCE_SIGMA_M,
