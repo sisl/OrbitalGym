@@ -8,6 +8,7 @@ import pytest
 
 from orbitalgym import OrbitalGymEnv, Side, make_lady_bandit_guard
 from orbitalgym.adapters.pomdp import POMDPAdapter
+from orbitalgym.belief.flatten import belief_mean_to_flat_state
 from orbitalgym.sampling.mass import ConstantMass
 from orbitalgym.sampling.side import RelativeEllipse
 from orbitalgym.sampling.spec import ICSpec
@@ -147,3 +148,27 @@ def test_transition_with_counters_is_jittable_and_vmappable():
     out = step(roots, action, keys)
     counters = [adapter.unpack(s).dwell_catch.tolist() for s in out]
     assert counters == [[_ACTION_REPEAT], [_ACTION_REPEAT + 1]]
+
+
+def _belief_mean(state):
+    """Observer 0's view of both vehicles, taken from the truth state."""
+    return jnp.concatenate([state.guards.rtn, state.bandits.rtn], axis=0)[None]
+
+
+def test_a_belief_root_takes_its_counters_from_the_template():
+    """The belief does not track the dwell, so the template supplies it."""
+    _env, adapter, state, _action = _setup()
+    template = state.replace(dwell_catch=jnp.asarray([4]), dwell_breach=jnp.asarray([1]))
+    s_flat = belief_mean_to_flat_state(_belief_mean(state), Side.GUARD, adapter, template)
+    restored = adapter.unpack(s_flat)
+    assert restored.dwell_catch.tolist() == [4]
+    assert restored.dwell_breach.tolist() == [1]
+
+
+def test_a_belief_root_on_a_reset_template_starts_the_dwell_at_zero():
+    """A reset template leaves a search blind to a hold already under way."""
+    _env, adapter, state, _action = _setup()
+    s_flat = belief_mean_to_flat_state(_belief_mean(state), Side.GUARD, adapter, state)
+    restored = adapter.unpack(s_flat)
+    assert restored.dwell_catch.tolist() == [0]
+    assert restored.dwell_breach.tolist() == [0]

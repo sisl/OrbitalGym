@@ -82,9 +82,9 @@ class POMDPAdapter:
         self._guard_flat_dim = command_flat_dim(self._guard_command_cls)
         self._bandit_flat_dim = command_flat_dim(self._bandit_command_cls)
         # Per-scenario constants — captured once, never mutated. The flat
-        # state vector carries only (guards, bandits, t, step); reference
-        # orbit and ic_valid are scenario-level metadata that don't change
-        # across a planning rollout.
+        # state vector carries (guards, bandits, t, step) and the dwell
+        # counters; reference orbit and ic_valid are scenario-level metadata
+        # that don't change across a planning rollout.
         self._reference_orbit = env.config.reference_orbit
         # ic_valid defaults to True; the planner-facing path doesn't model
         # IC-rejection failures, which only matter at reset time.

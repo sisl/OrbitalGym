@@ -46,7 +46,9 @@ interface over `OrbitalGymEnv`:
   by subclassing if your problem needs `γ < 1`.
 - `initialstate(key) → s_flat` — sample an initial state and return
   its flat vector.
-- `transition(s_flat, a_flat, key) → s_flat'` — apply one env step.
+- `transition(s_flat, a_flat, key) → s_flat'` — apply one macro
+  step: `action_repeat` env substeps of the same action, one by
+  default.
 - `observation(s, a, s', side) → obs` — per-side observation at `s'`.
 - `reward(s, a, s', side) → float` — per-side scalar reward.
 
