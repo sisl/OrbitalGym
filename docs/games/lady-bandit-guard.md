@@ -66,9 +66,23 @@ Neither cost is mirrored, so each side bears only what it incurs. Of the four te
 3. Some guard passes within `catch_radius_m` of any bandit at a relative speed below `catch_speed_mps` (guard win).
 4. Every bandit is repelled (guard win without an intercept).
 
+Conditions 2 and 3 may instead require a dwell; see [Dwell](#dwell) below.
+
 Both spatial events are resolved over the whole step, not just at its endpoints: the relative motion between two samples is treated as a straight line and the closest approach along it is what the radius test sees. A 10 s decision step at 7000 km altitude departs from that chord by well under 0.1 m, so the approximation is far finer than any usable event radius.
 
 The speed gates default to infinity, which tests the radius alone. Setting them finite distinguishes a capture from a high-speed flyby that merely passes close.
+
+### Dwell
+
+`catch_dwell_steps` and `breach_dwell_steps` turn a win condition from a single step into a hold: the event fires once some bandit has been inside the corresponding radius for that many *consecutive* steps. Both default to `0`, which is the single-step condition above.
+
+Each bandit carries two counters on the environment state, `state.dwell_catch` and `state.dwell_breach`, one entry per bandit. The game advances them every step: a step whose within-step closest approach is inside the radius, and slower than the speed gate, increments that bandit's counter, and any other step resets it to zero. So the speed gate applies on every step of a dwell, and with the gate at infinity the condition is the radius alone. The catch counter asks only that *some* guard is inside the radius on each step, not that it is the same guard throughout.
+
+The step a bandit departs on still counts toward its dwell: its closest approach is the position it started from, which is inside the radius. The first step spent wholly outside is the one that breaks the hold.
+
+The termination, the reward's terminal bonuses, and `Outcome` in the episode metrics all read the same counters, so a dwell-gated win ends the episode, pays its bonus, and classifies on the same step. `EpisodeMetrics` also reports `dwell_catch_steps` and `dwell_breach_steps`, the longest dwell any bandit had run up when the episode ended, whether or not the win conditions require one.
+
+The leaf values in `orbitalgym.policies.leaf_values` price the dwell only as delay: `catch_dwell_s` and `breach_dwell_s` push the estimated event that much further away. Nothing there models the counter resetting, which is a planning approximation, not a rule of the game.
 
 ### Repelled
 
@@ -93,6 +107,8 @@ cfg = make_lady_bandit_guard(
     catch_radius_m=50.0,
     breach_speed_mps=float("inf"),
     catch_speed_mps=float("inf"),
+    catch_dwell_steps=0,
+    breach_dwell_steps=0,
     escape_radius_m=0.0,
     repel_on_empty_tank=False,
     dv_cost=0.0,
@@ -130,6 +146,8 @@ cfg = ScenarioConfig(
 | `n_bandits` | `int` | `1` | Number of bandit vehicles. |
 | `breach_radius_m` | `float` | `5.0` | Bandit wins when any bandit-to-lady distance falls below this radius. |
 | `catch_radius_m` | `float` | `50.0` | Guard wins when any guard-to-bandit distance falls below this radius. |
+| `catch_dwell_steps` | `int` | `0` | Consecutive steps a bandit must hold the catch radius of some guard before the catch fires. `0` fires on the first step inside it. |
+| `breach_dwell_steps` | `int` | `0` | Consecutive steps a bandit must hold the breach radius of the lady before the breach fires. `0` fires on the first step inside it. |
 | `escape_radius_m` | `float` | `0.0` | Bandit counts as repelled beyond this distance from the lady. `0` disables the gate. |
 | `repel_on_empty_tank` | `bool` | `False` | Treat an out-of-propellant bandit that can no longer coast to the lady as repelled. Needs a mass-tracked bandit in an RTN frame. |
 | `dv_cost` | `float` | `0.0` | Reward units charged per m/s of delta-v. Each side pays for its own fuel only; a side without a `MASS` component pays nothing. |
@@ -151,7 +169,8 @@ would be terminated on one set of rules and rewarded on another.
 
 The builder therefore rejects `with_communication=True` together with any
 of `breach_radius_m`, `catch_radius_m`, `breach_speed_mps`,
-`catch_speed_mps`, `escape_radius_m`, `repel_on_empty_tank`, or `dv_cost`
+`catch_speed_mps`, `catch_dwell_steps`, `breach_dwell_steps`,
+`escape_radius_m`, `repel_on_empty_tank`, or `dv_cost`
 set away from its default. To combine communication with tuned event
 geometry, build the scenario with `with_communication=False` and pass an
 explicit `reward_fn` that scores both.

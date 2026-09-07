@@ -16,6 +16,13 @@ An event additionally requires the relative speed to be below a threshold:
 a high-speed flyby through the sphere is a near miss, not a capture or a
 breach. Setting the speed threshold to infinity recovers pure radius
 gating.
+
+An event may further require *dwell*: a bandit that holds the radius for a
+single step has only brushed it, while one that holds it for several
+consecutive steps has been kept there. :func:`lbg_dwell_step` advances the
+per-bandit consecutive-step counters the environment state carries and
+:func:`lbg_events_with_dwell` turns them into the events, with a dwell of
+zero recovering the single-step condition exactly.
 """
 
 from __future__ import annotations
@@ -76,6 +83,50 @@ def proximity_event(
     return jnp.logical_and(distance < radius_m, speed < speed_mps)
 
 
+def lbg_proximity_masks(
+    guard_prev: jax.Array,
+    guard_next: jax.Array,
+    bandit_prev: jax.Array,
+    bandit_next: jax.Array,
+    dt: float,
+    catch_radius_m: float,
+    catch_speed_mps: float,
+    breach_radius_m: float,
+    breach_speed_mps: float,
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+    """Per-bandit in-radius masks and closest-approach distances.
+
+    Positions are ``(..., n_g, 3)`` and ``(..., n_b, 3)``; leading axes pass
+    through, so a whole trajectory is scored in one call. A bandit is inside
+    the catch radius when *some* guard both passes within ``catch_radius_m``
+    of it and is slower than ``catch_speed_mps`` over the step — the per-pair
+    conjunction, not the closest pair's speed. It is inside the breach radius
+    when its own pass at the lady meets the same two conditions.
+
+    Returns:
+        ``(in_catch, in_breach, d_gb_min, d_bl_min)``. The two masks are
+        ``(..., n_b)``; the two distances are the minima over every pair and
+        over every bandit, with the leading shape of the inputs.
+    """
+    rel_gb = guard_prev[..., :, None, :] - bandit_prev[..., None, :, :]
+    rel_gb_next = guard_next[..., :, None, :] - bandit_next[..., None, :, :]
+    d_gb, speed_gb = closest_approach(rel_gb, (rel_gb_next - rel_gb) / dt, dt)
+    d_gb_min = jnp.min(d_gb, axis=(-2, -1))
+
+    d_bl, speed_bl = closest_approach(bandit_prev, (bandit_next - bandit_prev) / dt, dt)
+    d_bl_min = jnp.min(d_bl, axis=-1)
+
+    if catch_radius_m > 0.0:
+        in_catch = jnp.any(
+            jnp.logical_and(d_gb < catch_radius_m, speed_gb < catch_speed_mps), axis=-2
+        )
+    else:
+        in_catch = jnp.zeros(d_bl.shape, dtype=bool)
+    in_breach = jnp.logical_and(d_bl < breach_radius_m, speed_bl < breach_speed_mps)
+
+    return in_catch, in_breach, d_gb_min, d_bl_min
+
+
 def lbg_events_from_positions(
     guard_prev: jax.Array,
     guard_next: jax.Array,
@@ -89,34 +140,25 @@ def lbg_events_from_positions(
 ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
     """Catch/breach events and closest-approach distances from position arrays.
 
-    Positions are ``(..., n_g, 3)`` and ``(..., n_b, 3)``; leading axes pass
-    through, so a whole trajectory is scored in one call. An event holds when
-    *some* pair is both inside the radius and slower than the threshold — the
-    per-pair conjunction, not the closest pair's speed.
+    The events are :func:`lbg_proximity_masks` reduced over the bandits: an
+    event holds when some bandit is inside the corresponding radius.
 
     Returns:
         ``(caught, breached, d_gb_min, d_bl_min)`` with the leading shape of
         the inputs.
     """
-    rel_gb = guard_prev[..., :, None, :] - bandit_prev[..., None, :, :]
-    rel_gb_next = guard_next[..., :, None, :] - bandit_next[..., None, :, :]
-    d_gb, speed_gb = closest_approach(rel_gb, (rel_gb_next - rel_gb) / dt, dt)
-    d_gb_min = jnp.min(d_gb, axis=(-2, -1))
-
-    d_bl, speed_bl = closest_approach(bandit_prev, (bandit_next - bandit_prev) / dt, dt)
-    d_bl_min = jnp.min(d_bl, axis=-1)
-
-    if catch_radius_m > 0.0:
-        caught = jnp.any(
-            jnp.logical_and(d_gb < catch_radius_m, speed_gb < catch_speed_mps), axis=(-2, -1)
-        )
-    else:
-        caught = jnp.zeros(d_gb_min.shape, dtype=bool)
-    breached = jnp.any(
-        jnp.logical_and(d_bl < breach_radius_m, speed_bl < breach_speed_mps), axis=-1
+    in_catch, in_breach, d_gb_min, d_bl_min = lbg_proximity_masks(
+        guard_prev,
+        guard_next,
+        bandit_prev,
+        bandit_next,
+        dt,
+        catch_radius_m,
+        catch_speed_mps,
+        breach_radius_m,
+        breach_speed_mps,
     )
-
-    return caught, breached, d_gb_min, d_bl_min
+    return jnp.any(in_catch, axis=-1), jnp.any(in_breach, axis=-1), d_gb_min, d_bl_min
 
 
 def lbg_events(
@@ -149,6 +191,98 @@ def lbg_events(
         breach_radius_m,
         breach_speed_mps,
     )
+
+
+def advance_dwell(count: jax.Array, inside: jax.Array) -> jax.Array:
+    """One step of a consecutive-step counter: increment inside, reset outside.
+
+    ``count`` and ``inside`` are per-bandit arrays of the same shape. The
+    result counts how many consecutive steps, up to and including this one,
+    each bandit has spent inside the radius; a single step outside sends it
+    back to zero.
+
+    A step counts as inside when its *within-step closest approach* is
+    inside, the same test the single-step event uses. The step a bandit
+    departs on therefore still counts — it was inside for part of it — and
+    the first step spent wholly outside is the one that breaks the hold.
+    """
+    return jnp.where(inside, count + 1, jnp.zeros_like(count))
+
+
+def lbg_dwell_step(
+    prev_state,
+    next_state,
+    dt: float,
+    catch_radius_m: float,
+    catch_speed_mps: float,
+    breach_radius_m: float,
+    breach_speed_mps: float,
+) -> tuple[jax.Array, jax.Array]:
+    """The dwell counters leaving a step, from the counters entering it.
+
+    Advances ``prev_state.dwell_catch`` and ``prev_state.dwell_breach`` with
+    :func:`advance_dwell` on the per-bandit masks
+    :func:`lbg_proximity_masks` reports for the step. A step whose closest
+    approach fails either the radius or the speed gate resets that counter,
+    so a positive count means the gate held on every one of those steps.
+
+    Returns:
+        ``(dwell_catch, dwell_breach)``, both ``(..., n_b)`` integers.
+    """
+    in_catch, in_breach, _, _ = lbg_proximity_masks(
+        positions(prev_state.guards),
+        positions(next_state.guards),
+        positions(prev_state.bandits),
+        positions(next_state.bandits),
+        dt,
+        catch_radius_m,
+        catch_speed_mps,
+        breach_radius_m,
+        breach_speed_mps,
+    )
+    return (
+        advance_dwell(prev_state.dwell_catch, in_catch),
+        advance_dwell(prev_state.dwell_breach, in_breach),
+    )
+
+
+def lbg_events_with_dwell(
+    prev_state,
+    next_state,
+    dt: float,
+    catch_radius_m: float,
+    catch_speed_mps: float,
+    breach_radius_m: float,
+    breach_speed_mps: float,
+    catch_dwell_steps: int,
+    breach_dwell_steps: int,
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+    """Catch/breach events under an optional consecutive-step dwell requirement.
+
+    A dwell of zero leaves the event exactly as :func:`lbg_events` reports
+    it: the within-step closest approach on this step alone. A positive
+    dwell replaces it with the requirement that some bandit has held the
+    radius — and the speed gate, which enters through the counter — for that
+    many consecutive steps, read off the counters ``next_state`` carries.
+
+    Returns:
+        ``(caught, breached, d_gb_min, d_bl_min)``; the distances are the
+        step's own closest approaches either way.
+    """
+    caught, breached, d_gb_min, d_bl_min = lbg_events(
+        prev_state,
+        next_state,
+        dt,
+        catch_radius_m,
+        catch_speed_mps,
+        breach_radius_m,
+        breach_speed_mps,
+    )
+    if catch_dwell_steps > 0:
+        caught = jnp.any(next_state.dwell_catch >= catch_dwell_steps, axis=-1)
+    if breach_dwell_steps > 0:
+        breached = jnp.any(next_state.dwell_breach >= breach_dwell_steps, axis=-1)
+    return caught, breached, d_gb_min, d_bl_min
 
 
 def stm_power_stack(mean_motion: float, dt: float, max_steps: int) -> np.ndarray:

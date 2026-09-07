@@ -61,7 +61,8 @@ guard-side separation charge (`guard_separation_m`, `lady_keepout_m`,
 ## Proximity events
 
 Closest-approach geometry shared by the Lady-Bandit-Guard reward and
-termination, so both resolve catch and breach over the whole step.
+termination, so both resolve catch and breach over the whole step, and the
+dwell counters that turn either event into a hold over several steps.
 
 ::: orbitalgym.games.proximity.positions
 
@@ -72,6 +73,14 @@ termination, so both resolve catch and breach over the whole step.
 ::: orbitalgym.games.proximity.lbg_events
 
 ::: orbitalgym.games.proximity.lbg_events_from_positions
+
+::: orbitalgym.games.proximity.lbg_proximity_masks
+
+::: orbitalgym.games.proximity.advance_dwell
+
+::: orbitalgym.games.proximity.lbg_dwell_step
+
+::: orbitalgym.games.proximity.lbg_events_with_dwell
 
 ::: orbitalgym.games.proximity.stm_power_stack
 

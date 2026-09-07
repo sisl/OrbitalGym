@@ -2,7 +2,9 @@
 
 Guard protects the lady (a virtual point at the RTN origin) from bandit
 attackers. Bandits try to reach the lady within `breach_radius_m`; the
-guard tries to catch any bandit within `catch_radius_m` first.
+guard tries to catch any bandit within `catch_radius_m` first. Either
+condition may additionally require *dwell*: holding the radius for a number
+of consecutive steps rather than brushing it once.
 
 `LadyBanditGuard` is a typed knob bundle stored as `cfg.game`. It owns
 the default reward (`LbgZeroSumReward`) and termination
@@ -18,6 +20,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from orbitalgym.games.base import Game
+from orbitalgym.games.proximity import lbg_dwell_step
 from orbitalgym.registry import (
     DynamicsKey,
     GameKey,
@@ -47,6 +50,13 @@ class LadyBanditGuard(Game):
         catch_speed_mps: guard-vs-bandit relative speed below which a pass
             inside `catch_radius_m` counts as a catch. Infinite gates on
             radius alone.
+        catch_dwell_steps: consecutive steps a bandit must spend inside the
+            catch radius of at least one guard — the same guard or not —
+            before the catch fires. Zero fires on the first step that meets
+            the radius and speed gates.
+        breach_dwell_steps: consecutive steps a bandit must spend inside the
+            breach radius of the lady before the breach fires. Zero fires on
+            the first such step.
         escape_radius_m: bandit-vs-lady distance above which the bandit
             counts as repelled. Zero disables the gate.
         repel_on_empty_tank: when True, a bandit out of propellant whose
@@ -77,6 +87,8 @@ class LadyBanditGuard(Game):
     catch_radius_m: float = 50.0
     breach_speed_mps: float = float("inf")
     catch_speed_mps: float = float("inf")
+    catch_dwell_steps: int = 0
+    breach_dwell_steps: int = 0
     escape_radius_m: float = 0.0
     repel_on_empty_tank: bool = False
     dv_cost: float = 0.0
@@ -88,7 +100,32 @@ class LadyBanditGuard(Game):
     lady_keepout_m: float = 20.0
     separation_cost: float = 10.0
 
+    def advance_state(self, prev_state: Any, next_state: Any, cfg: Any) -> Any:
+        """Advance the per-bandit dwell counters onto the state leaving the step.
+
+        Runs whatever the dwell knobs are set to, so the counters describe
+        the engagement even when the win conditions do not read them.
+        """
+        dwell_catch, dwell_breach = lbg_dwell_step(
+            prev_state,
+            next_state,
+            cfg.dt,
+            self.catch_radius_m,
+            self.catch_speed_mps,
+            self.breach_radius_m,
+            self.breach_speed_mps,
+        )
+        return next_state.replace(dwell_catch=dwell_catch, dwell_breach=dwell_breach)
+
     def validate(self, cfg: Any) -> None:
+        for name in ("catch_dwell_steps", "breach_dwell_steps"):
+            value = getattr(self, name)
+            if int(value) != value or value < 0:
+                raise ValueError(
+                    f"{name} counts consecutive steps, so it must be a non-negative "
+                    f"integer; got {value!r}. Zero fires the event on the first step "
+                    "inside the radius."
+                )
         if self.shaping_scale_m <= 0.0:
             raise ValueError(
                 "shaping_scale_m divides every distance in the shaping potentials, "
@@ -125,6 +162,8 @@ class LadyBanditGuard(Game):
             breach_radius_m=self.breach_radius_m,
             catch_speed_mps=self.catch_speed_mps,
             breach_speed_mps=self.breach_speed_mps,
+            catch_dwell_steps=self.catch_dwell_steps,
+            breach_dwell_steps=self.breach_dwell_steps,
             escape_radius_m=self.escape_radius_m,
             repel_on_empty_tank=self.repel_on_empty_tank,
             dv_cost=self.dv_cost,
@@ -145,6 +184,8 @@ class LadyBanditGuard(Game):
             catch_radius_m=self.catch_radius_m,
             breach_speed_mps=self.breach_speed_mps,
             catch_speed_mps=self.catch_speed_mps,
+            catch_dwell_steps=self.catch_dwell_steps,
+            breach_dwell_steps=self.breach_dwell_steps,
             escape_radius_m=self.escape_radius_m,
             repel_on_empty_tank=self.repel_on_empty_tank,
         )
@@ -158,6 +199,8 @@ _COMMS_UNSUPPORTED_DEFAULTS = {
     "catch_radius_m": 50.0,
     "breach_speed_mps": float("inf"),
     "catch_speed_mps": float("inf"),
+    "catch_dwell_steps": 0,
+    "breach_dwell_steps": 0,
     "escape_radius_m": 0.0,
     "repel_on_empty_tank": False,
     "dv_cost": 0.0,
@@ -178,6 +221,8 @@ def make_lady_bandit_guard(
     catch_radius_m: float = 50.0,
     breach_speed_mps: float = float("inf"),
     catch_speed_mps: float = float("inf"),
+    catch_dwell_steps: int = 0,
+    breach_dwell_steps: int = 0,
     escape_radius_m: float = 0.0,
     repel_on_empty_tank: bool = False,
     dv_cost: float = 0.0,
@@ -294,6 +339,8 @@ def make_lady_bandit_guard(
             "catch_radius_m": catch_radius_m,
             "breach_speed_mps": breach_speed_mps,
             "catch_speed_mps": catch_speed_mps,
+            "catch_dwell_steps": catch_dwell_steps,
+            "breach_dwell_steps": breach_dwell_steps,
             "escape_radius_m": escape_radius_m,
             "repel_on_empty_tank": repel_on_empty_tank,
             "dv_cost": dv_cost,
@@ -348,6 +395,8 @@ def make_lady_bandit_guard(
             catch_radius_m=catch_radius_m,
             breach_speed_mps=breach_speed_mps,
             catch_speed_mps=catch_speed_mps,
+            catch_dwell_steps=catch_dwell_steps,
+            breach_dwell_steps=breach_dwell_steps,
             escape_radius_m=escape_radius_m,
             repel_on_empty_tank=repel_on_empty_tank,
             dv_cost=dv_cost,

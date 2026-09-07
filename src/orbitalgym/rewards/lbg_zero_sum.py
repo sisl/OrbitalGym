@@ -80,10 +80,11 @@ the equilibria:
 Neither cost is mirrored, so each side bears only what it incurs.
 
 Catch and breach events come from
-:func:`orbitalgym.games.proximity.lbg_events` over the step from
+:func:`orbitalgym.games.proximity.lbg_events_with_dwell` over the step from
 ``prev_state`` to ``next_state``, the same source
-:class:`~orbitalgym.termination.lbg_events.LbgEventTermination` reads, so a
-terminal bonus is paid in exactly the step the episode ends, and the same
+:class:`~orbitalgym.termination.lbg_events.LbgEventTermination` reads —
+including the dwell counters, so a bonus that waits on a dwell waits in both
+places — so a terminal bonus is paid in exactly the step the episode ends, and the same
 booleans are what make ``next_state`` absorbing for the shaping. The potentials
 and the separation cost are otherwise state functions of the step endpoints
 rather than of the within-step closest approach: the shaping differences a
@@ -104,7 +105,7 @@ import jax.numpy as jnp
 
 from orbitalgym.actions.components import G0
 from orbitalgym.env.types import Side
-from orbitalgym.games.proximity import lbg_events, lbg_repelled, positions
+from orbitalgym.games.proximity import lbg_events_with_dwell, lbg_repelled, positions
 from orbitalgym.registry import RewardFnKey, register
 from orbitalgym.rewards.base import RewardScope
 
@@ -213,6 +214,12 @@ class LbgZeroSumReward:
     potential, and ``home_weight`` prices a guard's distance from the lady
     inside the guard's potential.
 
+    ``catch_dwell_steps`` and ``breach_dwell_steps`` hold back the matching
+    terminal bonus until a bandit has spent that many consecutive steps
+    inside the radius, matching the termination condition so the bonus is
+    paid on the step the episode ends. Zero pays it on the first step
+    inside the radius.
+
     ``guard_separation_m``, ``lady_keepout_m`` and ``separation_cost`` set the
     guard-side crowding charge; ``dv_cost`` is the price of fuel in reward
     units per m/s of delta-v. Both are real per-side costs rather than
@@ -233,6 +240,8 @@ class LbgZeroSumReward:
     breach_radius_m: float = 5.0
     catch_speed_mps: float = float("inf")
     breach_speed_mps: float = float("inf")
+    catch_dwell_steps: int = 0
+    breach_dwell_steps: int = 0
     escape_radius_m: float = 0.0
     repel_on_empty_tank: bool = False
     dv_cost: float = 0.0
@@ -273,7 +282,7 @@ class LbgZeroSumReward:
     def __call__(self, prev_state, action, next_state, side, params, t):
         del action, t
 
-        caught, breached, _, _ = lbg_events(
+        caught, breached, _, _ = lbg_events_with_dwell(
             prev_state,
             next_state,
             params.dt,
@@ -281,6 +290,8 @@ class LbgZeroSumReward:
             self.catch_speed_mps,
             self.breach_radius_m,
             self.breach_speed_mps,
+            self.catch_dwell_steps,
+            self.breach_dwell_steps,
         )
         repelled = lbg_repelled(
             next_state,

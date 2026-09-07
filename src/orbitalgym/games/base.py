@@ -31,6 +31,18 @@ class Game:
     def default_termination_fn(self) -> Any:
         raise NotImplementedError(f"{type(self).__name__} must override default_termination_fn")
 
+    def advance_state(self, prev_state: Any, next_state: Any, cfg: Any) -> Any:
+        """Game-owned bookkeeping on the state leaving a step.
+
+        ``OrbitalGymEnv.step`` calls this once the dynamics have produced
+        ``next_state`` and before the observations, rewards and termination
+        read it, so a game that needs history across steps — how long a
+        vehicle has held a radius, say — can keep it on the state rather
+        than recomputing it. The default returns the state untouched.
+        """
+        del prev_state, cfg
+        return next_state
+
     def validate(self, cfg: Any) -> None:
         """Check the cfg supports this game's knobs. Called by ScenarioConfig.__post_init__.
 

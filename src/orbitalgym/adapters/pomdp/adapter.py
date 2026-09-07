@@ -20,7 +20,10 @@ scale as the env's own accumulated reward.
 State is exposed as a flat JAX vector. The vector packs `StateLayout.flatten`
 (per-side guard/bandit truth) followed by two scalar tail entries: ``t`` and
 ``step``. The reference orbit and ``ic_valid`` flag are captured from the
-env config at ``__init__`` time and treated as per-scenario constants.
+env config at ``__init__`` time and treated as per-scenario constants. The
+game's dwell counters are not packed either: every unpacked state starts
+them at zero, so a planner sees a fresh dwell at each macro step and
+under-counts progress toward a dwell-gated win rather than inventing it.
 
 Actions are exposed as a flat vector that concatenates the guard side's
 flat-Command layout followed by the bandit side's flat-Command layout. The
@@ -80,6 +83,9 @@ class POMDPAdapter:
         # ic_valid defaults to True; the planner-facing path doesn't model
         # IC-rejection failures, which only matter at reset time.
         self._ic_valid_default = jnp.asarray(True)
+        # Dwell counters are scenario-shaped state the flat vector does not
+        # carry; an unpacked state starts them at zero.
+        self._dwell_default = jnp.zeros((env.config.n_bandits,), dtype=jnp.int32)
 
     @property
     def states_dim(self) -> int:
@@ -145,7 +151,7 @@ class POMDPAdapter:
         return jnp.concatenate([flat_xy, tail])
 
     def _unpack(self, s_flat: jax.Array) -> EnvState:
-        """Flat vector → EnvState (reference_orbit / ic_valid from __init__)."""
+        """Flat vector → EnvState (reference_orbit / ic_valid / dwell from __init__)."""
         flat_xy = s_flat[:-2]
         t = s_flat[-2]
         step = s_flat[-1].astype(jnp.int32)
@@ -157,6 +163,8 @@ class POMDPAdapter:
             bandits=bandits,
             reference_orbit=self._reference_orbit,
             ic_valid=self._ic_valid_default,
+            dwell_catch=self._dwell_default,
+            dwell_breach=self._dwell_default,
         )
 
     # ---- POMDPPlanners-shape interface ----

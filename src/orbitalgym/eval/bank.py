@@ -56,7 +56,12 @@ def save_bank(path: str | Path, cfg: ScenarioConfig, states: Any, seed: int) -> 
 
 
 def load_bank(path: str | Path) -> tuple[ScenarioConfig, Any]:
-    """Read a bank; the returned ``EnvState`` has the bank's leading episode axis."""
+    """Read a bank; the returned ``EnvState`` has the bank's leading episode axis.
+
+    A leaf the file does not carry is filled with the template's value
+    broadcast over the episode axis, so a bank written from a state class
+    with fewer leaves still loads.
+    """
     with h5py.File(Path(path), "r") as f:
         if f.attrs["schema_version"] != SCHEMA_VERSION:
             raise ValueError(
@@ -66,5 +71,12 @@ def load_bank(path: str | Path) -> tuple[ScenarioConfig, Any]:
         env = OrbitalGymEnv(cfg)
         template, _ = env.reset(jax.random.PRNGKey(0))
         leaves, treedef = jax.tree_util.tree_flatten_with_path(template)
-        loaded = [jnp.asarray(f["states"][_leaf_name(key_path)][...]) for key_path, _ in leaves]
+        n_episodes = int(f.attrs["n_episodes"])
+        loaded = []
+        for key_path, leaf in leaves:
+            name = _leaf_name(key_path)
+            if name in f["states"]:
+                loaded.append(jnp.asarray(f["states"][name][...]))
+            else:
+                loaded.append(jnp.broadcast_to(leaf, (n_episodes, *jnp.shape(leaf))))
     return cfg, jax.tree_util.tree_unflatten(treedef, loaded)
