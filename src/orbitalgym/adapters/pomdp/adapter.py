@@ -18,9 +18,18 @@ per-macro-step discount, which keeps the planner's returns on the same
 scale as the env's own accumulated reward.
 
 State is exposed as a flat JAX vector. The vector packs `StateLayout.flatten`
-(per-side guard/bandit truth) followed by two scalar tail entries: ``t`` and
-``step``. The reference orbit and ``ic_valid`` flag are captured from the
-env config at ``__init__`` time and treated as per-scenario constants.
+(per-side guard/bandit truth), then two scalar tail entries — ``t`` and
+``step`` — then the game's per-bandit dwell counters, ``dwell_catch``
+followed by ``dwell_breach``. The reference orbit and ``ic_valid`` flag are
+captured from the env config at ``__init__`` time and treated as
+per-scenario constants.
+
+The counters ride in the flat vector so a dwell survives the pack/unpack on
+every substep and every planner transition: a hold that spans macro steps
+accumulates, and a planner rooted at a true state inherits the progress that
+state has already made. They are integers stored in the vector's float
+dtype, so they are exact up to that dtype's consecutive-integer limit —
+2**24 for float32, far beyond any dwell a scenario sets.
 
 Actions are exposed as a flat vector that concatenates the guard side's
 flat-Command layout followed by the bandit side's flat-Command layout. The
@@ -73,18 +82,22 @@ class POMDPAdapter:
         self._guard_flat_dim = command_flat_dim(self._guard_command_cls)
         self._bandit_flat_dim = command_flat_dim(self._bandit_command_cls)
         # Per-scenario constants — captured once, never mutated. The flat
-        # state vector carries only (guards, bandits, t, step); reference
-        # orbit and ic_valid are scenario-level metadata that don't change
-        # across a planning rollout.
+        # state vector carries (guards, bandits, t, step) and the dwell
+        # counters; reference orbit and ic_valid are scenario-level metadata
+        # that don't change across a planning rollout.
         self._reference_orbit = env.config.reference_orbit
         # ic_valid defaults to True; the planner-facing path doesn't model
         # IC-rejection failures, which only matter at reset time.
         self._ic_valid_default = jnp.asarray(True)
+        # The two per-bandit dwell counters occupy the vector's last
+        # `2 * n_bandits` entries.
+        self._n_bandits = int(env.config.n_bandits)
+        self._dwell_width = 2 * self._n_bandits
 
     @property
     def states_dim(self) -> int:
-        """Flat-state dimensionality: ``layout.flat_dim + 2`` (t, step tail)."""
-        return self.layout.flat_dim + 2
+        """Flat-state width: ``layout.flat_dim``, the (t, step) tail, and the dwell counters."""
+        return self.layout.flat_dim + 2 + self._dwell_width
 
     @property
     def action_dim_per_side(self) -> int:
@@ -132,23 +145,31 @@ class POMDPAdapter:
         return self._unpack(s_flat)
 
     def _pack(self, state: EnvState) -> jax.Array:
-        """EnvState → flat vector. t and step are appended as float scalars."""
+        """EnvState → flat vector. t, step and the dwell counters are appended as floats."""
         flat_xy = self.layout.flatten(state.guards, state.bandits)
-        # Cast t and step to a uniform float dtype matching flat_xy so
-        # concatenation works whether x64 is enabled or not.
+        # Cast t, step and the counters to a uniform float dtype matching
+        # flat_xy so concatenation works whether x64 is enabled or not.
         tail = jnp.stack(
             [
                 jnp.asarray(state.t, flat_xy.dtype),
                 jnp.asarray(state.step, flat_xy.dtype),
             ]
         )
-        return jnp.concatenate([flat_xy, tail])
+        dwell = jnp.concatenate(
+            [
+                jnp.asarray(state.dwell_catch, flat_xy.dtype),
+                jnp.asarray(state.dwell_breach, flat_xy.dtype),
+            ]
+        )
+        return jnp.concatenate([flat_xy, tail, dwell])
 
     def _unpack(self, s_flat: jax.Array) -> EnvState:
         """Flat vector → EnvState (reference_orbit / ic_valid from __init__)."""
-        flat_xy = s_flat[:-2]
-        t = s_flat[-2]
-        step = s_flat[-1].astype(jnp.int32)
+        tail = 2 + self._dwell_width
+        flat_xy = s_flat[:-tail]
+        t = s_flat[-tail]
+        step = s_flat[-tail + 1].astype(jnp.int32)
+        dwell = s_flat[-self._dwell_width :].astype(jnp.int32)
         guards, bandits = self.layout.unflatten(flat_xy)
         return EnvState(
             t=t,
@@ -157,6 +178,8 @@ class POMDPAdapter:
             bandits=bandits,
             reference_orbit=self._reference_orbit,
             ic_valid=self._ic_valid_default,
+            dwell_catch=dwell[: self._n_bandits],
+            dwell_breach=dwell[self._n_bandits :],
         )
 
     # ---- POMDPPlanners-shape interface ----

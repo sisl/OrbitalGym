@@ -48,7 +48,8 @@ when you want a guard-only signal without LBG event semantics:
 `LbgZeroSumReward` is the LBG default — each side gets potential-based
 shaping over the distance it is trying to close, plus mirrored terminal
 events on catch / breach, and the guard side pays a separation charge. Reads
-`catch_radius_m` and `breach_radius_m` from its own fields (the
+`catch_radius_m` and `breach_radius_m`, and the dwell each event requires,
+from its own fields (the
 `LadyBanditGuard.default_reward_fn` builder threads those from the game
 knobs):
 

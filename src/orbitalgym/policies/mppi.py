@@ -75,6 +75,9 @@ class MPPIPolicy:
     discount: float | None = None
     n_vehicles: int = 0
     command_cls: Any = None
+    # Supplies every flat-state component a belief does not track — mass,
+    # attitude, the game's dwell counters — when planning from a belief
+    # view. A reset state leaves the counters at zero.
     template_env_state: Any = None
 
     # Multi-vehicle coordination. "joint" samples the whole fleet's Delta-v

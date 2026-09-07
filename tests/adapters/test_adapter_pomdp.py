@@ -18,9 +18,9 @@ def _make_adapter():
 
 
 def test_pomdp_adapter_states_dim_matches_layout():
-    adapter, env, _cfg = _make_adapter()
-    # +2 for the (t, step) tail packed onto the flat vector.
-    assert adapter.states_dim == env.layout.flat_dim + 2
+    adapter, env, cfg = _make_adapter()
+    # +2 for the (t, step) tail, then the two per-bandit dwell counters.
+    assert adapter.states_dim == env.layout.flat_dim + 2 + 2 * cfg.n_bandits
 
 
 def test_pomdp_adapter_discount_is_one():

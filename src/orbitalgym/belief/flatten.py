@@ -10,9 +10,9 @@ observer's view of every tracked entity, own + opposing), write those
 dynamics-state arrays into the per-side truth fields of a *template*
 ``EnvState``, then call ``adapter.pack`` to flatten consistently with how
 the env produces its flat-state representation. Components that the belief
-does not track (mass, attitude, body rates, …) are inherited from the
-template — typically the env's reset state — so any planner that reads
-those tail components sees scenario-default values.
+does not track (mass, attitude, body rates, the game's dwell counters, …)
+are inherited from the template — typically the env's reset state — so any
+planner that reads those tail components sees scenario-default values.
 
 Usage::
 
@@ -32,6 +32,10 @@ Limitations:
 - Per-vehicle "extras" (mass, attitude, …) come from the template and do
   not vary across the planning rollout. Planners that depend on those
   components should be designed accordingly.
+- The dwell counters come from the template too. A belief does not track
+  them, so a planner rooted on a belief starts the dwell wherever the
+  template left it: pass a template carrying the current counters for the
+  search to see a hold already under way.
 """
 
 from __future__ import annotations

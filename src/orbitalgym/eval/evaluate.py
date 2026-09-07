@@ -79,6 +79,8 @@ def metrics_to_records(metrics: EpisodeMetrics, **constants: Any) -> list[dict[s
         "belief_err_guard_at_commit": np.asarray(metrics.belief_err_guard_at_commit).astype(float),
         "time_to_detect_guard": np.asarray(metrics.time_to_detect_guard).astype(float),
         "belief_age_guard": np.asarray(metrics.belief_age_guard).astype(float),
+        "dwell_catch_steps": np.asarray(metrics.dwell_catch_steps).astype(int),
+        "dwell_breach_steps": np.asarray(metrics.dwell_breach_steps).astype(int),
     }
     n = int(fields["outcome"].shape[0])
     rows = []

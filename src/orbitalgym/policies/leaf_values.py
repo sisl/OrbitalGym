@@ -36,9 +36,9 @@ built on weights the reward does not use orders states by a different game.
 read them off a scenario's ``cfg.reward_fn`` so the two cannot drift apart.
 
 Time to an event is estimated in macro steps by a straight-line closing
-approximation::
+approximation plus the game's dwell requirement::
 
-    t_hit = max(d - radius, 0) / (v_close * macro_dt)
+    t_hit = max(d - radius, 0) / (v_close * macro_dt) + dwell_s / macro_dt
 
 ``v_close`` is the average closing speed the mover can sustain over the
 transfer, which the caller supplies. It is a speed, not the per-step delta-v
@@ -46,7 +46,11 @@ cap: a cap divided by ``dt`` is an acceleration and would put every event
 hundreds of macro steps away, flattening the estimate. The straight-line model
 ignores orbital curvature, the opponent's evasion, and the burn geometry, so
 it is optimistic for a mover that must first null a relative velocity and
-pessimistic for one already closing fast.
+pessimistic for one already closing fast. ``dwell_s`` is the only way the
+dwell requirement reaches the estimate: it prices the time to convert an
+arrival at the radius into the event, and assumes the mover then holds the
+radius, where the game resets the counter on any step that leaves it. A
+planner is meant to see the delay, not to plan the hold.
 
 With ``g`` the per-macro-step discount and ``N`` the remaining macro steps,
 the guard's terminal estimate is::
@@ -85,9 +89,19 @@ def _time_to_radius(
     radius_m: float,
     v_close_mps: float,
     macro_dt: float,
+    dwell_s: float,
 ) -> jax.Array:
-    """Macro steps needed to close ``d`` down to ``radius_m`` at ``v_close_mps``."""
-    return jnp.maximum(d - radius_m, 0.0) / (v_close_mps * macro_dt)
+    """Macro steps to close ``d`` to ``radius_m`` at ``v_close_mps``, plus the dwell.
+
+    ``dwell_s`` is the game's dwell requirement as a duration — its
+    ``dwell_steps`` times the env step — converted to macro steps here.
+    Reaching the radius is not the event, so a planner has to see the extra
+    time the conversion takes. Nothing else models the dwell: the estimate
+    assumes the mover holds the radius from the moment it arrives, where the
+    game resets the counter on any step that leaves it.
+    """
+    reach = jnp.maximum(d - radius_m, 0.0) / (v_close_mps * macro_dt)
+    return reach + dwell_s / macro_dt
 
 
 def _event_weight(t_hit: jax.Array, discount: float, n_remaining: int) -> jax.Array:
@@ -113,6 +127,8 @@ def _leaf_value(
     r_breach: float,
     catch_radius_m: float,
     breach_radius_m: float,
+    catch_dwell_s: float,
+    breach_dwell_s: float,
     v_close_guard_mps: float,
     v_close_bandit_mps: float,
     discount: float | None,
@@ -125,8 +141,10 @@ def _leaf_value(
 
     def value(s_flat: jax.Array) -> jax.Array:
         d_gb, d_bl, d_gl = lbg_distances(adapter.unpack(s_flat))
-        t_catch = _time_to_radius(d_gb, catch_radius_m, v_close_guard_mps, macro_dt)
-        t_breach = _time_to_radius(d_bl, breach_radius_m, v_close_bandit_mps, macro_dt)
+        t_catch = _time_to_radius(d_gb, catch_radius_m, v_close_guard_mps, macro_dt, catch_dwell_s)
+        t_breach = _time_to_radius(
+            d_bl, breach_radius_m, v_close_bandit_mps, macro_dt, breach_dwell_s
+        )
         terminal = r_catch * _event_weight(t_catch, g, n_remaining) - r_breach * _event_weight(
             t_breach, g, n_remaining
         )
@@ -146,6 +164,8 @@ def guard_leaf_value(
     r_breach: float,
     catch_radius_m: float,
     breach_radius_m: float,
+    catch_dwell_s: float = 0.0,
+    breach_dwell_s: float = 0.0,
     v_close_guard_mps: float,
     v_close_bandit_mps: float,
     discount: float | None = None,
@@ -157,6 +177,9 @@ def guard_leaf_value(
     ``r_breach`` weighted by the estimated macro steps to a breach, plus
     ``shaping_gain`` times the guard's potential at the leaf. ``discount``
     defaults to ``adapter.discount()``, the per-macro-step discount.
+    ``catch_dwell_s`` and ``breach_dwell_s`` are the game's dwell
+    requirements as durations — ``dwell_steps`` times the env step — and
+    push the matching event that much further away.
 
     The reward weights and radii are required: an estimate built on
     weights the reward does not use orders states by a game nobody is
@@ -172,6 +195,8 @@ def guard_leaf_value(
         r_breach=r_breach,
         catch_radius_m=catch_radius_m,
         breach_radius_m=breach_radius_m,
+        catch_dwell_s=catch_dwell_s,
+        breach_dwell_s=breach_dwell_s,
         v_close_guard_mps=v_close_guard_mps,
         v_close_bandit_mps=v_close_bandit_mps,
         discount=discount,
@@ -189,6 +214,8 @@ def bandit_leaf_value(
     r_breach: float,
     catch_radius_m: float,
     breach_radius_m: float,
+    catch_dwell_s: float = 0.0,
+    breach_dwell_s: float = 0.0,
     v_close_guard_mps: float,
     v_close_bandit_mps: float,
     discount: float | None = None,
@@ -211,6 +238,8 @@ def bandit_leaf_value(
         r_breach=r_breach,
         catch_radius_m=catch_radius_m,
         breach_radius_m=breach_radius_m,
+        catch_dwell_s=catch_dwell_s,
+        breach_dwell_s=breach_dwell_s,
         v_close_guard_mps=v_close_guard_mps,
         v_close_bandit_mps=v_close_bandit_mps,
         discount=discount,
@@ -219,9 +248,10 @@ def bandit_leaf_value(
 
 
 def _reward_terms(cfg: Any) -> dict[str, float]:
-    """The reward weights and radii a leaf value has to agree with.
+    """The reward weights, radii and dwells a leaf value has to agree with.
 
-    Reads them off ``cfg.reward_fn``, which must be an
+    The dwells come back as durations, ``dwell_steps`` times ``cfg.dt``.
+    The rest are read off ``cfg.reward_fn``, which must be an
     :class:`~orbitalgym.rewards.lbg_zero_sum.LbgZeroSumReward`: the leaf
     values are written in that reward's units and no other reward exposes
     the same terms.
@@ -242,6 +272,8 @@ def _reward_terms(cfg: Any) -> dict[str, float]:
         "r_breach": reward_fn.r_breach,
         "catch_radius_m": reward_fn.catch_radius_m,
         "breach_radius_m": reward_fn.breach_radius_m,
+        "catch_dwell_s": reward_fn.catch_dwell_steps * cfg.dt,
+        "breach_dwell_s": reward_fn.breach_dwell_steps * cfg.dt,
     }
 
 

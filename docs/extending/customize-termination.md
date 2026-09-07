@@ -18,7 +18,7 @@ Every `Game` subclass declares its default termination via `default_termination_
 | Game | Default termination |
 |---|---|
 | `NoGame` | `MaxStepsOnly` (step-cap only, no spatial event) |
-| `LadyBanditGuard` | `LbgEventTermination` (max-steps OR bandit breach OR guard catch, both resolved within the step) |
+| `LadyBanditGuard` | `LbgEventTermination` (max-steps OR bandit breach OR guard catch, both resolved within the step and optionally over a dwell) |
 | `PursuitEvasion` | `PursuitEvasionTermination` (max-steps OR capture) |
 | `SunBlocking` | `MaxStepsOnly` |
 | `ObservationBlocking` | `MaxStepsOnly` |
@@ -33,7 +33,7 @@ Every `Game` subclass declares its default termination via `default_termination_
 
 ::: orbitalgym.termination.reference.MaxStepsOnly
 
-`LbgEventTermination` adds the bandit-breach and guard-catch events on top of the step cap; it's `LadyBanditGuard`'s default and reads `breach_radius_m` / `catch_radius_m` plus the optional relative-speed gates `breach_speed_mps` / `catch_speed_mps` from its own fields (which `LadyBanditGuard.default_termination_fn` threads from the game knobs). Each event is evaluated over the whole step by treating the relative motion as a straight line between samples, so a slow encounter that never lands inside the radius at a sample still fires:
+`LbgEventTermination` adds the bandit-breach and guard-catch events on top of the step cap; it's `LadyBanditGuard`'s default and reads `breach_radius_m` / `catch_radius_m` plus the optional relative-speed gates `breach_speed_mps` / `catch_speed_mps` from its own fields (which `LadyBanditGuard.default_termination_fn` threads from the game knobs). Each event is evaluated over the whole step by treating the relative motion as a straight line between samples, so a slow encounter that never lands inside the radius at a sample still fires. `catch_dwell_steps` and `breach_dwell_steps` turn either event into a hold: the event fires once a bandit has been inside that radius for that many consecutive steps, counted on the environment state, and zero (the default) fires on the first step inside it:
 
 ::: orbitalgym.termination.lbg_events.LbgEventTermination
 

@@ -172,6 +172,18 @@ class EnvState:
     # Defaults to True so legacy construction sites (and tests that build
     # EnvState without rejection sampling) get a sensible value.
     ic_valid: jax.Array = flax.struct.field(default_factory=lambda: jnp.asarray(True))
+    # Per-bandit consecutive-step counters, (n_bandits,) int32: how many
+    # steps in a row that bandit has held the catch radius of some guard,
+    # and the breach radius of the lady. The game advances them each step
+    # (`Game.advance_state`) and a game whose win conditions require dwell
+    # reads them; the defaults are empty because the width is a scenario
+    # property, and `reset` sizes them.
+    dwell_catch: jax.Array = flax.struct.field(
+        default_factory=lambda: jnp.zeros((0,), dtype=jnp.int32)
+    )
+    dwell_breach: jax.Array = flax.struct.field(
+        default_factory=lambda: jnp.zeros((0,), dtype=jnp.int32)
+    )
 
 
 class OrbitalGymEnv:
@@ -377,6 +389,7 @@ class OrbitalGymEnv:
             self.bandit_extended_frames,
             ref_eci6,
         )
+        zero_dwell = jnp.zeros((self.config.n_bandits,), dtype=jnp.int32)
         state = EnvState(
             t=jnp.asarray(0.0),
             step=jnp.asarray(0),
@@ -384,6 +397,8 @@ class OrbitalGymEnv:
             bandits=bandits,
             reference_orbit=self.config.reference_orbit,
             ic_valid=ok,
+            dwell_catch=zero_dwell,
+            dwell_breach=zero_dwell,
         )
         identity_actions = Actions(
             sides=BySide(
@@ -423,11 +438,14 @@ class OrbitalGymEnv:
         bandits = _materialize_derived_views(
             state.bandits, truth_field_name, self.truth_frame, self.bandit_extended_frames, ref_eci6
         )
+        zero_dwell = jnp.zeros((self.config.n_bandits,), dtype=jnp.int32)
         restored = state.replace(  # pyrefly: ignore[missing-attribute]
             t=jnp.zeros_like(state.t),
             step=jnp.zeros_like(state.step),
             guards=guards,
             bandits=bandits,
+            dwell_catch=zero_dwell,
+            dwell_breach=zero_dwell,
         )
         identity_actions = Actions(
             sides=BySide(
@@ -645,6 +663,12 @@ class OrbitalGymEnv:
             bandits=next_bandits,
             reference_orbit=ref_next,
         )
+
+        # Game-owned bookkeeping on the state leaving the step — dwell
+        # counters for LBG, nothing for a game that keeps none. It runs
+        # before the observations, rewards and termination so all three read
+        # the counters this step arrived at.
+        next_state = self.config.game.advance_state(state, next_state, self.config)
 
         # Per-side observations + rewards.
         obs_g = self.guard_observation_fn(

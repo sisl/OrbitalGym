@@ -59,6 +59,13 @@ class EpisodeMetrics:
     ``belief_age_guard``
         Seconds since any guard last held a bandit in its sensor cone,
         time-averaged over the live steps.
+
+    ``dwell_catch_steps`` and ``dwell_breach_steps`` are the longest dwell
+    any bandit had run up at the terminating step: consecutive steps spent
+    inside the catch radius of some guard, and inside the breach radius of
+    the lady. They are reported whether or not the game's win conditions
+    require a dwell, and are zero for a trajectory whose states carry no
+    counters.
     """
 
     outcome: jax.Array
@@ -74,6 +81,8 @@ class EpisodeMetrics:
     belief_err_guard_at_commit: jax.Array
     time_to_detect_guard: jax.Array
     belief_age_guard: jax.Array
+    dwell_catch_steps: jax.Array
+    dwell_breach_steps: jax.Array
 
 
 def _side_delta_v(
@@ -125,6 +134,33 @@ class GuardInformation:
     belief_err_at_commit: jax.Array
     time_to_detect: jax.Array
     belief_age: jax.Array
+
+
+def _dwell_trace(traj: Any, name: str) -> jax.Array | None:
+    """A dwell counter over the episode's steps, ``(T, n_b)``, or None.
+
+    Entry ``k`` is the counter *leaving* step ``k``, so it lines up with the
+    step's own catch and breach events. None when the trajectory's states
+    carry no counter of that name, or carry an unsized one.
+    """
+    entering = getattr(traj.env_state, name, None)
+    if entering is None or entering.shape[-1] == 0:
+        return None
+    leaving = getattr(traj.final_state, name)
+    return jnp.concatenate([entering[1:], leaving[None]], axis=0)
+
+
+def _require_dwell(trace: jax.Array | None) -> jax.Array:
+    """A dwell counter trace, or an error naming what produces one."""
+    if trace is None:
+        raise ValueError(
+            "the scenario's win conditions require a dwell, so classifying an "
+            "episode needs the dwell counters on traj.env_state and "
+            "traj.final_state. Produce the trajectory with "
+            "orbitalgym.rollout.rollout or belief_rollout over an env built "
+            "from this config."
+        )
+    return trace
 
 
 def guard_information(
@@ -249,6 +285,20 @@ def lbg_episode_metrics(
         breach_speed,
     )
 
+    # The dwell counters take the same shift: the counter leaving step k is
+    # the one entering step k + 1, and final_state closes the last step. A
+    # dwell-gated win is read off them rather than off the step's own
+    # closest approach, which is inside the radius on many steps that never
+    # complete a dwell.
+    dwell_catch_t = _dwell_trace(traj, "dwell_catch")
+    dwell_breach_t = _dwell_trace(traj, "dwell_breach")
+    catch_dwell_steps = int(getattr(cfg.game, "catch_dwell_steps", 0))
+    breach_dwell_steps = int(getattr(cfg.game, "breach_dwell_steps", 0))
+    if catch_dwell_steps > 0:
+        caught_t = jnp.any(_require_dwell(dwell_catch_t) >= catch_dwell_steps, axis=-1)
+    if breach_dwell_steps > 0:
+        breached_t = jnp.any(_require_dwell(dwell_breach_t) >= breach_dwell_steps, axis=-1)
+
     big = jnp.asarray(jnp.inf, dtype=d_gb_min_t.dtype)
     min_d_gb = jnp.min(jnp.where(mask, d_gb_min_t, big))
     min_d_bl = jnp.min(jnp.where(mask, d_bl_min_t, big))
@@ -328,6 +378,14 @@ def lbg_episode_metrics(
             traj, belief_guard, mask, steps, cfg.dt, commit_radius_m, detect_error_m
         )
 
+    zero = jnp.asarray(0, dtype=jnp.int32)
+    dwell_catch_steps = (
+        zero if dwell_catch_t is None else jnp.max(dwell_catch_t[last_idx]).astype(jnp.int32)
+    )
+    dwell_breach_steps = (
+        zero if dwell_breach_t is None else jnp.max(dwell_breach_t[last_idx]).astype(jnp.int32)
+    )
+
     return EpisodeMetrics(
         outcome=outcome,
         steps=steps.astype(jnp.int32),
@@ -342,4 +400,6 @@ def lbg_episode_metrics(
         belief_err_guard_at_commit=info.belief_err_at_commit,
         time_to_detect_guard=info.time_to_detect,
         belief_age_guard=info.belief_age,
+        dwell_catch_steps=dwell_catch_steps,
+        dwell_breach_steps=dwell_breach_steps,
     )
