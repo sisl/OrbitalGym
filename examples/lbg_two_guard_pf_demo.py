@@ -177,7 +177,8 @@ MAX_DISTANCE_TERMINATION_M = 20000.0  # 20 km — about 2.5x the along-track rin
 
 # ---- Bandit thrust authority ------------------------------------------------
 # Per-step Δv cap (m/s) on the bandit's glideslope controller. The cap
-# also sets the braking curve `sqrt(2 * brake_fraction * max_dv / dt * rho)`,
+# also sets the braking curve `sqrt(2 * brake_fraction * max_dv / dt * rho)`
+# and the sustainable speed `hcw_fraction * max_dv / (2 * mean_motion * dt)`,
 # so it bounds the closing speed the controller is willing to build up as
 # well as the impulse it can spend in one step. Too tight a cap leaves the
 # bandit thrusting flat out for the whole approach, which behaves like the
@@ -339,8 +340,9 @@ print(
 # The bandit balances two competing goals:
 #
 # 1. **Reach the lady.** Modeled by a glideslope: the commanded closing
-#    speed grows linearly with range and is capped by the braking curve
-#    the bandit's own Δv budget can shed.
+#    speed grows linearly with range and is capped both by the braking
+#    curve the bandit's own Δv budget can shed and by the speed that
+#    budget can hold against the HCW Coriolis coupling.
 # 2. **Avoid the guards.** Modeled by an artificial potential field
 #    (APF) — a sum of repulsive Δv contributions, one per guard, with
 #    Gaussian decay in the bandit-to-guard distance.
@@ -353,15 +355,19 @@ print(
 #
 # ```text
 #   rho     = ||x_b[:2]||                         (range to the lady)
-#   s       = min(rho / slope_s + arrival_mps, sqrt(2 a_brake rho))
+#   s       = min(rho / slope_s + arrival_mps, sqrt(2 a_brake rho), s_hcw)
 #   u_glide = -s * rho_hat - x_b[2:]              (lady-seeking, unclipped)
 #   u_avoid = sum_g  g·exp(-d_g^2/(2sigma^2)) · (x_b - x_g)/||x_b - x_g||
 #   u       = clip_norm(u_glide + u_avoid, max_dv)
 # ```
 #
-# `a_brake = brake_fraction * max_dv / dt`. The gain, `slope_s` and
-# `arrival_mps`, does not depend on `max_dv`: the budget enters only
-# through the braking curve and the single norm clip on the sum.
+# `a_brake = brake_fraction * max_dv / dt` and `s_hcw = hcw_fraction *
+# max_dv / (2 * mean_motion * dt)`, the share of the per-step budget set
+# aside for the Coriolis coupling that charges about `2 * mean_motion * v
+# * dt` every step to hold a relative velocity `v`. The gain, `slope_s`
+# and `arrival_mps`, does not depend on `max_dv`: the budget enters only
+# through the braking curve, the sustainable speed and the single norm
+# clip on the sum.
 #
 # Tuning knobs (in section 1):
 #
@@ -397,9 +403,14 @@ class GlideslopeToLadyWithAvoidance:
         guard_pos:   shape (n_guards, 2)  — RT-frame positions only.
 
     The lady-seeking term is the glideslope impulse toward the RTN origin:
-    the commanded closing speed is the smaller of `rho / slope_s +
-    arrival_mps` and the braking curve `sqrt(2 * a_brake * rho)` the
-    per-step cap can shed, with `a_brake = brake_fraction * max_dv_mps / dt`.
+    the commanded closing speed is the smallest of `rho / slope_s +
+    arrival_mps`, the braking curve `sqrt(2 * a_brake * rho)` the per-step cap
+    can shed, with `a_brake = brake_fraction * max_dv_mps / dt`, and the
+    sustainable speed `hcw_fraction * max_dv_mps / (2 * mean_motion * dt)`.
+    The last term is the share of the per-step budget left for the Coriolis
+    coupling, which charges about `2 * mean_motion * v * dt` every step to hold
+    a relative velocity `v` that is not natural motion; without it the bandit
+    commands a closing speed it cannot hold and drifts off the line of sight.
     The repulsion sums a Gaussian decay away from each guard:
         magnitude = avoidance_gain * exp(-d^2 / (2*sigma^2))
         direction = (bandit_pos - guard_pos) / ||bandit_pos - guard_pos||
@@ -409,7 +420,8 @@ class GlideslopeToLadyWithAvoidance:
     glideslope.
 
     The gain, `slope_s` and `arrival_mps`, does not depend on `max_dv_mps`:
-    the cap enters only through the braking curve and the final clip.
+    the cap enters only through the braking curve, the sustainable speed and
+    the final clip.
     """
 
     dt: float

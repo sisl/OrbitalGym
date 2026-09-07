@@ -7,12 +7,21 @@ smallest of three terms: a linear glideslope ``rho / slope_s + arrival_mps``,
 the braking curve ``sqrt(2 a_brake rho)`` that the vehicle's own per-step
 budget can shed, where ``a_brake = brake_fraction * max_dv_mps / dt``, and the
 sustainable speed ``hcw_fraction * max_dv_mps / (2 n dt)``. The last term comes
-from the Coriolis coupling of the HCW dynamics: holding a straight approach at
-relative speed ``v`` that is not natural motion costs about ``2 n v dt`` of
-impulse every step, so a per-step budget ``max_dv_mps`` can sustain at most
-``max_dv_mps / (2 n dt)``, and asking for more leaves the vehicle unable to
-stay on the line of sight. The resulting impulse is scaled down to Euclidean
-norm ``max_dv_mps`` when it exceeds it.
+from the Coriolis coupling of the HCW dynamics: holding a relative velocity
+``v`` that is not natural motion costs about ``2 n v dt`` of impulse every
+step, so ``max_dv_mps / (2 n dt)`` is what the per-step budget can pay for that
+coupling alone. It is not the whole cost. The ``3 n^2 x`` gradient term, the
+rotation of the line of sight as the range closes, and the finite step all add
+to or subtract from it depending on where the vehicle sits, so the law spends
+only the fraction ``hcw_fraction`` of that bound and leaves the rest as margin.
+
+``hcw_fraction = 0.5`` is the default because the full bound has no margin
+left. Over eight start phases on a 2 km ring, offset along-track by 20 km and
+by 40 km, ``hcw_fraction = 1.0`` reaches the lady from 20 km in six of the
+eight cases and from 40 km in none of them, and ``0.75`` in eight and six;
+``0.5`` arrives in all sixteen, taking 1930 to 2670 s from 20 km and 3830 to
+4570 s from 40 km. The resulting impulse is scaled down to Euclidean norm
+``max_dv_mps`` when it exceeds it.
 
 The gain, ``slope_s`` and ``arrival_mps``, does not depend on ``max_dv_mps``:
 the budget enters only through the braking curve, the sustainable speed and the
@@ -22,7 +31,7 @@ budgets therefore command the same impulse wherever none of the three binds.
 Defaults are ``slope_s = 100 s``, ``arrival_mps = 0.3 m/s``,
 ``brake_fraction = 0.5`` and ``hcw_fraction = 0.5``. At the guard cap of
 0.4545 m/s per 10 s step and a mean motion of 1.078e-3 rad/s the sustainable
-speed is 10.5 m/s, which binds beyond about 2.4 km. Inside that range the
+speed term is 10.5 m/s, which binds beyond about 2.4 km. Inside that range the
 braking curve is the smaller until it crosses the linear glideslope near 390 m,
 below which the time constant sets the approach; below about 2 m the braking
 curve is the smaller once more, which is what takes the arrival speed to zero.

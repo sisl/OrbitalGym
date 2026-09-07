@@ -4,7 +4,11 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from orbitalgym.policies.heuristic.glideslope import GlideslopeIntercept, GlideslopeToLady
+from orbitalgym.policies.heuristic.glideslope import (
+    GlideslopeIntercept,
+    GlideslopeToLady,
+    glideslope_u,
+)
 from tests.policies._helpers import make_impulsive_maneuver_command_cls
 
 MEAN_MOTION = 0.0010780076263472438
@@ -282,3 +286,79 @@ def test_sustainable_speed_binds_at_three_kilometres():
     dv = _command(_to_lady(GUARD_CAP), tight, far_opponent)
     assert np.linalg.norm(dv) < GUARD_CAP - 1e-3, "test state is saturated"
     np.testing.assert_allclose(tight[2:] + dv, [-S_HCW, 0.0], atol=1e-4)
+
+
+def _closing_speed_commanded(
+    rho_m: float,
+    *,
+    cap_mps: float,
+    rate_rad_s: float,
+    step_s: float,
+    fraction: float,
+) -> float:
+    """The closing speed the unclipped law commands from a state at rest at `rho_m`.
+
+    At rest the desired velocity is the closing speed along the line of sight
+    and nothing else, so the unclipped impulse is that speed directed inward.
+    Reading it before the norm clip keeps the measurement independent of the
+    cap, which the clip is tested against separately.
+    """
+    x = np.array([[rho_m, 0.0, 0.0, 0.0]])
+    u = np.asarray(
+        glideslope_u(
+            jnp.asarray(x),
+            jnp.zeros((1, 4)),
+            max_dv_mps=cap_mps,
+            dt=step_s,
+            mean_motion=rate_rad_s,
+            slope_s=SLOPE_S,
+            arrival_mps=ARRIVAL_MPS,
+            brake_fraction=BRAKE_FRACTION,
+            hcw_fraction=fraction,
+        )[0],
+        dtype=np.float64,
+    )
+    assert abs(u[1]) < 1e-9, "commanded impulse left the line of sight"
+    return -u[0]
+
+
+def test_sustainable_speed_scales_inversely_with_rate_and_step():
+    """The sustainable speed goes as ``fraction * cap / (2 * rate * step)``.
+
+    Both the orbital rate and the step length are varied independently, and the
+    expectation is written out here from the impulse budget rather than read
+    back from the implementation, so a change to either the constant or the
+    dependence on ``mean_motion`` and ``dt`` shows up as a failure.
+    """
+    rho_m = 8000.0
+    cap_mps = GUARD_CAP
+    measured = {}
+
+    for rate_rad_s in (MEAN_MOTION, 2.0 * MEAN_MOTION):
+        for step_s in (DT, 2.0 * DT):
+            for fraction in (0.25, 0.5):
+                expected = fraction * cap_mps / (2.0 * rate_rad_s * step_s)
+                a_brake = BRAKE_FRACTION * cap_mps / step_s
+                assert expected < np.sqrt(2.0 * a_brake * rho_m), (
+                    f"the braking curve binds at rate={rate_rad_s}, step={step_s}"
+                )
+                assert expected < rho_m / SLOPE_S + ARRIVAL_MPS, (
+                    f"the linear glideslope binds at rate={rate_rad_s}, step={step_s}"
+                )
+                got = _closing_speed_commanded(
+                    rho_m,
+                    cap_mps=cap_mps,
+                    rate_rad_s=rate_rad_s,
+                    step_s=step_s,
+                    fraction=fraction,
+                )
+                assert abs(got - expected) < 1e-3, (
+                    f"commanded {got:.4f} m/s, expected {expected:.4f} m/s at "
+                    f"rate={rate_rad_s}, step={step_s}, fraction={fraction}"
+                )
+                measured[(rate_rad_s, step_s, fraction)] = got
+
+    base = measured[(MEAN_MOTION, DT, 0.5)]
+    assert abs(measured[(2.0 * MEAN_MOTION, DT, 0.5)] / base - 0.5) < 1e-3, "rate does not halve it"
+    assert abs(measured[(MEAN_MOTION, 2.0 * DT, 0.5)] / base - 0.5) < 1e-3, "step does not halve it"
+    assert abs(measured[(MEAN_MOTION, DT, 0.25)] / base - 0.5) < 1e-3, "fraction is not linear"
