@@ -36,7 +36,8 @@ uses `env.layout.flatten` and `env.layout.unflatten`:
 ```
 
 The `StateLayout`-level flat vector excludes the scalar time / step
-counter and the reference orbit. `POMDPAdapter` packs `(t, step)`
+counter, the game's dwell counters, and the reference orbit.
+`POMDPAdapter` packs `(t, step)` and the per-bandit dwell counters
 onto the tail of its own flat vector so `transition` can stay pure
 (see [Use the POMDP adapter](../how-to/use-pomdp-adapter.md)); the
 reference orbit is treated as a per-scenario constant.

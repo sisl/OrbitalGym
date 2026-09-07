@@ -35,10 +35,11 @@ the same.
 interface over `OrbitalGymEnv`:
 
 - `states_dim` — flat-state dimensionality. The vector packs
-  `StateLayout.flatten` (per-side guard/bandit truth) followed by
-  two scalar tail entries: `t` and `step`. The reference orbit is
-  captured at `__init__` time as a per-scenario constant, so it
-  doesn't need to live in the flat vector.
+  `StateLayout.flatten` (per-side guard/bandit truth), then two
+  scalar tail entries, `t` and `step`, then the game's per-bandit
+  dwell counters. The reference orbit is captured at `__init__`
+  time as a per-scenario constant, so it doesn't need to live in
+  the flat vector.
 - `action_dim_per_side` — components of `Δv` per vehicle (3 for
   RTN dynamics, 2 for in-plane).
 - `discount() → float` — episode-bounded games return `1.0`. Override
@@ -66,8 +67,9 @@ with total length `(n_g + n_b) * d`.
 --8<-- "tests/docs/test_tut_t4_short_horizon_search.py:initial-state"
 ```
 
-`s0` is a flat `(states_dim,)` array — the per-side truth plus the
-two-scalar `(t, step)` tail. There is no hidden mutable bookkeeping;
+`s0` is a flat `(states_dim,)` array — the per-side truth, the
+two-scalar `(t, step)` tail, and the dwell counters. There is no
+hidden mutable bookkeeping;
 every call to `transition` reads its bookkeeping out of the input
 vector and writes the new bookkeeping into the output vector.
 

@@ -649,6 +649,12 @@ class BeliefAdaptedMCTSPolicy:
     The wrapper transparently passes ``ContactAwareBelief`` through to its
     ``.inner.mean`` — the contact gating is handled by `PlanCachePolicy`,
     not by the searcher.
+
+    Everything the belief does not track comes from the template, the
+    game's dwell counters included, so a search rooted on a belief starts
+    the dwell wherever the template left it. A reset state leaves it at
+    zero; supply a template carrying the current counters for the search
+    to see a hold already under way.
     """
 
     inner_mcts: MCTSPolicy
@@ -704,6 +710,11 @@ class ParticleRootMCTSPolicy:
     under ``jax.vmap``, averages the root action weights, and acts on the
     argmax. Own-side entities are anchored to truth by the filter, so the
     roots differ only in the opposing side's states.
+
+    Every root inherits the template's non-belief components, the game's
+    dwell counters included; see
+    :class:`BeliefAdaptedMCTSPolicy` for what that means for a hold already
+    under way.
     """
 
     inner_mcts: MCTSPolicy

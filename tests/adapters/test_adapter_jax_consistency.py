@@ -95,12 +95,20 @@ def test_pomdp_adapter_consistency_with_direct_env():
 
     # Direct path: replicate adapter's reset (PRNGKey(0)).
     state_direct, _outs = env.reset(jax.random.PRNGKey(0))
-    # Adapter packs (guards, bandits) followed by (t, step) as a float tail.
+    # Adapter packs (guards, bandits), then (t, step), then the dwell
+    # counters, all as a float tail.
+    tail = 2 + 2 * cfg.n_bandits
     s0_xy_expected = env.layout.flatten(state_direct.guards, state_direct.bandits)
-    np.testing.assert_array_equal(np.asarray(s0[:-2]), np.asarray(s0_xy_expected))
-    np.testing.assert_array_equal(np.asarray(s0[-2]), np.asarray(state_direct.t))
+    np.testing.assert_array_equal(np.asarray(s0[:-tail]), np.asarray(s0_xy_expected))
+    np.testing.assert_array_equal(np.asarray(s0[-tail]), np.asarray(state_direct.t))
     np.testing.assert_array_equal(
-        np.asarray(s0[-1]), np.asarray(state_direct.step).astype(s0.dtype)
+        np.asarray(s0[-tail + 1]), np.asarray(state_direct.step).astype(s0.dtype)
+    )
+    np.testing.assert_array_equal(
+        np.asarray(s0[-2 * cfg.n_bandits :]),
+        np.concatenate(
+            [np.asarray(state_direct.dwell_catch), np.asarray(state_direct.dwell_breach)]
+        ).astype(s0.dtype),
     )
 
     # Now step once. Build the flat action vector and unflatten into the
@@ -121,7 +129,18 @@ def test_pomdp_adapter_consistency_with_direct_env():
     )
 
     s_next_adapter = adapter.transition(s0, a, jax.random.PRNGKey(1))
-    np.testing.assert_array_equal(np.asarray(s_next_adapter[:-2]), np.asarray(s_next_xy_expected))
     np.testing.assert_array_equal(
-        np.asarray(s_next_adapter[-2]), np.asarray(step_out_direct.state.t)
+        np.asarray(s_next_adapter[:-tail]), np.asarray(s_next_xy_expected)
+    )
+    np.testing.assert_array_equal(
+        np.asarray(s_next_adapter[-tail]), np.asarray(step_out_direct.state.t)
+    )
+    np.testing.assert_array_equal(
+        np.asarray(s_next_adapter[-2 * cfg.n_bandits :]),
+        np.concatenate(
+            [
+                np.asarray(step_out_direct.state.dwell_catch),
+                np.asarray(step_out_direct.state.dwell_breach),
+            ]
+        ).astype(s_next_adapter.dtype),
     )

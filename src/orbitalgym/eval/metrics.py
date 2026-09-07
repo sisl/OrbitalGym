@@ -150,6 +150,19 @@ def _dwell_trace(traj: Any, name: str) -> jax.Array | None:
     return jnp.concatenate([entering[1:], leaving[None]], axis=0)
 
 
+def _require_dwell(trace: jax.Array | None) -> jax.Array:
+    """A dwell counter trace, or an error naming what produces one."""
+    if trace is None:
+        raise ValueError(
+            "the scenario's win conditions require a dwell, so classifying an "
+            "episode needs the dwell counters on traj.env_state and "
+            "traj.final_state. Produce the trajectory with "
+            "orbitalgym.rollout.rollout or belief_rollout over an env built "
+            "from this config."
+        )
+    return trace
+
+
 def guard_information(
     traj: Any,
     belief_guard: Any,
@@ -281,20 +294,10 @@ def lbg_episode_metrics(
     dwell_breach_t = _dwell_trace(traj, "dwell_breach")
     catch_dwell_steps = int(getattr(cfg.game, "catch_dwell_steps", 0))
     breach_dwell_steps = int(getattr(cfg.game, "breach_dwell_steps", 0))
-    if (catch_dwell_steps > 0 and dwell_catch_t is None) or (
-        breach_dwell_steps > 0 and dwell_breach_t is None
-    ):
-        raise ValueError(
-            "the scenario's win conditions require a dwell, so classifying an "
-            "episode needs the dwell counters on traj.env_state and "
-            "traj.final_state. Produce the trajectory with "
-            "orbitalgym.rollout.rollout or belief_rollout over an env built "
-            "from this config."
-        )
     if catch_dwell_steps > 0:
-        caught_t = jnp.any(dwell_catch_t >= catch_dwell_steps, axis=-1)
+        caught_t = jnp.any(_require_dwell(dwell_catch_t) >= catch_dwell_steps, axis=-1)
     if breach_dwell_steps > 0:
-        breached_t = jnp.any(dwell_breach_t >= breach_dwell_steps, axis=-1)
+        breached_t = jnp.any(_require_dwell(dwell_breach_t) >= breach_dwell_steps, axis=-1)
 
     big = jnp.asarray(jnp.inf, dtype=d_gb_min_t.dtype)
     min_d_gb = jnp.min(jnp.where(mask, d_gb_min_t, big))

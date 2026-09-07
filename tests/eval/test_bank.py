@@ -1,5 +1,6 @@
 """Initial-condition bank: sample, save, load, index."""
 
+import h5py
 import jax
 import jax.numpy as jnp
 
@@ -35,6 +36,24 @@ def test_bank_round_trips_through_hdf5(tmp_path):
         states2.reference_orbit.position_eci, states.reference_orbit.position_eci
     )
     assert jnp.array_equal(states2.ic_valid, states.ic_valid)
+
+
+def test_bank_without_a_leaf_falls_back_to_the_template(tmp_path):
+    """A bank missing a leaf loads with the template's value for it."""
+    cfg = make_lady_bandit_guard()
+    env = OrbitalGymEnv(cfg)
+    states = sample_bank(env, n_episodes=3, seed=7)
+    path = tmp_path / "bank.h5"
+    save_bank(path, cfg, states, seed=7)
+    with h5py.File(path, "a") as f:
+        del f["states"]["dwell_catch"]
+        del f["states"]["dwell_breach"]
+
+    _cfg, loaded = load_bank(path)
+    assert loaded.dwell_catch.shape == (3, cfg.n_bandits)
+    assert not jnp.any(loaded.dwell_catch)
+    assert not jnp.any(loaded.dwell_breach)
+    assert jnp.array_equal(loaded.guards.rtn, states.guards.rtn)
 
 
 def test_bank_episode_indexes_one_state():

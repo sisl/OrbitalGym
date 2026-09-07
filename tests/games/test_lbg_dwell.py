@@ -318,3 +318,11 @@ def test_env_reset_zeroes_the_dwell_counters():
     assert state.dwell_catch.shape == (cfg.n_bandits,)
     assert state.dwell_catch.tolist() == [0]
     assert state.dwell_breach.tolist() == [0]
+
+
+def test_metrics_reject_a_trajectory_without_counters_when_a_dwell_is_set():
+    """Classifying a dwell-gated episode needs the counters, and says so."""
+    traj, cfg = _run_env(3, catch_dwell_steps=2)
+    unsized = traj.env_state.replace(dwell_catch=jnp.zeros((3, 0), dtype=jnp.int32))
+    with pytest.raises(ValueError, match="dwell counters"):
+        lbg_episode_metrics(traj.replace(env_state=unsized), cfg)
