@@ -116,6 +116,8 @@ one command. The modes coincide for a single vehicle.
 
 ::: orbitalgym.belief.pf.ParticleFilterRingInitializer
 
+::: orbitalgym.belief.pf.ParticleFilterTrackedInitializer
+
 ## State
 
 ::: orbitalgym.state.layout.StateLayout
