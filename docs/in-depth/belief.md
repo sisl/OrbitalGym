@@ -149,7 +149,14 @@ boresight every step and push the estimate away without bound.
   uniformly in phase along the 2:1 RT natural-motion ellipse, with
   velocities set from the closed-form natural-motion solution so each
   particle is itself a valid drift trajectory under HCW. Self-pair
-  particles are delta-on-truth.
+  particles are delta-on-truth. `along_track_offset_m` moves the ring's
+  centre along-track, matching the target's
+  `RelativeEllipse.along_track_offset_m`.
+- `ParticleFilterTrackedInitializer` — cross-pair particles are the
+  opponent's true state plus Gaussian noise, `sigma_pos_m` on each
+  position component and `sigma_vel_mps` on each velocity component.
+  Use for an observer holding a stale but roughly correct track.
+  Self-pair particles are delta-on-truth.
 
 ### When to pick which belief
 

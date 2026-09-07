@@ -153,6 +153,7 @@ class BeliefInitializerKey(StrEnum):
     EKF_UNIFORM_DEFAULT = "ekf_uniform_default"
     PF_FROM_TRUTH = "pf_from_truth"
     PF_RING = "pf_ring"
+    PF_TRACKED = "pf_tracked"
 
 
 class BeliefUpdaterKey(StrEnum):

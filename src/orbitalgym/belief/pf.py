@@ -620,6 +620,12 @@ class ParticleFilterRingInitializer:
         Radial-ellipse semi-major axis (matches the bandit's
         ``RelativeEllipse.radial_ellipse_m``). Along-track amplitude is
         2× this under HCW 2:1 motion.
+    along_track_offset_m (scalar, or one offset per opposing vehicle):
+        Along-track centre of the ring, matching the bandit's
+        ``RelativeEllipse.along_track_offset_m``. Added to the
+        along-track position of every cross-pair particle; velocities
+        are untouched, so the cloud is still a drift-free ring, centred
+        this far ahead of the lady.
     mean_motion_rad_s:
         Reference orbit mean motion (use
         ``orbitalgym.reference_orbit.mean_motion(cfg.reference_orbit)``).
@@ -636,6 +642,7 @@ class ParticleFilterRingInitializer:
     mean_motion_rad_s: float
     n_particles: int
     truth_jitter_scale: float = 1e-3
+    along_track_offset_m: float | jax.Array = 0.0
 
     def __call__(self, env_state, side: Side, key) -> ParticleFilterBelief:
         d = self.layout.dynamics_state_dim
@@ -663,17 +670,18 @@ class ParticleFilterRingInitializer:
         cp = jnp.cos(phases)
         sp = jnp.sin(phases)
         a = jnp.reshape(jnp.asarray(self.ring_radius_m, dtype=cp.dtype), (1, -1, 1))
+        offset = jnp.reshape(jnp.asarray(self.along_track_offset_m, dtype=cp.dtype), (1, -1, 1))
         n_motion = self.mean_motion_rad_s
-        # Closed-form natural-motion ring (matches sampling.side.RelativeEllipse,
-        # along_track_offset_m=0, drift=0):
+        # Closed-form natural-motion ring (matches sampling.side.RelativeEllipse
+        # with drift=0):
         #   r       = -a * cos(phase)
-        #   t       =  2 a * sin(phase)
+        #   t       =  2 a * sin(phase) + offset
         #   r_dot   =  n a * sin(phase)
         #   t_dot   =  2 n a * cos(phase)
         opp_particles = jnp.stack(
             [
                 -a * cp,
-                2.0 * a * sp,
+                2.0 * a * sp + offset,
                 n_motion * a * sp,
                 2.0 * n_motion * a * cp,
             ],
@@ -685,7 +693,7 @@ class ParticleFilterRingInitializer:
             opp_particles = jnp.stack(
                 [
                     -a * cp,
-                    2.0 * a * sp,
+                    2.0 * a * sp + offset,
                     zeros,
                     n_motion * a * sp,
                     2.0 * n_motion * a * cp,
@@ -693,6 +701,90 @@ class ParticleFilterRingInitializer:
                 ],
                 axis=-1,
             )
+
+        particles = jnp.concatenate([own_particles, opp_particles], axis=1)
+        log_w = _uniform_log_weights(n_self, n_total, self.n_particles)
+        n_eff, weight_entropy, resampled = _initial_metrics(n_self, n_total, self.n_particles)
+        return ParticleFilterBelief(
+            particles=particles,
+            log_weights=log_w,
+            n_eff=n_eff,
+            weight_entropy=weight_entropy,
+            resampled=resampled,
+        )
+
+
+@register(BeliefInitializerKey.PF_TRACKED)
+@dataclass(frozen=True)
+class ParticleFilterTrackedInitializer:
+    """Stale-track prior: a Gaussian cloud around the opponent's truth.
+
+    Models an observer that has been tracking the opposing side and
+    holds a track that is right but not sharp. For each cross-pair
+    (observer i, opposing-side target k), particles are the target's
+    true state plus independent Gaussian noise — ``sigma_pos_m`` on
+    every position component and ``sigma_vel_mps`` on every velocity
+    component. Self-pairs and same-side pairs are truth plus tiny
+    jitter, as in the other particle initializers.
+
+    Layout requirements: ``dynamics_state_dim`` must be 4 (RT plane,
+    components r, t, r_dot, t_dot) or 6 (RTN, with the cross-track
+    position and rate drawn at the same sigmas).
+
+    Parameters
+    ----------
+    layout:
+        ``cfg.layout`` from a built ``ScenarioConfig``.
+    n_particles:
+        Number of particles per (observer, target) pair.
+    sigma_pos_m:
+        Standard deviation on each position component of a cross-pair
+        particle.
+    sigma_vel_mps:
+        Standard deviation on each velocity component of a cross-pair
+        particle. Pairing it with ``mean_motion * sigma_pos_m`` keeps
+        the position and velocity uncertainty consistent under HCW
+        relative motion.
+    truth_jitter_scale:
+        Jitter on the truth-anchored self-pair and same-side particles.
+    """
+
+    layout: Any
+    n_particles: int
+    sigma_pos_m: float
+    sigma_vel_mps: float
+    truth_jitter_scale: float = 1e-3
+
+    def __call__(self, env_state, side: Side, key) -> ParticleFilterBelief:
+        d = self.layout.dynamics_state_dim
+        if d not in (4, 6):
+            raise ValueError(f"ParticleFilterTrackedInitializer expects d in (4, 6), got d={d}")
+
+        own_truth, opp_truth = _truth_arrays_for_side(env_state, side.value)
+        n_self = own_truth.shape[0]
+        n_opp = opp_truth.shape[0]
+        n_total = n_self + n_opp
+
+        k_track, k_jitter = jax.random.split(key, 2)
+
+        own_block = jnp.broadcast_to(
+            own_truth[None, :, None, :], (n_self, n_self, self.n_particles, d)
+        )
+        own_particles = own_block + self.truth_jitter_scale * jax.random.normal(
+            k_jitter, own_block.shape
+        )
+
+        opp_block = jnp.broadcast_to(
+            opp_truth[None, :, None, :], (n_self, n_opp, self.n_particles, d)
+        )
+        n_pos = d // 2
+        sigmas = jnp.concatenate(
+            [
+                jnp.full((n_pos,), self.sigma_pos_m),
+                jnp.full((n_pos,), self.sigma_vel_mps),
+            ]
+        ).astype(opp_block.dtype)
+        opp_particles = opp_block + sigmas * jax.random.normal(k_track, opp_block.shape)
 
         particles = jnp.concatenate([own_particles, opp_particles], axis=1)
         log_w = _uniform_log_weights(n_self, n_total, self.n_particles)
