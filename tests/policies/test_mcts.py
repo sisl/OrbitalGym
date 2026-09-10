@@ -1,4 +1,4 @@
-"""MCTSPolicy — JAX-native classic UCT search via mctx.
+"""MCTSPolicy — JAX-native Gumbel MuZero / PUCT search via mctx.
 
 Tests cover:
 

@@ -1,6 +1,6 @@
 # MCTS policy
 
-`MCTSPolicy` is a JAX-native classic UCT search backed by
+`MCTSPolicy` is a JAX-native Gumbel MuZero / PUCT search backed by
 [mctx](https://github.com/google-deepmind/mctx). It conforms to the
 unified `Policy` protocol — same shape as every other policy in the
 gallery — and slots into either side. Both sides may run an
@@ -14,8 +14,11 @@ simulation, unlike Python-loop UCB1 patterns that came before.
 
 ## What it is, in two minutes
 
-- **Classic UCT.** Uniform priors, leaf value defaults to zero. Pass a
-  custom `leaf_value_fn` for cheap heuristic value backups.
+- **Gumbel MuZero by default.** Root selection uses Gumbel noise and
+  sequential halving; interior nodes use deterministic Gumbel MuZero
+  selection. The alternative `variant="muzero"` uses PUCT. Both use
+  uniform priors, with leaf value defaulting to zero. Pass a custom
+  `leaf_value_fn` for cheap heuristic value backups.
 - **Discrete action space.** Build an `(A, dv_dim)` `action_grid` of
   candidate Δv vectors. Search picks a row index per call.
 - **Opponent model inside the tree.** During simulation the *other*
@@ -61,6 +64,7 @@ mcts = MCTSPolicy(
     opponent_model=opponent_model,
     opponent_action_grid=action_grid,
     num_simulations=32,
+    max_num_considered_actions=16,
     n_vehicles=cfg.n_guards,
     command_cls=env.guard_command_cls,
 )
@@ -96,12 +100,23 @@ trusts the truth). Real `KFBelief`/`EKFBelief` whose `mean` is per-pair
 
 | Knob | Default | When to change |
 |------|---------|----------------|
-| `num_simulations` | 32 | Larger = sharper choices, longer per-call cost. The CPU/MPS speedup widens with this. |
-| `variant` | `"gumbel_muzero"` | Sequential halving + Gumbel noise — better at small budgets with a uniform prior. Use `"muzero"` if you supply a learned prior. |
+| `num_simulations` | 32 | Simulations per search tree. Increasing this allocates more search effort but does not raise the Gumbel root candidate limit. |
+| `max_num_considered_actions` | 16 | Positive root candidate limit for Gumbel MuZero, bounded by the available actions and simulation budget. Applies to joint actions or each independent vehicle's actions. Ignored by `"muzero"`. |
+| `variant` | `"gumbel_muzero"` | Sequential halving + Gumbel noise at the root; `"muzero"` uses PUCT. Both currently use uniform priors. |
 | `max_depth` | None | Cap planning horizon; useful when the discount is 1.0 and trajectories are long. |
 | `discount` | `None` | `None` reads `env_model.discount()`, the adapter's per-macro-step discount. Set a float to override. |
 | `leaf_value_fn` | zero | Cheap heuristic estimate at leaves often beats pure rollouts. |
 | `opponent_model` | uniform-random | Wire e.g. `GlideslopeToLady` for adversary-aware search. |
+
+Tune root coverage and simulation effort separately. With nine actions
+per vehicle and three jointly controlled vehicles, the joint action space
+contains 729 actions, but the default Gumbel search visits at most 16 root
+actions even with 2048 simulations. Raise `max_num_considered_actions`
+explicitly to explore more root actions, and provide enough simulations
+to evaluate and compare those candidates. In independent coordination,
+each vehicle searches its own action space with these same per-tree
+budgets. Inspect `search_tree` root visit counts when measuring coverage;
+`action_weights` can be nonzero for actions that were never visited.
 
 ## CPU vs MPS
 

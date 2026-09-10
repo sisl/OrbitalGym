@@ -1,4 +1,4 @@
-"""MCTSPolicy — JAX-native classic UCT search via mctx.
+"""MCTSPolicy — JAX-native Gumbel MuZero / PUCT search via mctx.
 
 Conforms to the unified :class:`orbitalgym.policies.base.Policy`
 protocol. Slot it on either side; both sides can run an MCTSPolicy
@@ -9,7 +9,7 @@ round-trips per simulation.
 
 Design notes:
 
-- **Classic UCT.** Uniform priors, leaf value defaults to zero. Pass a
+- **Gumbel MuZero / PUCT.** Uniform priors, leaf value defaults to zero. Pass a
   custom ``leaf_value_fn`` for cheap heuristic value backups.
 - **Opponent model.** Inside the tree, the opposing side's actions come
   from ``opponent_model`` — a Policy used as the searcher's *belief about
@@ -33,9 +33,10 @@ Multi-vehicle teams (``n_vehicles > 1``):
 - ``coordination="joint"`` (default) — single MCTS over the joint action
   space ``A^n_vehicles``. Cooperative team planning: a single tree picks
   one action per vehicle, optimised jointly. Sound but combinatorial: with
-  ``A=9`` and ``n=3`` the action space is 729; ``n=4`` is 6561. Match
-  ``num_simulations`` to the joint cardinality so the tree actually
-  visits a meaningful fraction of children.
+  ``A=9`` and ``n=3`` the action space is 729; ``n=4`` is 6561. In the
+  Gumbel variant, ``max_num_considered_actions`` (default 16) caps root
+  candidates independently of ``num_simulations``. Increasing simulations
+  alone does not expand that candidate set.
 - ``coordination="independent"`` — one single-vehicle MCTS per teammate.
   Non-cooperative: each vehicle plans assuming teammates behave according
   to ``teammate_model`` (the analogue of ``opponent_model``, but for the
@@ -69,7 +70,7 @@ def _zero_value(s_flat: jax.Array) -> jax.Array:
 
 @dataclass(frozen=True)
 class MCTSPolicy:
-    """JAX-native classic UCT search backed by mctx.
+    """JAX-native Gumbel MuZero / PUCT search backed by mctx.
 
     See module docstring for the joint vs independent coordination modes.
     """
@@ -111,7 +112,14 @@ class MCTSPolicy:
     # behaviour.
     opponent_schedule: Any = None
 
+    # Gumbel root candidate limit, independent of the simulation budget.
+    # Applies to joint actions or each independent vehicle's action space.
+    # Ignored by the "muzero" (PUCT) variant.
+    max_num_considered_actions: int = 16
+
     def __post_init__(self) -> None:
+        if self.max_num_considered_actions <= 0:
+            raise ValueError("MCTSPolicy.max_num_considered_actions must be positive.")
         if self.command_cls is None:
             raise ValueError(
                 "MCTSPolicy was constructed without `command_cls`. Build via "
@@ -368,6 +376,7 @@ class MCTSPolicy:
                 recurrent_fn=recurrent_fn,
                 num_simulations=self.num_simulations,
                 max_depth=self.max_depth,
+                max_num_considered_actions=self.max_num_considered_actions,
             )
         else:
             policy_out = mctx.muzero_policy(
@@ -595,6 +604,7 @@ class MCTSPolicy:
                 recurrent_fn=recurrent_fn,
                 num_simulations=self.num_simulations,
                 max_depth=self.max_depth,
+                max_num_considered_actions=self.max_num_considered_actions,
             )
         else:
             policy_out = mctx.muzero_policy(
