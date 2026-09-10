@@ -11,7 +11,7 @@
 
 OrbitalGym is a JAX-native framework for two-side decision-making in orbital scenarios. The goal is to provide a high-performance research and education framework for orbital decision-making. It is built on top of JAX and [astrojax](https://github.com/duncaneddy/astrojax) for differentiable dynamics, and is intended as a starting point for further development and research.
 
-OrbitalGym models any two-side decision making problem where two sides compete to complete an objective. Four scenarios ship in the box: Lady-Bandit-Guard, Pursuit-Evasion, Sun-Blocking, and Observation-Blocking.
+OrbitalGym models any two-side decision making problem where two sides compete to complete an objective. Five scenarios ship in the box: Lady-Bandit-Guard, Pursuit-Evasion, Get-Off-My-Lawn, Sun-Blocking, and Observation-Blocking.
 
 The same core drives single-agent (Gymnasium-shaped), multi-agent (PettingZoo-shaped), and POMDP-shaped views of the same underlying game to enable integration with the rich ecosystem of tools built around those interfaces. The core is also designed to be easily extended with new scenarios, new dynamics, and new interfaces.
 
