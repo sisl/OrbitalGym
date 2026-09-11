@@ -369,3 +369,78 @@ def test_actual_planners_use_current_self_fuel_without_teammate_telemetry(side, 
     if kind == "mppi":
         # Fuel exhaustion removes action-dependent motion and changes the plan.
         assert not bool(jnp.allclose(actual[1], action(view)[1]))
+
+
+@pytest.mark.parametrize("side", [Side.GUARD, Side.BANDIT])
+def test_plan_cache_lags_motion_but_preserves_current_resources_and_event_history(side):
+    from orbitalgym.belief.contact_aware import initial_planning_context
+    from orbitalgym.policies.plan_cache import PlanCachePolicy
+
+    env, adapter, template, _, view = setup(side, "mppi", resources=True)
+    own_name = "guards" if side is Side.GUARD else "bandits"
+    own = getattr(template, own_name)
+    current = template.replace(
+        t=jnp.array(30.0),
+        step=jnp.array(3),
+        **{own_name: own.replace(propellant_mass=jnp.zeros(2))},
+    )
+    ctx = initial_planning_context(env, current, side).replace(
+        dwell_catch=jnp.array([[4, 4], [5, 5]])
+    )
+    view = view.replace(contact=jnp.ones(2, dtype=bool), planning_context=ctx)
+    cls = env.guard_command_cls if side is Side.GUARD else env.bandit_command_cls
+
+    class RecordRoot:
+        def __call__(self, ps, v, key, t):
+            root = adapter.unpack(
+                belief_mean_to_flat_state(
+                    v.mean,
+                    side,
+                    adapter,
+                    template,
+                    observer_index=1,
+                    planning_context=getattr(v, "planning_context", None),
+                )
+            )
+            self_state = getattr(root, own_name)
+            opposing = root.bandits if side is Side.GUARD else root.guards
+            data = jnp.array(
+                [
+                    root.t,
+                    root.step,
+                    self_state.propellant_mass[1],
+                    root.dwell_catch[0],
+                    opposing.rtn[0, 0],
+                ]
+            )
+            # Record each slot's actual root clock in the cached command too.
+            return cls.zeros(2).replace(dv=jnp.ones((2, 3)) * root.t), data
+
+    policy = PlanCachePolicy(
+        inner=RecordRoot(),
+        plan_horizon=2,
+        schedule=None,
+        dt=10.0,
+        replan_contacts_lag=1,
+        n_vehicles=2,
+        command_cls=cls,
+    )
+    ps = policy.init_state(view, inner_init_state=jnp.zeros(5))
+    np.testing.assert_array_equal(ps.inner_state, [40.0, 4.0, 0.0, 5.0, -2000.0])
+    np.testing.assert_array_equal(ps.plan[:, 1, 0], [30.0, 40.0])
+    call = jax.jit(lambda p, v, t: policy(p, v, jax.random.key(5), t)[1])
+    ps = call(ps, view, jnp.array(30.0))  # First contact: no upload for lag=1.
+    ps = call(ps, view.replace(contact=jnp.zeros(2, dtype=bool)), jnp.array(40.0))
+    fresh = ctx.replace(
+        t=jnp.array(50.0),
+        step=jnp.array(5),
+        own_telemetry={**ctx.own_telemetry, "propellant_mass": jnp.array([1.0, 2.0])},
+        dwell_catch=jnp.array([[6, 6], [7, 7]]),
+    )
+    new_view = view.replace(
+        inner=view.inner.replace(mean=view.mean.at[:, 2:, 0].set(9000.0)), planning_context=fresh
+    )
+    ps = call(ps, new_view, jnp.array(50.0))
+    # Upload uses last-contact motion, current upload resources/history, and slot clock.
+    np.testing.assert_array_equal(ps.inner_state, [60.0, 6.0, 2.0, 7.0, -2000.0])
+    np.testing.assert_array_equal(ps.plan[:, 1, 0], [50.0, 60.0])

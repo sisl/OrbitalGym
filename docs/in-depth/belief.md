@@ -254,3 +254,12 @@ to observer 0; pass `observer_index` explicitly to select another local view.
 The conversion assumes belief motion is already in the environment's truth
 frame. Flat/oracle and reduced-frame beliefs still work with `belief_rollout`;
 without per-observer truth-frame motion, their estimated counters remain zero.
+
+
+`PlanCachePolicy` deliberately lags only the motion mean. At initialization
+and upload, it preserves available current own telemetry and estimated dwell
+for its inner planner. Across the cached H calls those values stay fixed,
+while nominal clock and step advance by `h * dt` and `h`. This is a mixed-age
+approximation, not a physically propagated trajectory: current estimated
+dwell can disagree with the lagged motion. The initial plan uses the context's
+clock when supplied, and upload calls use the supplied current policy time.

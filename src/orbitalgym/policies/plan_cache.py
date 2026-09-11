@@ -19,13 +19,14 @@ the operational model and lag semantics.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import flax.struct
 import jax
 import jax.numpy as jnp
 
+from orbitalgym.belief.contact_aware import PlanningContext
 from orbitalgym.groundstations.network import ContactSchedule
 
 
@@ -70,6 +71,7 @@ class _LaggedView:
     """
 
     mean: jax.Array
+    planning_context: PlanningContext | None = None
 
 
 @dataclass(frozen=True)
@@ -155,8 +157,10 @@ class PlanCachePolicy:
         ).astype(mean.dtype)
         # Compute the initial plan by invoking the H-step rollout against
         # the initial belief.
+        context = getattr(belief, "planning_context", None)
+        initial_t = context.t if context is not None else jnp.asarray(0.0)
         init_plan, init_inner_state = self._compute_plan(
-            belief_history_init, inner_init_state, key, jnp.asarray(0.0)
+            belief_history_init, inner_init_state, key, initial_t, context
         )
         return PlanCacheState(
             plan=init_plan.astype(jnp.float32),
@@ -212,7 +216,13 @@ class PlanCachePolicy:
 
         # `jax.lax.cond` so this is JIT/scan-safe.
         def _do_upload():
-            new_plan, next_inner = self._compute_plan(new_history, policy_state.inner_state, key, t)
+            new_plan, next_inner = self._compute_plan(
+                new_history,
+                policy_state.inner_state,
+                key,
+                t,
+                getattr(agent_view, "planning_context", None),
+            )
             return new_plan.astype(plan_dtype), next_inner
 
         def _no_upload():
@@ -258,6 +268,7 @@ class PlanCachePolicy:
         inner_state: Any,
         key: jax.Array,
         t: jax.Array,
+        planning_context: PlanningContext | None = None,
     ) -> tuple[jax.Array, Any]:
         """Roll out the inner planner ``plan_horizon`` ticks against the
         lagged belief.
@@ -269,13 +280,24 @@ class PlanCachePolicy:
         For a stateless inner the H slots are all the same Δv (no
         carry-state evolves across the rollout). For a stateful inner
         each slot can differ.
+
+        Only motion is lagged. Available telemetry and estimated dwell stay
+        fixed at their current upload snapshot across slots. Nominal clock
+        and step advance per slot to match the time passed to the inner
+        policy. This mixed-age root is an approximation, not a propagated
+        physical trajectory; current estimated dwell may disagree with the
+        deliberately lagged motion.
         """
         lagged_mean = history[0]  # oldest belief at index 0
 
         def step(carry, h_idx):
             inner_state_h, key_h = carry
-            view = _LaggedView(mean=lagged_mean)
-            cmd, next_inner = self.inner(inner_state_h, view, key_h, t + h_idx * self.dt)
+            slot_t = t + h_idx * self.dt
+            context = planning_context
+            if context is not None:
+                context = replace(context, t=slot_t, step=context.step + h_idx)
+            view = _LaggedView(mean=lagged_mean, planning_context=context)
+            cmd, next_inner = self.inner(inner_state_h, view, key_h, slot_t)
             next_key = jax.random.fold_in(key_h, h_idx)
             return (next_inner, next_key), cmd.dv
 
