@@ -81,11 +81,16 @@ def flatten_observations(channels: tuple[Observation, ...]) -> jax.Array:
 
     Used by adapters that publish a flat per-side observation (Gymnasium
     Box space, POMDP per-side observation). The flattened layout is
-    deterministic for a fixed observation function.
+    deterministic for a fixed observation function. Invisible pairs are
+    replaced with zero independently in each channel before concatenation;
+    visible payloads and dimensions are unchanged. Zero is the missing-data
+    convention, so consumers needing an explicit mask must use the channels.
     """
     if not channels:
         raise ValueError("flatten_observations requires at least one channel")
-    return jnp.concatenate([c.obs.reshape(-1) for c in channels])
+    return jnp.concatenate(
+        [jnp.where(c.visible[..., None], c.obs, 0).reshape(-1) for c in channels]
+    )
 
 
 def flatten_observations_per_agent(channels: tuple[Observation, ...]) -> jax.Array:
@@ -95,7 +100,9 @@ def flatten_observations_per_agent(channels: tuple[Observation, ...]) -> jax.Arr
     keeps the leading observer axis intact and flattens the trailing pair
     and feature axes, then concatenates channels along the inner axis.
     Returns shape `(N_self, total_per_agent_dim)`. Observer i's view is
-    row i — distinct from every other observer's row.
+    row i — distinct from every other observer's row. Invisible pairs are
+    zeroed using that channel's own mask; visibility in another channel or
+    observer never unmasks a payload. No mask is appended, preserving shape.
 
     Used by adapters that need genuine per-agent observations
     (PettingZoo). Use `flatten_observations` instead when the consumer
@@ -104,5 +111,44 @@ def flatten_observations_per_agent(channels: tuple[Observation, ...]) -> jax.Arr
     if not channels:
         raise ValueError("flatten_observations_per_agent requires at least one channel")
     # Each channel: (N_self, N_total, m) → (N_self, N_total * m)
-    per_channel = [c.obs.reshape(c.obs.shape[0], -1) for c in channels]
+    per_channel = [
+        jnp.where(c.visible[..., None], c.obs, 0).reshape(c.obs.shape[0], -1) for c in channels
+    ]
     return jnp.concatenate(per_channel, axis=-1)
+
+
+def merge_full_state_observations(channels: tuple[Observation, ...], state_dim: int) -> jax.Array:
+    """One flat state block for guidance models consuming full-state channels.
+
+    Precondition: every channel measures the same dynamics coordinates with
+    identity H and no nonlinear measurement function. GPS, teammate
+    ephemeris, conical and full-state channels satisfy this contract.
+    Dimensions and nonlinear functions are checked statically; callers are
+    responsible for identity H (its values may be traced under JIT).
+    Position-only or transformed measurements require a belief updater.
+
+    The last *visible* channel wins for each observer/entity pair, including
+    a genuinely zero reading. Unseen pairs are zero. This is deterministic
+    channel selection, not statistical fusion or a persistent estimate.
+    Returns ``(N_obs * N_total * state_dim,)``. The public adapter flatteners
+    retain their separate, concatenated-channel layouts.
+    """
+    if not channels:
+        raise ValueError("merge_full_state_observations requires at least one channel")
+    shape = channels[0].obs.shape
+    for channel in channels:
+        if (
+            len(shape) != 3
+            or shape[-1] != state_dim
+            or channel.obs.shape != shape
+            or channel.obs_matrix.shape != (state_dim, state_dim)
+            or channel.obs_fn is not None
+        ):
+            raise ValueError(
+                "model observations require equal-sized full-state identity channels; "
+                "use a belief updater for other measurements"
+            )
+    merged = jnp.zeros_like(channels[0].obs)
+    for channel in channels:
+        merged = jnp.where(channel.visible[..., None], channel.obs, merged)
+    return merged.reshape(-1)

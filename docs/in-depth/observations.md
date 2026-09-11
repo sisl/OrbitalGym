@@ -187,6 +187,36 @@ tensors into the flat shapes that adapters publish:
   `FullObservation` give every agent on the side the same view because
   the channel writes the same row for every observer.
 
+Both helpers replace every invisible pair with zeros **before** flattening
+and concatenating channels. Each channel uses its own visibility mask;
+a visible GPS or other channel never unmasks another channel's payload.
+Visible measurements retain their values and channel/observer/entity order,
+and observation dimensions do not change. Zero is the missing-measurement
+convention in the flat API; a genuine zero measurement is indistinguishable
+from missing data there. Consumers needing explicit visibility should use
+the structured `Observation` channels. Raw `obs` may contain hidden noisy
+truth and must always be interpreted with that channel's `visible` mask.
+
+### Full-state guidance model inputs
+
+MCTS and MPPI supply their opponent and teammate models with
+`merge_full_state_observations(channels, state_dim)`, a single flat
+observer/entity/state block. This helper selects the last visible channel
+for each pair, preserving valid zero readings and using zero only where
+no channel is visible. It is deterministic selection, not statistical
+fusion or memory. All channels must measure the same full dynamics state
+with identity H; GPS, teammate ephemeris, conical and full observations
+satisfy this precondition. Partial, transformed or nonlinear measurements
+need a belief updater. Shape/nonlinear checks are static and JIT-safe;
+the caller is responsible for the identity-H precondition.
+
+The generic adapters, `SingleAgentView`, and observation-only `rollout`
+continue publishing the documented concatenated layout. A classical policy
+that reads just one full-state block must use a belief view or an explicit
+structured-channel merge before invocation; selecting one channel from a
+composite flat vector can discard GPS or target data supplied elsewhere.
+Visibility cannot be reconstructed reliably from zeros in that vector.
+
 ## Writing a custom channel
 
 The practical "how to write one" walkthrough lives in the Extending

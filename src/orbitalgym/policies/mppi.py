@@ -42,7 +42,7 @@ import jax.numpy as jnp
 from orbitalgym.adapters._command_flatten import flatten_command
 from orbitalgym.belief.flatten import belief_mean_to_flat_state
 from orbitalgym.env.types import Actions, BySide, Side
-from orbitalgym.observations.types import flatten_observations
+from orbitalgym.observations.types import merge_full_state_observations
 from orbitalgym.registry import PolicyKey, register
 
 
@@ -63,6 +63,8 @@ class MPPIPolicy:
 
     env_model: Any
     side: Side
+    # Guidance model receives one merged full-state identity-channel block;
+    # partial/transformed sensors need a belief updater before this boundary.
     opponent_model: Any
     n_samples: int = 256
     horizon: int = 10
@@ -168,7 +170,12 @@ class MPPIPolicy:
                 return u.astype(own_template.dv.dtype)
             state = adapter.unpack(s)
             self_obs = self_obs_fn(state, identity, side, env.config, k, state.t)
-            cmd, _ = teammate_model(None, flatten_observations(self_obs), k, state.t)
+            cmd, _ = teammate_model(
+                None,
+                merge_full_state_observations(self_obs, env.layout.dynamics_state_dim),
+                k,
+                state.t,
+            )
             fleet = cmd.dv.astype(own_template.dv.dtype)
             return fleet.at[self_index].set(u.astype(fleet.dtype))
 
@@ -178,7 +185,12 @@ class MPPIPolicy:
             k_opp, k_team, k_step = jax.random.split(k, 3)
             state = adapter.unpack(s)
             opp_obs = opp_obs_fn(state, identity, opp_side, env.config, k_opp, state.t)
-            opp_cmd, _ = self.opponent_model(None, flatten_observations(opp_obs), k_opp, state.t)
+            opp_cmd, _ = self.opponent_model(
+                None,
+                merge_full_state_observations(opp_obs, env.layout.dynamics_state_dim),
+                k_opp,
+                state.t,
+            )
             own_cmd = own_template.replace(dv=own_dv(s, u, k_team))
             opp_flat = flatten_command(opp_cls.zeros(n_opp).replace(dv=opp_cmd.dv))
             own_flat = flatten_command(own_cmd)

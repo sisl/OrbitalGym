@@ -92,7 +92,8 @@ def test_full_observation_kf_tracks_the_bandit():
     m = lbg_episode_metrics(traj, cfg, belief_guard=beliefs.guard, detect_error_m=100.0)
 
     assert float(m.belief_err_guard) < 1.0
-    assert float(m.time_to_detect_guard) == 0.0
+    assert float(m.time_to_detect_guard) == _DT
+    assert float(m.time_to_belief_error_below_threshold_guard) == 0.0
     assert float(m.belief_age_guard) == 0.0
 
 
@@ -241,11 +242,14 @@ def test_evaluate_bank_reports_information_metrics(make_minimal_lbg_env_with_kf)
     assert metrics.belief_err_guard.shape == (3,)
     assert np.all(np.isfinite(np.asarray(metrics.belief_err_guard)))
     assert np.all(np.isfinite(np.asarray(metrics.belief_err_guard_at_commit)))
-    assert np.all(np.asarray(metrics.time_to_detect_guard) == 0.0)
+    assert np.all(np.asarray(metrics.time_to_detect_guard) == env.config.dt)
+    assert np.all(np.asarray(metrics.time_to_belief_error_below_threshold_guard) == 0.0)
 
     rows = metrics_to_records(metrics)
     assert isinstance(rows[0]["belief_err_guard"], float)
     assert isinstance(rows[0]["belief_age_guard"], float)
+    assert rows[0]["time_to_detect_guard"] == env.config.dt
+    assert rows[0]["time_to_belief_error_below_threshold_guard"] == 0.0
 
 
 def test_information_metrics_are_nan_without_a_belief_log():
@@ -293,7 +297,9 @@ def _synthetic_inputs():
     visible = visible.at[jnp.array([1, 4, 5]), 0].set(True)
 
     traj = SimpleNamespace(
-        env_state=SimpleNamespace(bandits=SimpleNamespace(rtn=bandit_rtn)),
+        env_state=SimpleNamespace(
+            bandits=SimpleNamespace(rtn=bandit_rtn), t=jnp.arange(_SYN_T) * _DT
+        ),
         visible=BySide(guard=visible, bandit=None),
     )
     return traj, SimpleNamespace(mean=mean)
@@ -315,7 +321,8 @@ def test_guard_information_on_a_hand_built_two_by_two_episode():
     # bandit switches to bandit 1 at step 2, which is also the commit step.
     assert float(info.belief_err) == 612.5
     assert float(info.belief_err_at_commit) == 400.0
-    assert float(info.time_to_detect) == 3 * _DT
+    assert float(info.time_to_detect) == 2 * _DT
+    assert float(info.time_to_belief_error_below_threshold) == 3 * _DT
     # A guard sees a bandit at step 1 only, so the live ages are [1, 0, 1, 2].
     assert float(info.belief_age) == 10.0
 
@@ -329,3 +336,51 @@ def test_guard_information_ignores_steps_past_the_episode_stop():
     assert float(live.belief_err) != float(whole.belief_err)
     assert float(live.belief_age) != float(whole.belief_age)
     assert float(live.belief_err_at_commit) == float(whole.belief_err_at_commit)
+
+
+def test_sensor_detection_is_independent_of_an_accurate_blind_prior():
+    traj, beliefs, cfg = _unseen_ring_rollout()
+    n_guard = beliefs.guard.mean.shape[1]
+    truth = traj.env_state.bandits.rt
+    accurate = beliefs.guard.replace(
+        mean=beliefs.guard.mean.at[:, :, n_guard:, :].set(truth[:, None])
+    )
+    m = lbg_episode_metrics(traj, cfg, belief_guard=accurate)
+    assert np.isnan(float(m.time_to_detect_guard))
+    assert float(m.time_to_belief_error_below_threshold_guard) == 0.0
+
+
+def test_sensor_detection_uses_poststep_time_without_belief_history():
+    traj, _, cfg = _unseen_ring_rollout()
+    # Nonzero episode start; first detection is the observation after step 2.
+    traj = traj.replace(
+        env_state=traj.env_state.replace(t=traj.env_state.t + 500.0),
+        final_state=traj.final_state.replace(t=traj.final_state.t + 500.0),
+        visible=BySide(guard=jnp.zeros_like(traj.visible.guard).at[2, 0].set(True), bandit=None),
+    )
+    m = jax.jit(lambda t: lbg_episode_metrics(t, cfg))(traj)
+    assert float(m.time_to_detect_guard) == 3 * _DT
+    assert np.isnan(float(m.time_to_belief_error_below_threshold_guard))
+
+
+def test_missing_visibility_never_synthesizes_a_detection():
+    traj, beliefs, cfg = _unseen_ring_rollout()
+    for visible in (None, BySide(guard=None, bandit=None)):
+        m = lbg_episode_metrics(
+            traj.replace(visible=visible), cfg, belief_guard=beliefs.guard, detect_error_m=1e9
+        )
+        assert np.isnan(float(m.time_to_detect_guard))
+        assert float(m.time_to_belief_error_below_threshold_guard) == 0.0
+
+
+def test_sensor_detection_includes_final_transition_but_excludes_padding():
+    traj, _, cfg = _unseen_ring_rollout()
+    for first_visible, expected in ((3, 4 * _DT), (4, np.nan)):
+        shortened = traj.replace(
+            episode_done=jnp.arange(_N_STEPS) >= 3,
+            visible=BySide(
+                guard=jnp.zeros_like(traj.visible.guard).at[first_visible, 0].set(True), bandit=None
+            ),
+        )
+        m = lbg_episode_metrics(shortened, cfg)
+        np.testing.assert_allclose(float(m.time_to_detect_guard), expected)

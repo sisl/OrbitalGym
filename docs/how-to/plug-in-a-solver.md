@@ -164,13 +164,36 @@ its belief mean for that bandit and the bandit's true position.
 | --- | --- |
 | `belief_err_guard` | Metres. The smallest belief error among the guards, averaged over the episode's live steps. |
 | `belief_err_guard_at_commit` | Metres. The same quantity at the first live step where a bandit is within `commit_radius_m` of the lady. NaN when no bandit commits. |
-| `time_to_detect_guard` | Seconds from the episode start to the first live step where the smallest belief error drops below `detect_error_m`. NaN when it never does. |
+| `time_to_detect_guard` | Elapsed seconds to the first logged post-step observation where any guard sees any bandit in any channel. NaN if visibility is missing or no live detection is logged. Independent of the belief history. |
+| `time_to_belief_error_below_threshold_guard` | Seconds from the episode start to the first live entering state where the smallest belief error about the bandit nearest the lady is below `detect_error_m`. NaN without beliefs or if the threshold is never met. |
 | `belief_age_guard` | Seconds since any guard last held a bandit in its sensor cone, averaged over the live steps. Counts from the episode start while no guard has seen a bandit yet. |
 
 `commit_radius_m` (2500 m) and `detect_error_m` (100 m) are
-`evaluate_bank` keywords. These four metrics separate scenarios that a
+`evaluate_bank` keywords; `detect_error_m` applies only to the belief-error
+threshold metric, not sensor visibility. These metrics separate scenarios that a
 win rate cannot: when the outcome is settled before the first
 communication link opens, only the information metrics move.
+
+Visibility is logged after each transition, so a detection in the first
+logged observation occurs at `dt`, not zero. Detection time subtracts the
+initial logged state's time, so a nonzero episode start does not change
+elapsed time. Reset-time observations are not in `traj.visible` and cannot
+be reconstructed from this log. The visibility log aggregates over targets:
+detection and belief age do not refer specifically to the bandit nearest
+the lady, or to the guard whose estimate is most accurate. Belief errors
+and threshold crossing use entering-state belief/truth pairs. Belief age
+uses post-step visibility, with age growing from episode start until the
+first logged sighting; it remains NaN without a belief history.
+
+**Metric migration:** earlier records named the belief-error threshold
+crossing `time_to_detect_guard`. Preserve archived results as written. When
+comparing schemas, that historical column maps to
+`time_to_belief_error_below_threshold_guard`; it cannot supply the new
+sensor-detection time. Recompute sensor timing from visibility-bearing
+trajectories or rerun. Historical terminal-only dwell summaries likewise
+cannot recover a prior peak without the counter history. New serialized
+records include both timing columns, so consumers requiring an exact column
+set must accept the added field.
 
 `metrics_to_records(metrics, **constants)` turns the batch into one
 plain-Python dict per episode, carrying every field above plus the

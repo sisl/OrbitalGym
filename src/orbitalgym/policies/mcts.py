@@ -60,7 +60,7 @@ from orbitalgym.adapters._command_flatten import flatten_command
 from orbitalgym.adapters.pomdp.adapter import POMDPAdapter
 from orbitalgym.belief.flatten import belief_mean_to_flat_state
 from orbitalgym.env.types import Actions, BySide, Side
-from orbitalgym.observations.types import flatten_observations
+from orbitalgym.observations.types import merge_full_state_observations
 
 
 def _zero_value(s_flat: jax.Array) -> jax.Array:
@@ -78,6 +78,8 @@ class MCTSPolicy:
     side: Side
 
     action_grid: jax.Array  # (A, dv_dim)
+    # Guidance model receives one merged full-state identity-channel block;
+    # partial/transformed sensors need a belief updater before this boundary.
     opponent_model: Any  # a Policy
     opponent_action_grid: jax.Array  # (A_opp, dv_dim) — used by default opponent_model
 
@@ -231,7 +233,7 @@ class MCTSPolicy:
         def _opponent_dv(s: jax.Array, k: jax.Array) -> jax.Array:
             state = adapter.unpack(s)
             opp_obs = opp_obs_fn(state, identity_actions, opp_side, env.config, k, state.t)
-            opp_view = flatten_observations(opp_obs)
+            opp_view = merge_full_state_observations(opp_obs, env.layout.dynamics_state_dim)
             cmd, _ = opponent_model(None, opp_view, k, state.t)
             return cmd.dv
 
@@ -462,14 +464,14 @@ class MCTSPolicy:
             """Whole self-side Δv from teammate_model. Shape ``(n_self, self_dv_dim)``."""
             state = adapter.unpack(s)
             self_obs = self_obs_fn(state, identity_actions, side, env.config, k, state.t)
-            self_view = flatten_observations(self_obs)
+            self_view = merge_full_state_observations(self_obs, env.layout.dynamics_state_dim)
             cmd, _ = teammate_model(None, self_view, k, state.t)
             return cmd.dv
 
         def _opponent_dv(s: jax.Array, k: jax.Array) -> jax.Array:
             state = adapter.unpack(s)
             opp_obs = opp_obs_fn(state, identity_actions, opp_side, env.config, k, state.t)
-            opp_view = flatten_observations(opp_obs)
+            opp_view = merge_full_state_observations(opp_obs, env.layout.dynamics_state_dim)
             cmd, _ = opponent_model(None, opp_view, k, state.t)
             return cmd.dv
 

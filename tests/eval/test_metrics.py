@@ -260,3 +260,27 @@ def test_early_stop_without_a_repel_gate_is_a_timeout():
     m = lbg_episode_metrics(traj, cfg)
     assert int(m.steps) == 1
     assert int(m.outcome) == Outcome.TIMEOUT
+
+
+@pytest.mark.parametrize("counter", ["dwell_catch", "dwell_breach"])
+def test_longest_dwell_survives_a_reset_and_ignores_padding(counter):
+    traj, cfg = _run(_ic(1000.0, 1000.0, jnp.pi), n_steps=6)
+    # Live leaving counters are [1, 2, 0, 1]; padding later reaches 50.
+    traj = traj.replace(
+        env_state=traj.env_state.replace(**{counter: jnp.array([[0], [1], [2], [0], [1], [50]])}),
+        final_state=traj.final_state.replace(**{counter: jnp.array([51])}),
+        episode_done=jnp.array([False, False, False, True, True, True]),
+    )
+    m = jax.jit(lambda t: lbg_episode_metrics(t, cfg))(traj)
+    assert int(getattr(m, counter + "_steps")) == 2
+
+
+@pytest.mark.parametrize("counter", ["dwell_catch", "dwell_breach"])
+def test_longest_dwell_includes_the_final_transition(counter):
+    traj, cfg = _run(_ic(1000.0, 1000.0, jnp.pi), n_steps=2)
+    traj = traj.replace(
+        env_state=traj.env_state.replace(**{counter: jnp.array([[0], [1]])}),
+        final_state=traj.final_state.replace(**{counter: jnp.array([2])}),
+    )
+    m = lbg_episode_metrics(traj, cfg)
+    assert int(getattr(m, counter + "_steps")) == 2
