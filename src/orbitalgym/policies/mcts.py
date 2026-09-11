@@ -62,6 +62,7 @@ from orbitalgym.adapters.pomdp.adapter import POMDPAdapter
 from orbitalgym.belief.flatten import belief_mean_to_flat_state
 from orbitalgym.env.types import Actions, BySide, Side
 from orbitalgym.observations.types import Observation, flatten_observations
+from orbitalgym.policies._rollout import step_with_termination
 
 
 def _zero_value(s_flat: jax.Array) -> jax.Array:
@@ -274,8 +275,7 @@ class MCTSPolicy:
             else:
                 a_flat = jnp.concatenate([opp_flat, self_flat])
 
-            s_next, r = adapter.step(s, a_flat, k_step, side)
-            return s_next, r
+            return step_with_termination(adapter, s, a_flat, k_step, side)
 
         def _step_one_with_schedule(
             s: jax.Array,
@@ -316,40 +316,48 @@ class MCTSPolicy:
             else:
                 a_flat = jnp.concatenate([opp_flat, self_flat])
 
-            s_next, r = adapter.step(s, a_flat, k_step, side)
-            return s_next, new_opp_cached_dv, r
+            s_next, r, done = step_with_termination(adapter, s, a_flat, k_step, side)
+            return s_next, new_opp_cached_dv, r, done
 
         if use_schedule:
 
             def recurrent_fn(_params, rng_key, action, embedding):
-                s_emb, opp_cached_emb = embedding
+                s_emb, opp_cached_emb, done_emb = embedding
                 keys = jax.random.split(rng_key, action.shape[0])
-                s_next, new_opp_cached, r = jax.vmap(_step_one_with_schedule)(
+                s_next, new_opp_cached, r, step_done = jax.vmap(_step_one_with_schedule)(
                     s_emb, opp_cached_emb, action, keys
                 )
-                value_next = jax.vmap(leaf_value)(s_next)
+                s_next = jnp.where(done_emb[:, None], s_emb, s_next)
+                r = jnp.where(done_emb, 0.0, r)
+                done = done_emb | step_done
+                value_next = jnp.where(done, 0.0, jax.vmap(leaf_value)(s_next))
                 batch = action.shape[0]
                 recurrent_out = mctx.RecurrentFnOutput(
                     reward=r.astype(s_flat.dtype),
-                    discount=jnp.broadcast_to(discount, (batch,)),
+                    discount=jnp.where(done, 0.0, discount),
                     prior_logits=jnp.zeros((batch, a_joint), dtype=s_flat.dtype),
                     value=value_next.astype(s_flat.dtype),
                 )
-                return recurrent_out, (s_next, new_opp_cached)
+                new_opp_cached = jnp.where(done_emb[:, None, None], opp_cached_emb, new_opp_cached)
+                return recurrent_out, (s_next, new_opp_cached, done)
         else:
 
             def recurrent_fn(_params, rng_key, action, embedding):
+                s_emb, done_emb = embedding
                 keys = jax.random.split(rng_key, action.shape[0])
-                s_next, r = jax.vmap(_step_one_no_schedule)(embedding, action, keys)
-                value_next = jax.vmap(leaf_value)(s_next)
+                s_next, r, step_done = jax.vmap(_step_one_no_schedule)(s_emb, action, keys)
+                s_next = jnp.where(done_emb[:, None], s_emb, s_next)
+                r = jnp.where(done_emb, 0.0, r)
+                done = done_emb | step_done
+                value_next = jnp.where(done, 0.0, jax.vmap(leaf_value)(s_next))
                 batch = action.shape[0]
                 recurrent_out = mctx.RecurrentFnOutput(
                     reward=r.astype(s_flat.dtype),
-                    discount=jnp.broadcast_to(discount, (batch,)),
+                    discount=jnp.where(done, 0.0, discount),
                     prior_logits=jnp.zeros((batch, a_joint), dtype=s_flat.dtype),
                     value=value_next.astype(s_flat.dtype),
                 )
-                return recurrent_out, s_next
+                return recurrent_out, (s_next, done)
 
         s_flat_b = s_flat[None, :]
         if use_schedule:
@@ -361,9 +369,9 @@ class MCTSPolicy:
             key_root, key = jax.random.split(key)
             opp_cached_dv_root = _opponent_dv(s_flat, key_root)
             opp_cached_b = opp_cached_dv_root[None, ...]
-            embedding_root: Any = (s_flat_b, opp_cached_b)
+            embedding_root: Any = (s_flat_b, opp_cached_b, jnp.zeros((1,), dtype=bool))
         else:
-            embedding_root = s_flat_b
+            embedding_root = (s_flat_b, jnp.zeros((1,), dtype=bool))
 
         root = mctx.RootFnOutput(
             prior_logits=jnp.zeros((1, a_joint), dtype=s_flat.dtype),
@@ -513,8 +521,7 @@ class MCTSPolicy:
             else:
                 a_flat = jnp.concatenate([opp_flat, self_flat])
 
-            s_next, r = adapter.step(s, a_flat, k_step, side)
-            return s_next, r
+            return step_with_termination(adapter, s, a_flat, k_step, side)
 
         def _step_one_with_schedule(
             s: jax.Array,
@@ -549,49 +556,57 @@ class MCTSPolicy:
             else:
                 a_flat = jnp.concatenate([opp_flat, self_flat])
 
-            s_next, r = adapter.step(s, a_flat, k_step, side)
-            return s_next, new_opp_cached_dv, r
+            s_next, r, done = step_with_termination(adapter, s, a_flat, k_step, side)
+            return s_next, new_opp_cached_dv, r, done
 
         if use_schedule:
 
             def recurrent_fn(_params, rng_key, action, embedding):
-                s_emb, opp_cached_emb = embedding
+                s_emb, opp_cached_emb, done_emb = embedding
                 keys = jax.random.split(rng_key, action.shape[0])
-                s_next, new_opp_cached, r = jax.vmap(_step_one_with_schedule)(
+                s_next, new_opp_cached, r, step_done = jax.vmap(_step_one_with_schedule)(
                     s_emb, opp_cached_emb, action, keys
                 )
-                value_next = jax.vmap(leaf_value)(s_next)
+                s_next = jnp.where(done_emb[:, None], s_emb, s_next)
+                r = jnp.where(done_emb, 0.0, r)
+                done = done_emb | step_done
+                value_next = jnp.where(done, 0.0, jax.vmap(leaf_value)(s_next))
                 batch = action.shape[0]
                 recurrent_out = mctx.RecurrentFnOutput(
                     reward=r.astype(s_flat.dtype),
-                    discount=jnp.broadcast_to(discount, (batch,)),
+                    discount=jnp.where(done, 0.0, discount),
                     prior_logits=jnp.zeros((batch, a_count), dtype=s_flat.dtype),
                     value=value_next.astype(s_flat.dtype),
                 )
-                return recurrent_out, (s_next, new_opp_cached)
+                new_opp_cached = jnp.where(done_emb[:, None, None], opp_cached_emb, new_opp_cached)
+                return recurrent_out, (s_next, new_opp_cached, done)
         else:
 
             def recurrent_fn(_params, rng_key, action, embedding):
+                s_emb, done_emb = embedding
                 keys = jax.random.split(rng_key, action.shape[0])
-                s_next, r = jax.vmap(_step_one_no_schedule)(embedding, action, keys)
-                value_next = jax.vmap(leaf_value)(s_next)
+                s_next, r, step_done = jax.vmap(_step_one_no_schedule)(s_emb, action, keys)
+                s_next = jnp.where(done_emb[:, None], s_emb, s_next)
+                r = jnp.where(done_emb, 0.0, r)
+                done = done_emb | step_done
+                value_next = jnp.where(done, 0.0, jax.vmap(leaf_value)(s_next))
                 batch = action.shape[0]
                 recurrent_out = mctx.RecurrentFnOutput(
                     reward=r.astype(s_flat.dtype),
-                    discount=jnp.broadcast_to(discount, (batch,)),
+                    discount=jnp.where(done, 0.0, discount),
                     prior_logits=jnp.zeros((batch, a_count), dtype=s_flat.dtype),
                     value=value_next.astype(s_flat.dtype),
                 )
-                return recurrent_out, s_next
+                return recurrent_out, (s_next, done)
 
         s_flat_b = s_flat[None, :]
         if use_schedule:
             key_root, key = jax.random.split(key)
             opp_cached_dv_root = _opponent_dv(s_flat, key_root)
             opp_cached_b = opp_cached_dv_root[None, ...]
-            embedding_root: Any = (s_flat_b, opp_cached_b)
+            embedding_root: Any = (s_flat_b, opp_cached_b, jnp.zeros((1,), dtype=bool))
         else:
-            embedding_root = s_flat_b
+            embedding_root = (s_flat_b, jnp.zeros((1,), dtype=bool))
 
         root = mctx.RootFnOutput(
             prior_logits=jnp.zeros((1, a_count), dtype=s_flat.dtype),
