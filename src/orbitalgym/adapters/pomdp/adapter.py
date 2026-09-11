@@ -5,6 +5,7 @@ Exposes a duck-typed protocol matching POMDPPlanners (Python POMDPs.jl-shape):
     observation(s, a, s', side)       → obs (per-side)
     reward(s, a, s', side)            → scalar
     step(s_flat, a_flat, key, side)   → (s_flat', reward)
+    step_with_termination(s, a, key, side) → (s_next, reward, done)
     discount()                        → float
     initialstate(key)                 → s_flat (sampled)
     states_dim, action_dim_per_side   → properties
@@ -204,7 +205,7 @@ class POMDPAdapter:
         Substep keys are splits of ``key``. Once a substep reports
         ``episode_done`` the state is frozen for the remaining substeps.
         """
-        s_next, _reward = self._macro_step(s_flat, a_flat, key, None)
+        s_next, _reward, _done = self._macro_step(s_flat, a_flat, key, None)
         return s_next
 
     def observation(
@@ -251,7 +252,9 @@ class POMDPAdapter:
             return self.env.reward_fn(
                 prev_state, actions, next_state, side, self.env.config, prev_state.t
             )
-        _s_next, reward = self._macro_step(s_flat, a_flat, key=jax.random.PRNGKey(0), side=side)
+        _s_next, reward, _done = self._macro_step(
+            s_flat, a_flat, key=jax.random.PRNGKey(0), side=side
+        )
         return reward
 
     def step(
@@ -267,6 +270,22 @@ class POMDPAdapter:
         state and the side's discounted macro-step reward, so a search does
         not simulate the substeps twice.
         """
+        s_next, reward, _done = self.step_with_termination(s_flat, a_flat, key, side)
+        return s_next, reward
+
+    def step_with_termination(
+        self,
+        s_flat: jax.Array,
+        a_flat: jax.Array,
+        key: jax.Array,
+        side: Side,
+    ) -> tuple[jax.Array, jax.Array, jax.Array]:
+        """Return ``(s_next_flat, reward, episode_done)`` for one macro step.
+
+        The terminal transition's reward is included. Callers must retain
+        ``episode_done`` across macro steps and stop accumulating rewards
+        and continuation values after it becomes true.
+        """
         return self._macro_step(s_flat, a_flat, key, side)
 
     def _macro_step(
@@ -275,11 +294,12 @@ class POMDPAdapter:
         a_flat: jax.Array,
         key: jax.Array,
         side: Side | None,
-    ) -> tuple[jax.Array, jax.Array]:
+    ) -> tuple[jax.Array, jax.Array, jax.Array]:
         """Roll ``action_repeat`` substeps of ``a_flat``, freezing on termination.
 
         Returns the flat state after the last substep and, when ``side`` is
-        given, the discounted sum of the per-substep rewards. The substep
+        given, the discounted sum of the per-substep rewards, plus whether
+        any substep terminated the episode. The substep
         count is a Python int, so the loop unrolls under trace.
         """
         actions = self._make_actions(a_flat)
@@ -299,10 +319,9 @@ class POMDPAdapter:
                 r = substep_discount * r
                 reward = r if i == 0 else reward + jnp.where(done, 0.0, r)
             s_cur = s_new if i == 0 else jnp.where(done, s_cur, s_new)
-            if i + 1 < self.action_repeat:
-                done = jnp.logical_or(done, step_out.episode_done)
-                substep_discount = substep_discount * self.step_discount
-        return s_cur, reward
+            done = jnp.logical_or(done, step_out.episode_done)
+            substep_discount = substep_discount * self.step_discount
+        return s_cur, reward, done
 
     # ---- helpers ----
 

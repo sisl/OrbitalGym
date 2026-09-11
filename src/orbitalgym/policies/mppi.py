@@ -43,6 +43,7 @@ from orbitalgym.adapters._command_flatten import flatten_command
 from orbitalgym.belief.flatten import belief_mean_to_flat_state
 from orbitalgym.env.types import Actions, BySide, Side
 from orbitalgym.observations.types import Observation, flatten_observations
+from orbitalgym.policies._rollout import step_with_termination
 from orbitalgym.registry import PolicyKey, register
 
 
@@ -192,7 +193,7 @@ class MPPIPolicy:
             return fleet.at[self_index].set(u.astype(fleet.dtype))
 
         def step(carry, inputs):
-            (s,) = carry
+            s, done = carry
             u, k = inputs
             k_opp, k_team, k_step = jax.random.split(k, 3)
             state = adapter.unpack(s)
@@ -211,18 +212,18 @@ class MPPIPolicy:
                 if side is Side.GUARD
                 else jnp.concatenate([opp_flat, own_flat])
             )
-            s_next, r = adapter.step(s, a_flat, k_step, side)
-            return (s_next,), r
+            s_next, r, step_done = step_with_termination(adapter, s, a_flat, k_step, side)
+            return (jnp.where(done, s, s_next), done | step_done), jnp.where(done, 0.0, r)
 
         keys = jax.random.split(key, self.horizon)
-        (s_h,), rewards = jax.lax.scan(step, (s0,), (u_seq, keys))
+        (s_h, done), rewards = jax.lax.scan(step, (s0, jnp.asarray(False)), (u_seq, keys))
         gamma = adapter.discount() if self.discount is None else self.discount
         weights = jnp.asarray(gamma, rewards.dtype) ** jnp.arange(self.horizon, dtype=rewards.dtype)
         cost = -jnp.sum(weights * rewards)
         if self.terminal_value_fn is not None:
-            cost = cost - jnp.asarray(
-                gamma, rewards.dtype
-            ) ** self.horizon * self.terminal_value_fn(s_h)
+            cost = cost - jnp.asarray(gamma, rewards.dtype) ** self.horizon * jnp.where(
+                done, 0.0, self.terminal_value_fn(s_h)
+            )
         return cost
 
     def _weighted_mean(self, u: jax.Array, costs: jax.Array) -> jax.Array:
