@@ -75,9 +75,9 @@ class MPPIPolicy:
     discount: float | None = None
     n_vehicles: int = 0
     command_cls: Any = None
-    # Supplies every flat-state component a belief does not track — mass,
-    # attitude, the game's dwell counters — when planning from a belief
-    # view. A reset state leaves the counters at zero.
+    # Modeling prior for fields absent from the belief and optional planning
+    # context. Independent roots overlay only current self telemetry, clock
+    # and local estimated dwell; joint roots overlay team telemetry.
     template_env_state: Any = None
 
     # Multi-vehicle coordination. "joint" samples the whole fleet's Delta-v
@@ -118,7 +118,9 @@ class MPPIPolicy:
     def init_state(self) -> jax.Array:
         return jnp.zeros((self.horizon, self.n_vehicles, self.dv_dim), dtype=jnp.float32)
 
-    def _flat_state(self, agent_view: Any) -> jax.Array:
+    def _flat_state(
+        self, agent_view: Any, observer_index: Any = 0, *, joint: bool = False
+    ) -> jax.Array:
         if isinstance(agent_view, jax.Array):
             return agent_view
         belief = agent_view.inner if hasattr(agent_view, "inner") else agent_view
@@ -127,7 +129,15 @@ class MPPIPolicy:
             return mean
         if self.template_env_state is None:
             raise ValueError("MPPIPolicy needs template_env_state to plan from a belief view")
-        return belief_mean_to_flat_state(mean, self.side, self.env_model, self.template_env_state)
+        return belief_mean_to_flat_state(
+            mean,
+            self.side,
+            self.env_model,
+            self.template_env_state,
+            observer_index=observer_index,
+            planning_context=getattr(agent_view, "planning_context", None),
+            joint=joint,
+        )
 
     def _rollout_cost(
         self,
@@ -246,12 +256,17 @@ class MPPIPolicy:
 
     def __call__(self, policy_state: Any, agent_view: Any, key: jax.Array, t: jax.Array):
         del t
-        s0 = self._flat_state(agent_view)
         u_mean = policy_state if policy_state is not None else self.init_state()
         if self.coordination == "joint" or self.n_vehicles == 1:
-            u_new = self._plan_joint(s0, u_mean, key)
+            u_new = self._plan_joint(self._flat_state(agent_view, joint=True), u_mean, key)
         else:
-            u_new = self._plan_independent(s0, u_mean, key)
+            indices = jnp.arange(self.n_vehicles)
+            roots = jax.vmap(lambda i: self._flat_state(agent_view, i))(indices)
+            keys = jax.random.split(key, self.n_vehicles)
+            plans = jax.vmap(self._plan_one_vehicle, in_axes=(0, 1, 0, 0))(
+                roots, u_mean, keys, indices
+            )
+            u_new = jnp.swapaxes(plans, 0, 1)
         action = u_new[0]
         next_state = jnp.concatenate([u_new[1:], jnp.zeros_like(u_new[:1])], axis=0)
         cmd = self.command_cls.zeros(self.n_vehicles).replace(

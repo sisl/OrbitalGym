@@ -634,37 +634,15 @@ class MCTSPolicy:
 
 @dataclass(frozen=True)
 class BeliefAdaptedMCTSPolicy:
-    """Wrap an :class:`MCTSPolicy` so it accepts a Belief-shaped ``agent_view``.
+    """Adapt a per-observer belief to modeled MCTS roots.
 
-    `MCTSPolicy.__call__` already dispatches between flat-array and
-    ``.mean``-bearing inputs, but a flat ``.mean`` is only valid when the
-    belief mean shape matches the env's flat-state width. KF/EKF beliefs
-    expose ``mean`` of shape ``(N_obs, N_total, d)`` — three orders of
-    magnitude smaller than the env's flat state, and missing the
-    mass/attitude tail. This wrapper bridges the two by writing observer
-    0's per-target view into a captured ``template_env_state`` and packing
-    via the env adapter, then forwarding the resulting flat state to the
-    underlying MCTS.
-
-    Construct once at scenario setup::
-
-        env = OrbitalGymEnv(cfg)
-        adapter = POMDPAdapter(env)
-        mcts = MCTSPolicy(env_model=adapter, ..., command_cls=...)
-        template_state, _ = env.reset(jax.random.key(0))
-        belief_mcts = BeliefAdaptedMCTSPolicy(
-            inner_mcts=mcts, template_env_state=template_state
-        )
-
-    The wrapper transparently passes ``ContactAwareBelief`` through to its
-    ``.inner.mean`` — the contact gating is handled by `PlanCachePolicy`,
-    not by the searcher.
-
-    Everything the belief does not track comes from the template, the
-    game's dwell counters included, so a search rooted on a belief starts
-    the dwell wherever the template left it. A reset state leaves it at
-    zero; supply a template carrying the current counters for the search
-    to see a hold already under way.
+    Independent searches consume the acting observer's row and own telemetry
+    slot. Joint searches use observer 0's representative row and whole-team
+    telemetry; callers must fuse beliefs before planning if desired.
+    Optional ``ContactAwareBelief.planning_context`` supplies current own
+    resources, clock and local estimated dwell. Other untracked state uses
+    ``template_env_state`` as a modeling prior. Bare beliefs retain template
+    extras; flat-state inputs pass through unchanged.
     """
 
     inner_mcts: MCTSPolicy
@@ -700,31 +678,38 @@ class BeliefAdaptedMCTSPolicy:
         if belief_mean.ndim == 1:
             return self.inner_mcts(policy_state, belief_mean, key, t)
 
-        from orbitalgym.belief.flatten import belief_mean_to_flat_state
+        inner = self.inner_mcts
 
-        s_flat = belief_mean_to_flat_state(
-            belief_mean,
-            self.inner_mcts.side,
-            self.inner_mcts.env_model,
-            self.template_env_state,
+        def root(i, joint=False):
+            return belief_mean_to_flat_state(
+                belief_mean,
+                inner.side,
+                inner.env_model,
+                self.template_env_state,
+                observer_index=i,
+                planning_context=getattr(agent_view, "planning_context", None),
+                joint=joint,
+            )
+
+        if inner.coordination == "joint" or inner.n_vehicles == 1:
+            return inner(policy_state, root(0, joint=True), key, t)
+        keys = jax.random.split(key, inner.n_vehicles)
+        indices = jnp.stack(
+            [inner._search_one_vehicle(root(i), keys[i], i) for i in range(inner.n_vehicles)]
         )
-        return self.inner_mcts(policy_state, s_flat, key, t)
+        return inner._action_idx_to_command(indices), policy_state
 
 
 @dataclass(frozen=True)
 class ParticleRootMCTSPolicy:
-    """Determinized search over a particle belief.
+    """Determinized search over particles from the selected observer.
 
-    Samples ``n_roots`` joint states by drawing one particle per tracked
-    entity from observer 0's clouds, runs the inner search from every root
-    under ``jax.vmap``, averages the root action weights, and acts on the
-    argmax. Own-side entities are anchored to truth by the filter, so the
-    roots differ only in the opposing side's states.
-
-    Every root inherits the template's non-belief components, the game's
-    dwell counters included; see
-    :class:`BeliefAdaptedMCTSPolicy` for what that means for a hold already
-    under way.
+    Draw one particle per tracked entity for each root, search those roots,
+    and average their action weights. Independent vehicle i uses only its
+    own clouds and telemetry; joint search uses observer 0 and team telemetry.
+    Current clock and mean-derived estimated dwell come from optional planning
+    context, shared across that observer's sampled roots. This does not infer
+    particle-conditioned event histories. Remaining extras use template priors.
     """
 
     inner_mcts: MCTSPolicy
@@ -743,9 +728,17 @@ class ParticleRootMCTSPolicy:
     def side(self) -> Side:
         return self.inner_mcts.side
 
-    def _sample_roots(self, belief: Any, key: jax.Array) -> jax.Array:
-        particles = belief.particles[0]  # (N_total, K, d)
-        log_w = belief.log_weights[0]  # (N_total, K)
+    def _sample_roots(
+        self,
+        belief: Any,
+        key: jax.Array,
+        observer_index: Any = 0,
+        planning_context: Any = None,
+        *,
+        joint: bool = False,
+    ) -> jax.Array:
+        particles = belief.particles[observer_index]  # (N_total, K, d)
+        log_w = belief.log_weights[observer_index]  # (N_total, K)
         n_total = particles.shape[0]
         keys = jax.random.split(key, n_total)
         idx = jax.vmap(lambda k, lw: jax.random.categorical(k, lw, shape=(self.n_roots,)))(
@@ -758,7 +751,13 @@ class ParticleRootMCTSPolicy:
         def to_flat(row):
             mean_like = jnp.broadcast_to(row[None], (n_obs,) + row.shape)
             return belief_mean_to_flat_state(
-                mean_like, self.inner_mcts.side, self.inner_mcts.env_model, self.template_env_state
+                mean_like,
+                self.inner_mcts.side,
+                self.inner_mcts.env_model,
+                self.template_env_state,
+                observer_index=observer_index,
+                planning_context=planning_context,
+                joint=joint,
             )
 
         return jax.vmap(to_flat)(roots)
@@ -768,17 +767,19 @@ class ParticleRootMCTSPolicy:
             return self.inner_mcts(policy_state, agent_view, key, t)
         belief = agent_view.inner if hasattr(agent_view, "inner") else agent_view
         k_sample, k_search = jax.random.split(key)
-        s_roots = self._sample_roots(belief, k_sample)  # (n_roots, states_dim)
+        context = getattr(agent_view, "planning_context", None)
         search_keys = jax.random.split(k_search, self.n_roots)
         inner = self.inner_mcts
 
         if inner.coordination == "joint" or inner.n_vehicles == 1:
+            s_roots = self._sample_roots(belief, k_sample, planning_context=context, joint=True)
             outs = jax.vmap(inner._search_joint_out)(s_roots, search_keys)
             weights = jnp.mean(outs.action_weights[:, 0, :], axis=0)
             per_v_idx = inner._decode_joint_idx(jnp.argmax(weights))
         else:
             per_v = []
             for i in range(inner.n_vehicles):
+                s_roots = self._sample_roots(belief, jax.random.fold_in(k_sample, i), i, context)
                 # Decorrelate the stochastic opponent samples across
                 # vehicles: each vehicle's search draws from its own
                 # fold-in of k_search rather than sharing search_keys.

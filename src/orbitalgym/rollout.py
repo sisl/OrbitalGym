@@ -37,7 +37,11 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 
-from orbitalgym.belief.contact_aware import ContactAwareBelief
+from orbitalgym.belief.contact_aware import (
+    ContactAwareBelief,
+    advance_planning_context,
+    initial_planning_context,
+)
 from orbitalgym.env.types import (
     Actions,
     BySide,
@@ -279,10 +283,12 @@ def belief_rollout(
     ps_b = init_policy_state_fns.bandit(env.config, env_state, k_init_b)
     belief_g = belief_initializers.guard(env_state, Side.GUARD, k_b_init_g)
     belief_b = belief_initializers.bandit(env_state, Side.BANDIT, k_b_init_b)
+    context_g = initial_planning_context(env, env_state, Side.GUARD)
+    context_b = initial_planning_context(env, env_state, Side.BANDIT)
     initial_terminated = jnp.asarray(False)
 
     def _step(carry, step_key):
-        es, ps_g, ps_b, belief_g, belief_b, terminated = carry
+        es, ps_g, ps_b, belief_g, belief_b, terminated, context_g, context_b = carry
         k_act_g, k_act_b, k_env, k_g_obs, k_b_obs, k_g_upd, k_b_upd = jax.random.split(step_key, 7)
 
         # Per-tick contact masks (closure-static branch on the Python
@@ -304,8 +310,12 @@ def belief_rollout(
         # Wrap as ContactAwareBelief for the policy call. Existing policies
         # that read only `.mean` are unaffected (the wrapper delegates);
         # contact-aware policies get `.contact` for plan-cache gating.
-        view_g_for_policy = ContactAwareBelief(inner=synced_belief_g, contact=contact_g)
-        view_b_for_policy = ContactAwareBelief(inner=synced_belief_b, contact=contact_b)
+        view_g_for_policy = ContactAwareBelief(
+            inner=synced_belief_g, contact=contact_g, planning_context=context_g
+        )
+        view_b_for_policy = ContactAwareBelief(
+            inner=synced_belief_b, contact=contact_b, planning_context=context_b
+        )
 
         # Policies receive the BELIEF as agent_view. This is the core
         # contract: belief is the agent's perception output, not the raw obs.
@@ -337,6 +347,19 @@ def belief_rollout(
             applied_dv.bandit[:, :dv_dim],
             Side.BANDIT,
             k_b_upd,
+        )
+
+        next_context_g = advance_planning_context(
+            context_g, synced_belief_g.mean, next_belief_g.mean, Side.GUARD, env, env_state, next_es
+        )
+        next_context_b = advance_planning_context(
+            context_b,
+            synced_belief_b.mean,
+            next_belief_b.mean,
+            Side.BANDIT,
+            env,
+            env_state,
+            next_es,
         )
 
         # The trajectory still records the flat obs for downstream tooling
@@ -391,12 +414,14 @@ def belief_rollout(
             advance_belief_g,
             advance_belief_b,
             next_terminated,
+            freeze(context_g, next_context_g),
+            freeze(context_b, next_context_b),
         ), logged
 
     step_keys = jax.random.split(k_scan, n_steps)
     final_carry, stacked = jax.lax.scan(
         _step,
-        (env_state, ps_g, ps_b, belief_g, belief_b, initial_terminated),
+        (env_state, ps_g, ps_b, belief_g, belief_b, initial_terminated, context_g, context_b),
         step_keys,
     )
 
