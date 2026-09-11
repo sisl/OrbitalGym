@@ -42,7 +42,7 @@ import jax.numpy as jnp
 from orbitalgym.adapters._command_flatten import flatten_command
 from orbitalgym.belief.flatten import belief_mean_to_flat_state
 from orbitalgym.env.types import Actions, BySide, Side
-from orbitalgym.observations.types import flatten_observations
+from orbitalgym.observations.types import Observation, flatten_observations
 from orbitalgym.registry import PolicyKey, register
 
 
@@ -88,6 +88,10 @@ class MPPIPolicy:
     # whose `__call__` outputs the whole self-side fleet's per-vehicle Delta-v;
     # the planning vehicle's slot is overwritten by its sampled Delta-v.
     teammate_model: Any = None
+    # Applied to each structured sensor tuple before calling opponent/teammate
+    # models. The default preserves arbitrary-channel measurement layouts.
+    # Full-state guidance can explicitly opt into a visibility-aware merge.
+    model_view_fn: Callable[[tuple[Observation, ...]], Any] = flatten_observations
 
     def __post_init__(self) -> None:
         if self.command_cls is None or self.n_vehicles == 0:
@@ -178,7 +182,12 @@ class MPPIPolicy:
                 return u.astype(own_template.dv.dtype)
             state = adapter.unpack(s)
             self_obs = self_obs_fn(state, identity, side, env.config, k, state.t)
-            cmd, _ = teammate_model(None, flatten_observations(self_obs), k, state.t)
+            cmd, _ = teammate_model(
+                None,
+                self.model_view_fn(self_obs),
+                k,
+                state.t,
+            )
             fleet = cmd.dv.astype(own_template.dv.dtype)
             return fleet.at[self_index].set(u.astype(fleet.dtype))
 
@@ -188,7 +197,12 @@ class MPPIPolicy:
             k_opp, k_team, k_step = jax.random.split(k, 3)
             state = adapter.unpack(s)
             opp_obs = opp_obs_fn(state, identity, opp_side, env.config, k_opp, state.t)
-            opp_cmd, _ = self.opponent_model(None, flatten_observations(opp_obs), k_opp, state.t)
+            opp_cmd, _ = self.opponent_model(
+                None,
+                self.model_view_fn(opp_obs),
+                k_opp,
+                state.t,
+            )
             own_cmd = own_template.replace(dv=own_dv(s, u, k_team))
             opp_flat = flatten_command(opp_cls.zeros(n_opp).replace(dv=opp_cmd.dv))
             own_flat = flatten_command(own_cmd)

@@ -41,9 +41,9 @@ class EpisodeMetrics:
     guard observation channel sees any bandit; 0 when the trajectory did
     not log a ``visible`` mask.
 
-    The information fields describe what the guard team knows about the
-    bandit nearest the lady, and are NaN when no guard belief log is
-    supplied:
+    Belief-error fields describe the bandit nearest the lady and are NaN
+    without a guard belief log. Sensor detection uses logged visibility
+    independently of the belief log:
 
     ``belief_err_guard``
         Metres, time-averaged over the episode's live steps, of the
@@ -53,15 +53,26 @@ class EpisodeMetrics:
         The same quantity at the first live step where a bandit is inside
         ``commit_radius_m`` of the lady; NaN if no bandit ever commits.
     ``time_to_detect_guard``
-        Seconds from the episode start to the first live step where that
-        smallest error drops below ``detect_error_m``; NaN if it never
-        does.
+        Elapsed seconds from the first logged entering state to the first
+        live post-step observation where any guard sees any bandit in any
+        channel. NaN if visibility is missing or no detection is logged.
+        Reset observations are not logged; the earliest possible value is
+        ``dt``. This is not specific to the bandit nearest the lady.
+    ``time_to_belief_error_below_threshold_guard``
+        The former ``time_to_detect_guard`` quantity: seconds to the first
+        live entering state where the best observer's position error about
+        the bandit nearest the lady is below ``detect_error_m``; NaN without
+        beliefs or if the threshold is never met. Can be zero for an
+        accurate prior without any sensor detection.
     ``belief_age_guard``
-        Seconds since any guard last held a bandit in its sensor cone,
-        time-averaged over the live steps.
+        Seconds since any guard last saw any bandit in any channel,
+        averaged over live post-step samples. Before the first sighting,
+        age counts from episode start. NaN without beliefs or visibility;
+        not a target-specific or acting-observer age.
 
     ``dwell_catch_steps`` and ``dwell_breach_steps`` are the longest dwell
-    any bandit had run up at the terminating step: consecutive steps spent
+    any bandit reached over the live history, including the final
+    transition and excluding padding: consecutive steps spent
     inside the catch radius of some guard, and inside the breach radius of
     the lady. They are reported whether or not the game's win conditions
     require a dwell, and are zero for a trajectory whose states carry no
@@ -80,6 +91,7 @@ class EpisodeMetrics:
     belief_err_guard: jax.Array
     belief_err_guard_at_commit: jax.Array
     time_to_detect_guard: jax.Array
+    time_to_belief_error_below_threshold_guard: jax.Array
     belief_age_guard: jax.Array
     dwell_catch_steps: jax.Array
     dwell_breach_steps: jax.Array
@@ -128,11 +140,12 @@ def _side_delta_v(
 
 @flax.struct.dataclass
 class GuardInformation:
-    """The four information metrics for one episode."""
+    """Belief quality, sensor detection, and observation age for one episode."""
 
     belief_err: jax.Array
     belief_err_at_commit: jax.Array
     time_to_detect: jax.Array
+    time_to_belief_error_below_threshold: jax.Array
     belief_age: jax.Array
 
 
@@ -161,6 +174,20 @@ def _require_dwell(trace: jax.Array | None) -> jax.Array:
             "from this config."
         )
     return trace
+
+
+def _time_to_sensor_detection(traj: Any, mask: jax.Array, dt: float) -> jax.Array:
+    """First logged any-guard/any-bandit visibility, elapsed post-step seconds."""
+    nan = jnp.asarray(jnp.nan)
+    visible = getattr(traj, "visible", None)
+    if visible is None or visible.guard is None:
+        return nan
+    detected = mask & jnp.any(visible.guard, axis=-1)
+    first = jnp.argmax(detected)
+    # visible[k] comes from the observation AFTER the transition entering
+    # at t[k]. Subtract t[0] to handle rollouts started at a nonzero clock.
+    elapsed = traj.env_state.t - traj.env_state.t[0] + dt
+    return jnp.where(jnp.any(detected), elapsed[first], nan)
 
 
 def guard_information(
@@ -208,9 +235,11 @@ def guard_information(
     commit_idx = jnp.argmax(committed)
     belief_err_at_commit = jnp.where(jnp.any(committed), err_min[commit_idx], nan)
 
-    detected = mask & (err_min < detect_error_m)
-    detect_idx = jnp.argmax(detected)
-    time_to_detect = jnp.where(jnp.any(detected), detect_idx.astype(dtype) * dt, nan)
+    below_threshold = mask & (err_min < detect_error_m)
+    threshold_idx = jnp.argmax(below_threshold)
+    time_to_belief_error_below_threshold = jnp.where(
+        jnp.any(below_threshold), threshold_idx.astype(dtype) * dt, nan
+    )
 
     visible = getattr(traj, "visible", None)
     if visible is None or visible.guard is None:
@@ -227,7 +256,8 @@ def guard_information(
     return GuardInformation(
         belief_err=belief_err,
         belief_err_at_commit=belief_err_at_commit,
-        time_to_detect=time_to_detect,
+        time_to_detect=_time_to_sensor_detection(traj, mask, dt),
+        time_to_belief_error_below_threshold=time_to_belief_error_below_threshold,
         belief_age=belief_age,
     )
 
@@ -244,8 +274,9 @@ def lbg_episode_metrics(
     the guard team knew.
 
     ``belief_guard`` is the guard entry of the belief history returned by
-    :func:`orbitalgym.rollout.belief_rollout`. Without it the information
-    fields come back NaN.
+    :func:`orbitalgym.rollout.belief_rollout`. Without it belief-error and
+    belief-age fields are NaN; sensor detection still uses ``traj.visible``.
+    ``detect_error_m`` controls only the belief-error threshold metric.
     """
     if traj.final_state is None:
         raise ValueError(
@@ -371,7 +402,11 @@ def lbg_episode_metrics(
     if belief_guard is None:
         nan = jnp.asarray(jnp.nan)
         info = GuardInformation(
-            belief_err=nan, belief_err_at_commit=nan, time_to_detect=nan, belief_age=nan
+            belief_err=nan,
+            belief_err_at_commit=nan,
+            time_to_detect=_time_to_sensor_detection(traj, mask, cfg.dt),
+            time_to_belief_error_below_threshold=nan,
+            belief_age=nan,
         )
     else:
         info = guard_information(
@@ -380,10 +415,14 @@ def lbg_episode_metrics(
 
     zero = jnp.asarray(0, dtype=jnp.int32)
     dwell_catch_steps = (
-        zero if dwell_catch_t is None else jnp.max(dwell_catch_t[last_idx]).astype(jnp.int32)
+        zero
+        if dwell_catch_t is None
+        else jnp.max(jnp.where(mask[:, None], dwell_catch_t, 0)).astype(jnp.int32)
     )
     dwell_breach_steps = (
-        zero if dwell_breach_t is None else jnp.max(dwell_breach_t[last_idx]).astype(jnp.int32)
+        zero
+        if dwell_breach_t is None
+        else jnp.max(jnp.where(mask[:, None], dwell_breach_t, 0)).astype(jnp.int32)
     )
 
     return EpisodeMetrics(
@@ -399,6 +438,7 @@ def lbg_episode_metrics(
         belief_err_guard=info.belief_err,
         belief_err_guard_at_commit=info.belief_err_at_commit,
         time_to_detect_guard=info.time_to_detect,
+        time_to_belief_error_below_threshold_guard=info.time_to_belief_error_below_threshold,
         belief_age_guard=info.belief_age,
         dwell_catch_steps=dwell_catch_steps,
         dwell_breach_steps=dwell_breach_steps,

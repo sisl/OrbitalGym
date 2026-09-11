@@ -80,7 +80,7 @@ Each bandit carries two counters on the environment state, `state.dwell_catch` a
 
 The step a bandit departs on still counts toward its dwell: its closest approach is the position it started from, which is inside the radius. The first step spent wholly outside is the one that breaks the hold.
 
-The termination, the reward's terminal bonuses, and `Outcome` in the episode metrics all read the same counters, so a dwell-gated win ends the episode, pays its bonus, and classifies on the same step. `EpisodeMetrics` also reports `dwell_catch_steps` and `dwell_breach_steps`, the longest dwell any bandit had run up when the episode ended, whether or not the win conditions require one.
+The termination, the reward's terminal bonuses, and `Outcome` in the episode metrics all read the same counters, so a dwell-gated win ends the episode, pays its bonus, and classifies on the same step. `EpisodeMetrics` also reports `dwell_catch_steps` and `dwell_breach_steps`, the longest dwell any bandit reached over the live episode history, including the final transition, whether or not the win conditions require one. A later reset does not erase an earlier peak, and padded steps after termination do not count.
 
 The leaf values in `orbitalgym.policies.leaf_values` price the dwell only as delay: `catch_dwell_s` and `breach_dwell_s` push the estimated event that much further away. Nothing there models the counter resetting, which is a planning approximation, not a rule of the game.
 
