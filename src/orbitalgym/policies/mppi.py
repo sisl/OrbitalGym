@@ -42,7 +42,7 @@ import jax.numpy as jnp
 from orbitalgym.adapters._command_flatten import flatten_command
 from orbitalgym.belief.flatten import belief_mean_to_flat_state
 from orbitalgym.env.types import Actions, BySide, Side
-from orbitalgym.observations.types import merge_full_state_observations
+from orbitalgym.observations.types import Observation, flatten_observations
 from orbitalgym.registry import PolicyKey, register
 
 
@@ -63,8 +63,6 @@ class MPPIPolicy:
 
     env_model: Any
     side: Side
-    # Guidance model receives one merged full-state identity-channel block;
-    # partial/transformed sensors need a belief updater before this boundary.
     opponent_model: Any
     n_samples: int = 256
     horizon: int = 10
@@ -90,6 +88,10 @@ class MPPIPolicy:
     # whose `__call__` outputs the whole self-side fleet's per-vehicle Delta-v;
     # the planning vehicle's slot is overwritten by its sampled Delta-v.
     teammate_model: Any = None
+    # Applied to each structured sensor tuple before calling opponent/teammate
+    # models. The default preserves arbitrary-channel measurement layouts.
+    # Full-state guidance can explicitly opt into a visibility-aware merge.
+    model_view_fn: Callable[[tuple[Observation, ...]], Any] = flatten_observations
 
     def __post_init__(self) -> None:
         if self.command_cls is None or self.n_vehicles == 0:
@@ -172,7 +174,7 @@ class MPPIPolicy:
             self_obs = self_obs_fn(state, identity, side, env.config, k, state.t)
             cmd, _ = teammate_model(
                 None,
-                merge_full_state_observations(self_obs, env.layout.dynamics_state_dim),
+                self.model_view_fn(self_obs),
                 k,
                 state.t,
             )
@@ -187,7 +189,7 @@ class MPPIPolicy:
             opp_obs = opp_obs_fn(state, identity, opp_side, env.config, k_opp, state.t)
             opp_cmd, _ = self.opponent_model(
                 None,
-                merge_full_state_observations(opp_obs, env.layout.dynamics_state_dim),
+                self.model_view_fn(opp_obs),
                 k_opp,
                 state.t,
             )

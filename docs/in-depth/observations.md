@@ -199,9 +199,26 @@ truth and must always be interpreted with that channel's `visible` mask.
 
 ### Full-state guidance model inputs
 
-MCTS and MPPI supply their opponent and teammate models with
-`merge_full_state_observations(channels, state_dim)`, a single flat
-observer/entity/state block. This helper selects the last visible channel
+MCTS and MPPI accept `model_view_fn(channels) -> agent_view`, applied to
+all modeled opponent and teammate inputs. The default is
+`flatten_observations`: arbitrary sensor modalities retain their masked,
+concatenated measurement layout, including position-only channels. Models
+such as ZeroControl or UniformRandomDiscretePolicy can ignore those inputs.
+
+Full-state guidance models can explicitly select a single flat
+observer/entity/state block:
+
+```python
+from functools import partial
+from orbitalgym.observations.types import merge_full_state_observations
+
+# Pass this keyword when constructing MCTSPolicy or MPPIPolicy:
+model_view_fn = partial(
+    merge_full_state_observations, state_dim=env.layout.dynamics_state_dim
+)
+```
+
+`merge_full_state_observations` selects the last visible channel
 for each pair, preserving valid zero readings and using zero only where
 no channel is visible. It is deterministic selection, not statistical
 fusion or memory. All channels must measure the same full dynamics state
