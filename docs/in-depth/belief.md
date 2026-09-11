@@ -218,3 +218,39 @@ applicability — the belief consumes whatever channels you build.
 - [API reference → Components → Belief](../api/components.md) —
   `BeliefInitializer`, `BeliefUpdater`, `KFBelief`, `EKFBelief`,
   `ParticleFilterBelief`.
+
+
+## Information used by search roots
+
+`belief_rollout` adds optional `PlanningContext` to `ContactAwareBelief`.
+It contains current own-side non-motion telemetry (including propellant,
+attitude and body rates where configured), the episode clock and step, and
+one estimated catch/breach counter vector per observer. It contains no
+opponent telemetry or true global event counters.
+
+For independent MPPI, belief-adapted MCTS and particle-root MCTS, vehicle
+`i` builds its root from observer `i` and overlays only its own telemetry
+slot. Teammate and opponent untracked fields retain the planner's template
+priors. Their motion comes from observer `i`'s estimates. Changing another
+observer's private belief or telemetry therefore cannot alter `i`'s search
+for fixed local policy state and random key.
+
+Joint planners use observer 0 as the representative estimate and overlay
+whole-team telemetry. Joint action search alone does not fuse beliefs:
+callers must perform the intended team fusion before invoking it.
+
+Estimated dwell starts at zero. After each plant step, `Game.advance_state`
+applies its normal segment geometry to each observer's pre-step estimate
+(after any declared fusion) and updated posterior, carrying that observer's
+own counter history. Fusion never copies or merges counters. These histories
+may differ from true dwell, especially after corrections or contact changes.
+Particle-root search uses the observer's mean-derived counters for every
+sampled root, rather than inferring a separate history for each particle.
+Contexts freeze when the episode ends, as do policy and belief state.
+
+Standalone flat-state inputs are unchanged. Bare beliefs and direct calls to
+`belief_mean_to_flat_state` without context retain template extras and default
+to observer 0; pass `observer_index` explicitly to select another local view.
+The conversion assumes belief motion is already in the environment's truth
+frame. Flat/oracle and reduced-frame beliefs still work with `belief_rollout`;
+without per-observer truth-frame motion, their estimated counters remain zero.

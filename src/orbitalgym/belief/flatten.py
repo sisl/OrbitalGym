@@ -1,41 +1,8 @@
-"""Adapter from a Belief's per-pair mean to a flat state vector.
+"""Construct modeled planning states from an explicitly selected observer.
 
-`MCTSPolicy` (and any planner whose ``__call__`` consumes ``adapter.pack(state)``)
-expects a 1-D flat state. KF/EKF belief means are shaped ``(N_obs, N_total, d)``
-— one row per (observer, tracked-entity) pair. This module bridges the two
-worlds without baking belief-awareness into the planner.
-
-Approach: take observer 0's row of the belief mean (which carries that
-observer's view of every tracked entity, own + opposing), write those
-dynamics-state arrays into the per-side truth fields of a *template*
-``EnvState``, then call ``adapter.pack`` to flatten consistently with how
-the env produces its flat-state representation. Components that the belief
-does not track (mass, attitude, body rates, the game's dwell counters, …)
-are inherited from the template — typically the env's reset state — so any
-planner that reads those tail components sees scenario-default values.
-
-Usage::
-
-    from orbitalgym.belief.flatten import belief_mean_to_flat_state
-
-    env, _ = env.reset(jax.random.key(0))[0], None  # capture once
-    s_flat = belief_mean_to_flat_state(
-        belief.mean, side, adapter, template_env_state=env_state,
-    )
-    cmd, _ = mcts_policy(None, s_flat, key, t)
-
-Limitations:
-
-- The belief is assumed to track the env's truth frame. Mixed-frame
-  scenarios (e.g. RTN truth but RT-only belief) require a frame-aware
-  conversion before this call.
-- Per-vehicle "extras" (mass, attitude, …) come from the template and do
-  not vary across the planning rollout. Planners that depend on those
-  components should be designed accordingly.
-- The dwell counters come from the template too. A belief does not track
-  them, so a planner rooted on a belief starts the dwell wherever the
-  template left it: pass a template carrying the current counters for the
-  search to see a hold already under way.
+Joint planning uses observer 0 as the representative estimate; callers must
+fuse beliefs beforehand when shared information is intended. Without optional
+PlanningContext, untracked fields retain the supplied template values.
 """
 
 from __future__ import annotations
@@ -47,55 +14,71 @@ import jax
 from orbitalgym.env.types import Side
 
 
-def belief_mean_to_flat_state(
-    belief_mean: jax.Array,  # (N_obs, N_total, d)
+def belief_mean_to_env_state(
+    belief_mean: jax.Array,
     side: Side,
-    adapter: Any,  # POMDPAdapter — has .pack(state) and .env
+    env: Any,
     template_env_state: Any,
-) -> jax.Array:
-    """Convert observer-0's per-target view to a flat state vector matching
-    ``adapter.pack(template_env_state)``'s layout.
+    *,
+    observer_index: int | jax.Array = 0,
+    planning_context: Any = None,
+    joint: bool = False,
+) -> Any:
+    """Overlay local motion, authorized own telemetry, clock and estimated dwell.
 
-    ``belief_mean`` carries observer-0's estimate of all (n_self + n_opp)
-    target dynamics states (each of length ``d``). We write these into the
-    per-side truth fields of ``template_env_state`` and use
-    ``adapter.pack`` to flatten the result. The flat-state layout is
-    therefore identical to what ``adapter.pack(true_state)`` produces, so
-    the planner never sees a "belief-shaped" state directly.
+    Independent roots read only telemetry slot ``observer_index``; modeled
+    teammates and opponents retain template extras. Motion always comes from
+    the selected belief row, including self motion. Context contains no true
+    opponent state or true global event counters.
     """
     if belief_mean.ndim != 3:
         raise ValueError(f"belief_mean must be (N_obs, N_total, d); got shape {belief_mean.shape}")
+    n_self = belief_mean.shape[0]
+    row = belief_mean[observer_index]
+    own_dyn, opp_dyn = row[:n_self], row[n_self:]
+    truth_field = {"RT": "rt", "RTN": "rtn", "ECI": "eci"}[env.truth_frame.name]
+    own_name, opp_name = ("guards", "bandits") if side is Side.GUARD else ("bandits", "guards")
+    own = getattr(template_env_state, own_name)
+    opp = getattr(template_env_state, opp_name)
+    own = own.replace(**{truth_field: own_dyn.astype(getattr(own, truth_field).dtype)})
+    opp = opp.replace(**{truth_field: opp_dyn.astype(getattr(opp, truth_field).dtype)})
+    extras = {}
+    if planning_context is not None:
+        for name, values in planning_context.own_telemetry.items():
+            prior = getattr(own, name)
+            current = values.astype(prior.dtype)
+            extras[name] = (
+                current if joint else prior.at[observer_index].set(current[observer_index])
+            )
+        own = own.replace(**extras)
+        extras = dict(
+            t=planning_context.t,
+            step=planning_context.step,
+            dwell_catch=planning_context.dwell_catch[observer_index],
+            dwell_breach=planning_context.dwell_breach[observer_index],
+        )
+    return template_env_state.replace(**{own_name: own, opp_name: opp}, **extras)
 
-    n_obs, n_total, _ = belief_mean.shape
-    n_self = n_obs
 
-    # Observer 0's view of all targets. Targets [0, n_self) are this side's
-    # vehicles; targets [n_self, n_total) are the opposing side's.
-    obs0 = belief_mean[0]  # (n_total, d)
-    self_dyn = obs0[:n_self]
-    opp_dyn = obs0[n_self:]
-
-    if side is Side.GUARD:
-        guard_dyn, bandit_dyn = self_dyn, opp_dyn
-    else:
-        guard_dyn, bandit_dyn = opp_dyn, self_dyn
-
-    # Determine the truth field name from the env. `env.truth_frame` is set
-    # by `OrbitalGymEnv.__init__`. We compute the field name without
-    # importing the private `_truth_field` helper to keep the dependency
-    # surface narrow.
-    truth_frame = adapter.env.truth_frame
-    truth_field = {
-        "RT": "rt",
-        "RTN": "rtn",
-        "ECI": "eci",
-    }[truth_frame.name]
-
-    new_guards = template_env_state.guards.replace(
-        **{truth_field: guard_dyn.astype(getattr(template_env_state.guards, truth_field).dtype)}
+def belief_mean_to_flat_state(
+    belief_mean: jax.Array,
+    side: Side,
+    adapter: Any,
+    template_env_state: Any,
+    *,
+    observer_index: int | jax.Array = 0,
+    planning_context: Any = None,
+    joint: bool = False,
+) -> jax.Array:
+    """Pack a modeled root; default observer/template semantics remain compatible."""
+    return adapter.pack(
+        belief_mean_to_env_state(
+            belief_mean,
+            side,
+            adapter.env,
+            template_env_state,
+            observer_index=observer_index,
+            planning_context=planning_context,
+            joint=joint,
+        )
     )
-    new_bandits = template_env_state.bandits.replace(
-        **{truth_field: bandit_dyn.astype(getattr(template_env_state.bandits, truth_field).dtype)}
-    )
-    new_env_state = template_env_state.replace(guards=new_guards, bandits=new_bandits)
-    return adapter.pack(new_env_state)

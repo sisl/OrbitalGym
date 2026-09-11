@@ -1,7 +1,7 @@
 """Belief package — belief representations and updaters."""
 
 from orbitalgym.belief.base import Belief, BeliefInitializer, BeliefUpdater
-from orbitalgym.belief.contact_aware import ContactAwareBelief
+from orbitalgym.belief.contact_aware import ContactAwareBelief, PlanningContext
 from orbitalgym.belief.ekf import (
     EKFBelief,
     EKFBeliefUpdater,
@@ -34,6 +34,7 @@ __all__ = [
     "BeliefUpdater",
     "BeliefSyncFn",
     "ContactAwareBelief",
+    "PlanningContext",
     "belief_mean_to_flat_state",
     "EKFBelief",
     "EKFBeliefUpdater",
