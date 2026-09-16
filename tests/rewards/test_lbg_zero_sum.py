@@ -65,6 +65,25 @@ def test_a_frozen_step_pays_nothing():
     assert bandit == pytest.approx(0.0, abs=1e-4)
 
 
+@pytest.mark.parametrize("discount", [1.0, 0.995])
+@pytest.mark.parametrize("side", [Side.GUARD, Side.BANDIT])
+def test_timeout_shaping_telescopes_independently_of_final_geometry(discount, side):
+    """Time-limit endings must not leave a geometry-dependent shaping bonus."""
+    reward = LbgZeroSumReward(shaping_discount=discount, separation_cost=0.0)
+    initial = _state(_FAR_GUARD, [[3000.0, 0.0, 0.0]])
+    cfg = _Cfg(max_steps=3)
+    for distances in ([2500.0, 2000.0, 1500.0], [3100.0, 3300.0, 3500.0]):
+        previous = initial
+        total = 0.0
+        for k, distance in enumerate(distances):
+            current = _state(_FAR_GUARD, [[distance, 0.0, 0.0]], step=k + 1)
+            total += discount**k * float(reward(previous, None, current, side, cfg, 0.0))
+            previous = current
+        assert total == pytest.approx(
+            -reward.shaping_gain * float(reward.potential(initial, side)), abs=1e-3
+        )
+
+
 def test_the_guard_potential_rises_as_the_guard_closes_on_a_bandit():
     reward = LbgZeroSumReward()
     far = reward.potential(_state([[2000.0, 0.0, 0.0]], [[1000.0, 0.0, 0.0]]), Side.GUARD)
