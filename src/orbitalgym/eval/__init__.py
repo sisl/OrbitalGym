@@ -3,7 +3,7 @@
 from orbitalgym.eval.bank import bank_episode, load_bank, sample_bank, save_bank
 from orbitalgym.eval.conformance import ConformanceReport, check_policy_conforms
 from orbitalgym.eval.evaluate import evaluate_bank, metrics_to_records
-from orbitalgym.eval.metrics import EpisodeMetrics, Outcome, lbg_episode_metrics
+from orbitalgym.eval.metrics import EpisodeMetrics, Outcome, lbg_episode_metrics, pe_episode_metrics
 
 __all__ = [
     "bank_episode",
@@ -15,6 +15,7 @@ __all__ = [
     "EpisodeMetrics",
     "Outcome",
     "lbg_episode_metrics",
+    "pe_episode_metrics",
     "check_policy_conforms",
     "ConformanceReport",
 ]

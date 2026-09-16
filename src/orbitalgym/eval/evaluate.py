@@ -8,7 +8,9 @@ import jax
 import numpy as np
 
 from orbitalgym.env.types import BySide
-from orbitalgym.eval.metrics import EpisodeMetrics, lbg_episode_metrics
+from orbitalgym.eval.metrics import EpisodeMetrics, lbg_episode_metrics, pe_episode_metrics
+from orbitalgym.games.lady_bandit_guard import LadyBanditGuard
+from orbitalgym.games.pursuit_evasion import PursuitEvasion
 from orbitalgym.rollout import belief_rollout
 
 
@@ -36,8 +38,18 @@ def evaluate_bank(
     ``commit_radius_m`` is the bandit-to-lady distance that marks the
     commit step, and ``detect_error_m`` the threshold for
     ``time_to_belief_error_below_threshold_guard``. Sensor detection time
-    uses logged visibility independently of this threshold.
+    uses logged visibility independently of this threshold. For PE, commitment
+    has no meaning and ``commit_radius_m`` is ignored. Native PE capture is
+    scored as ``Outcome.PE_CAPTURE`` (bandit success), and only a reached game
+    deadline counts as ``TIMEOUT`` (guard survival); shorter prefixes remain
+    ``UNRESOLVED``. Other games require a game-specific evaluator.
     """
+    if isinstance(cfg.game, LadyBanditGuard):
+        episode_metrics = lbg_episode_metrics
+    elif isinstance(cfg.game, PursuitEvasion):
+        episode_metrics = pe_episode_metrics
+    else:
+        raise ValueError(f"evaluate_bank does not support game {type(cfg.game).__name__}")
     n_episodes = int(bank_states.ic_valid.shape[0])
     keys = jax.random.split(key, n_episodes)
 
@@ -53,7 +65,7 @@ def evaluate_bank(
             initial_state=initial_state,
             **rollout_kwargs,
         )
-        return lbg_episode_metrics(
+        return episode_metrics(
             traj,
             cfg,
             belief_guard=belief_history.guard,
