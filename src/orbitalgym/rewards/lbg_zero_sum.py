@@ -45,7 +45,7 @@ term and leaves a terminal-only game.
 
 The potential is zero at an absorbing state, which is the remaining condition
 those results ask of an episodic game: on the step that terminates — a catch, a
-breach, or the bandits repelled — the shaping pays ``-gain * Phi(s)`` and
+breach, the bandits repelled, or the game time limit — the shaping pays ``-gain * Phi(s)`` and
 nothing more, so a whole episode's shaping sums to ``-gain * Phi(s_0)``, a
 constant of the initial state, with no residual ``gain * g^T * Phi(s_T)`` left
 to bias which terminal state a side steers toward.
@@ -312,6 +312,7 @@ class LbgZeroSumReward:
         # gain * g^T * Phi(s_T). That is the condition under which the
         # invariance is exact for an episodic game.
         terminating = jnp.logical_or(jnp.logical_or(caught, breached), repelled)
+        terminating = jnp.logical_or(terminating, next_state.step >= params.max_steps)
         phi_next = jnp.where(terminating, 0.0, self.potential(next_state, side))
         shaping = self.shaping_gain * (
             self.shaping_discount * phi_next - self.potential(prev_state, side)
