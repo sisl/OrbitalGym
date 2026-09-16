@@ -1,3 +1,8 @@
-from orbitalgym.links.predicates import AlwaysLinked, GroundNetworkLink, PointingConeLink
+from orbitalgym.links.predicates import (
+    AlwaysLinked,
+    DistanceLink,
+    GroundNetworkLink,
+    PointingConeLink,
+)
 
-__all__ = ["AlwaysLinked", "GroundNetworkLink", "PointingConeLink"]
+__all__ = ["AlwaysLinked", "DistanceLink", "GroundNetworkLink", "PointingConeLink"]

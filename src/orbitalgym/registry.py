@@ -175,6 +175,7 @@ class LinkKey(StrEnum):
     ALWAYS = "always_linked"
     GROUND_NETWORK = "ground_network_link"
     POINTING_CONE = "pointing_cone_link"
+    DISTANCE = "distance_link"
 
 
 class GameKey(StrEnum):
@@ -267,6 +268,7 @@ _LAZY_BUILTIN_MODULES: dict[type[Enum], dict[Enum, str]] = {
         LinkKey.ALWAYS: "orbitalgym.links.predicates",
         LinkKey.GROUND_NETWORK: "orbitalgym.links.predicates",
         LinkKey.POINTING_CONE: "orbitalgym.links.predicates",
+        LinkKey.DISTANCE: "orbitalgym.links.predicates",
     },
 }
 

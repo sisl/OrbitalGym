@@ -1,7 +1,8 @@
 """Phase 0 regression test — proves the rename buckets do not change numerical
 output. Loads the pre-rename reference-scenario trajectory (captured by
 tests/fixtures/_generate_phase_0_baseline.py) and re-runs the scenario,
-asserting array_equal on every leaf.
+asserting array_equal on the unchanged leaves. The timeout reward was
+intentionally corrected after this historical fixture was captured.
 
 Phase 1 update: migrated from old single-agent rollout API to the new
 BySide-of-policies rollout. ZeroControl on both sides preserves byte
@@ -50,8 +51,22 @@ def fresh_traj():
     )
 
 
-def test_reward_identical(baseline, fresh_traj):
-    np.testing.assert_array_equal(baseline["reward"], np.asarray(fresh_traj.sides.guard.reward))
+def test_reward_prefix_identical_and_timeout_absorbing(baseline, fresh_traj):
+    reward = np.asarray(fresh_traj.sides.guard.reward)
+    np.testing.assert_array_equal(baseline["reward"][:-1], reward[:-1])
+    cfg = build_config()
+    separation = np.linalg.norm(
+        np.asarray(fresh_traj.env_state.guards.rtn[-1, 0, :3])
+        - np.asarray(fresh_traj.env_state.bandits.rtn[-1, 0, :3])
+    )
+    # This coasting fixture has no event or resource/separation penalty.
+    # Phi(next)=0 at timeout, so its last reward is -gain*Phi(previous).
+    np.testing.assert_allclose(
+        reward[-1],
+        cfg.reward_fn.shaping_gain * separation / cfg.reward_fn.shaping_scale_m,
+        rtol=1e-12,
+    )
+    assert bool(fresh_traj.episode_done[-1])
 
 
 def test_done_identical(baseline, fresh_traj):

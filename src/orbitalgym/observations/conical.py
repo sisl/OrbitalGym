@@ -2,7 +2,8 @@
 
 Per (observer, target) pair, visibility is True iff the target's relative
 position vector lies inside ANY of the observer's body-fixed cones, after
-rotation into the world frame by the observer's quaternion. When visible,
+rotation into the world frame by the observer's quaternion, AND lies within
+``max_range_m`` metres (unbounded by default). When visible,
 the measurement is the target's full dynamics state plus additive Gaussian
 noise whose standard deviation grows with the observer-target range:
 sigma_ij = sigma_floor + sigma_range_frac * range_ij. H = I_d and
@@ -16,6 +17,7 @@ the existing belief updaters consume it unchanged.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -55,6 +57,17 @@ class ConicalObservation:
         ``sigma_ij = sigma_floor + sigma_range_frac * range_ij``. The same
         ``sigma_ij`` scales every measurement row, so velocity rows are
         noised in proportion to range exactly as position rows are.
+    max_range_m:
+        Maximum observer-target separation in metres, inclusive. Positive
+        infinity (default) preserves the unbounded cone. Finite values must
+        be positive. All observers and sensors use the same range.
+
+    Negative-information scores retain the legacy angular margin (radians)
+    for unbounded cones. With finite range the score is the minimum of that
+    angular margin and ``(max_range_m - distance) / max_range_m``. This is a
+    dimensionless normalized intersection margin, not a distance in metres;
+    Soft negative-information softness must use these normalized units.
+    A zero-separation target retains the existing cone convention (zero LOS).
     """
 
     layout: Any
@@ -62,6 +75,16 @@ class ConicalObservation:
     half_angle_rad: float | jax.Array | tuple[float, ...]  # scalar or (k,)
     sigma_floor: float = 1.0
     sigma_range_frac: float = 0.0
+    max_range_m: float = math.inf
+
+    def __post_init__(self):
+        try:
+            radius = float(self.max_range_m)
+        except (TypeError, ValueError) as error:
+            raise ValueError("max_range_m must be a positive scalar in metres or +inf") from error
+        if math.isnan(radius) or radius <= 0:
+            raise ValueError("max_range_m must be positive in metres or +inf")
+        object.__setattr__(self, "max_range_m", radius)
 
     def __call__(self, env_state, actions, side, params, key, t):
         del actions, params, t
@@ -117,7 +140,7 @@ class ConicalObservation:
         # AND with opposing-side mask (excludes self pairs and same-side entities).
         opposing_mask = jnp.arange(n_total) >= n_self  # (n_total,)
         opposing_mask = jnp.broadcast_to(opposing_mask[None, :], (n_self, n_total))
-        visible = jnp.logical_and(any_sensor, opposing_mask)
+        visible = any_sensor & opposing_mask & (dist[..., 0] <= self.max_range_m)
 
         # Measurement: full target state + range-conditioned Gaussian noise.
         target_states = jnp.broadcast_to(stacked[None, :, :], (n_self, n_total, d))
@@ -158,6 +181,9 @@ class ConicalObservation:
             angle = jnp.arccos(jnp.clip(cos_theta, -1.0, 1.0))
             score_per_sensor = half_angles[None, :, None, None] - angle
             score = jnp.max(score_per_sensor, axis=1)
+            if math.isfinite(self.max_range_m):
+                range_margin = (self.max_range_m - dist[..., 0]) / self.max_range_m
+                score = jnp.minimum(score, range_margin)
             return jnp.where(detectable[:, :, None], score, OUT_OF_SCOPE_SCORE)
 
         return (

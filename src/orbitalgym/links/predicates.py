@@ -7,6 +7,7 @@ belief fusion and records it on the trajectory.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -94,3 +95,41 @@ class PointingConeLink:
         if self.mutual:
             pair = pair & pair.T
         return jnp.any(pair, axis=1)
+
+
+@register(LinkKey.DISTANCE)
+@dataclass(frozen=True)
+class DistanceLink:
+    """Symmetric distance contact for a team of at most two agents.
+
+    Both agents participate iff their separation is <= ``max_range_m`` metres.
+    A singleton or empty team is never linked. Teams larger than two raise:
+    the rollout's per-agent mask pools all linked agents into one fusion group,
+    and cannot represent separate connected components. Three-agent and larger
+    communication topologies require graph-aware fusion, not this predicate.
+    This gate models distance only, without attitude or line-of-sight blockage.
+    """
+
+    max_range_m: float
+
+    def __post_init__(self):
+        try:
+            radius = float(self.max_range_m)
+        except (TypeError, ValueError) as error:
+            raise ValueError("max_range_m must be finite positive metres") from error
+        if not math.isfinite(radius) or radius <= 0:
+            raise ValueError("max_range_m must be finite positive metres")
+        object.__setattr__(self, "max_range_m", radius)
+
+    def __call__(self, env_state: Any, side: Side, t: jax.Array) -> jax.Array:
+        del t
+        pos = _positions_3d(_side_state(env_state, side))
+        n = pos.shape[0]
+        if n > 2:
+            raise ValueError(
+                "DistanceLink supports at most two agents; larger teams need graph-aware fusion"
+            )
+        if n < 2:
+            return jnp.zeros((n,), dtype=jnp.bool_)
+        linked = jnp.linalg.norm(pos[1] - pos[0]) <= self.max_range_m
+        return jnp.broadcast_to(linked, (2,))
