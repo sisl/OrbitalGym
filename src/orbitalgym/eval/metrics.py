@@ -1,10 +1,10 @@
-"""Per-episode outcome classification and resource accounting for LBG.
+"""Per-episode outcome classification and resource accounting for LBG and PE.
 
 Every function takes a single :class:`~orbitalgym.env.types.Trajectory`
 (leaves with a leading time axis) and returns scalars, so callers batch
 with ``jax.vmap``. Delta-v is accounted from the propellant trace through
-the rocket equation when the side tracks mass, and from the commanded
-delta-v otherwise.
+the rocket equation when the side tracks mass, and from the
+delta-v actually imparted otherwise.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import jax.numpy as jnp
 
 from orbitalgym.actions.components import G0
 from orbitalgym.games.proximity import lbg_events_from_positions, positions
+from orbitalgym.games.pursuit_evasion import PursuitEvasion
 from orbitalgym.rollout import episode_mask
 
 
@@ -28,6 +29,10 @@ class Outcome(IntEnum):
     BOTH = 3
     INVALID_IC = 4
     REPELLED = 5
+    # PE reverses the pursuit roles: this is a bandit win, unlike LBG CATCH.
+    PE_CAPTURE = 6
+    UNRESOLVED = 7
+    INVALID_TRAJECTORY = 8
 
 
 @flax.struct.dataclass
@@ -77,6 +82,10 @@ class EpisodeMetrics:
     the lady. They are reported whether or not the game's win conditions
     require a dwell, and are zero for a trajectory whose states carry no
     counters.
+
+    For PE, ``pe_episode_metrics`` uses post-step endpoint distances;
+    Lady distance and commitment fields are NaN, and dwell fields are zero.
+    The guard's information fields then describe the single pursuing bandit.
     """
 
     outcome: jax.Array
@@ -442,4 +451,140 @@ def lbg_episode_metrics(
         belief_age_guard=info.belief_age,
         dwell_catch_steps=dwell_catch_steps,
         dwell_breach_steps=dwell_breach_steps,
+    )
+
+
+def pe_episode_metrics(
+    traj: Any,
+    cfg: Any,
+    *,
+    belief_guard: Any = None,
+    commit_radius_m: float = 2500.0,
+    detect_error_m: float = 100.0,
+) -> EpisodeMetrics:
+    """Score native 1v1 PE: bandit pursues and guard evades.
+
+    Capture is a strict distance test at the last live post-step endpoint,
+    matching ``PursuitEvasionTermination``; no segment, speed, or dwell gate
+    is applied. ``PE_CAPTURE`` is a bandit success. ``TIMEOUT`` means the
+    absolute game step limit was reached without capture (guard survival);
+    a shorter prefix is ``UNRESOLVED``. Invalid initial conditions and
+    nonfinite live physical traces are separate invalid outcomes.
+
+    ``min_d_gb`` uses live post-step endpoints only. There is no Lady:
+    ``min_d_bl`` and ``belief_err_guard_at_commit`` are NaN; dwell fields
+    are zero. Other information fields concern the single opposing bandit.
+    ``commit_radius_m`` is accepted for evaluator API compatibility and ignored.
+    Resource accounting uses the same mass/applied-impulse convention as LBG.
+    """
+    del commit_radius_m
+    if not isinstance(cfg.game, PursuitEvasion):
+        raise TypeError("pe_episode_metrics requires a PursuitEvasion game")
+    if (cfg.n_guards, cfg.n_bandits) != (1, 1):
+        raise ValueError("PE evaluation supports only 1v1; native events inspect the first vehicle")
+    if traj.final_state is None:
+        raise ValueError("pe_episode_metrics needs traj.final_state to score the final endpoint")
+    if traj.episode_done.shape[0] == 0:
+        raise ValueError("pe_episode_metrics needs at least one logged transition")
+
+    mask = episode_mask(traj)
+    steps = jnp.sum(mask.astype(jnp.int32))
+    last_idx = steps - 1
+    post = jax.tree_util.tree_map(
+        lambda entering, final: jnp.concatenate([entering[1:], final[None]], axis=0),
+        traj.env_state,
+        traj.final_state,
+    )
+    distance = jnp.linalg.norm(
+        positions(post.guards)[:, 0] - positions(post.bandits)[:, 0], axis=-1
+    )
+    min_d_gb = jnp.min(jnp.where(mask, distance, jnp.inf))
+    captured = distance[last_idx] < cfg.game.capture_distance_m
+    timed_out = post.step[last_idx] >= cfg.max_steps
+    outcome = jnp.where(
+        captured, Outcome.PE_CAPTURE, jnp.where(timed_out, Outcome.TIMEOUT, Outcome.UNRESOLVED)
+    )
+
+    finite = jnp.asarray(True)
+    for leaf in jax.tree_util.tree_leaves((traj.env_state, post)):
+        finite_per_step = jnp.all(jnp.isfinite(leaf), axis=tuple(range(1, leaf.ndim)))
+        finite = finite & jnp.all(jnp.where(mask, finite_per_step, True))
+
+    applied_dv = getattr(traj, "applied_dv", None)
+    if applied_dv is not None:
+        for leaf in jax.tree_util.tree_leaves(applied_dv):
+            finite_per_step = jnp.all(jnp.isfinite(leaf), axis=tuple(range(1, leaf.ndim)))
+            finite = finite & jnp.all(jnp.where(mask, finite_per_step, True))
+        # A padded NaN times a zero mask would still be NaN in the common
+        # no-mass accountant. Drop padding before summing actual impulses.
+        applied_dv = jax.tree_util.tree_map(
+            lambda value: jnp.where(mask[:, None, None], value, 0.0), applied_dv
+        )
+    dv_guard = _side_delta_v(
+        traj.env_state.guards,
+        traj.final_state.guards,
+        cfg.guard_params,
+        None if applied_dv is None else applied_dv.guard,
+        mask,
+        last_idx,
+    )
+    dv_bandit = _side_delta_v(
+        traj.env_state.bandits,
+        traj.final_state.bandits,
+        cfg.bandit_params,
+        None if applied_dv is None else applied_dv.bandit,
+        mask,
+        last_idx,
+    )
+    finite = finite & jnp.isfinite(dv_guard) & jnp.isfinite(dv_bandit)
+    outcome = jnp.where(finite, outcome, Outcome.INVALID_TRAJECTORY)
+    ic_valid = traj.env_state.ic_valid[0]
+    outcome = jnp.where(ic_valid, outcome, Outcome.INVALID_IC).astype(jnp.int32)
+
+    zero = jnp.asarray(0, dtype=jnp.int32)
+    nan = jnp.asarray(jnp.nan, dtype=distance.dtype)
+    contact = getattr(traj, "contact", None)
+    if contact is None or contact.guard is None:
+        link_events = zero
+    else:
+        any_contact = jnp.any(contact.guard, axis=-1)
+        previous = jnp.concatenate([jnp.zeros((1,), dtype=bool), any_contact[:-1]])
+        link_events = jnp.sum((any_contact & ~previous & mask).astype(jnp.int32))
+    visible = getattr(traj, "visible", None)
+    if visible is None or visible.guard is None:
+        in_cone_fraction_guard = jnp.asarray(0.0)
+    else:
+        any_visible = jnp.any(visible.guard, axis=-1)
+        in_cone_fraction_guard = jnp.sum((any_visible & mask).astype(jnp.float32)) / jnp.maximum(
+            steps, 1
+        )
+    if belief_guard is None:
+        info = GuardInformation(
+            belief_err=nan,
+            belief_err_at_commit=nan,
+            time_to_detect=_time_to_sensor_detection(traj, mask, cfg.dt),
+            time_to_belief_error_below_threshold=nan,
+            belief_age=nan,
+        )
+    else:
+        # With exactly one bandit the shared target-selection helper always
+        # selects that vehicle. A zero commit radius disables Lady commitment.
+        info = guard_information(traj, belief_guard, mask, steps, cfg.dt, 0.0, detect_error_m)
+    return EpisodeMetrics(
+        outcome=outcome,
+        steps=steps,
+        min_d_gb=min_d_gb,
+        min_d_bl=nan,
+        dv_guard=dv_guard,
+        dv_bandit=dv_bandit,
+        link_events_guard=link_events,
+        ic_valid=ic_valid,
+        in_cone_fraction_guard=in_cone_fraction_guard,
+        belief_err_guard=info.belief_err,
+        belief_err_guard_at_commit=nan,
+        time_to_detect_guard=info.time_to_detect,
+        time_to_belief_error_below_threshold_guard=info.time_to_belief_error_below_threshold,
+        belief_age_guard=info.belief_age,
+        dwell_catch_steps=zero,
+        dwell_breach_steps=zero,
     )

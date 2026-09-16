@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from enum import Enum, StrEnum
+from importlib import import_module
 from typing import TypeVar
 
 
@@ -234,8 +235,60 @@ def register(
     return decorator
 
 
+# These built-ins are deliberately absent from the package's eager imports.
+# Persisted configs can name them before a game factory or policy imports their
+# decorators. Only literal, package-owned module paths are eligible for lazy
+# loading; custom enum keys must still be explicitly registered by the caller.
+_LAZY_BUILTIN_MODULES: dict[type[Enum], dict[Enum, str]] = {
+    PolicyKey: {
+        PolicyKey.ZERO_CONTROL: "orbitalgym.policies.zero",
+        PolicyKey.POINTING: "orbitalgym.policies.pointing",
+        PolicyKey.GLIDESLOPE_TO_LADY: "orbitalgym.policies.heuristic.glideslope",
+        PolicyKey.GLIDESLOPE_INTERCEPT: "orbitalgym.policies.heuristic.glideslope",
+        PolicyKey.PHASED_BANDIT: "orbitalgym.policies.heuristic.phased_bandit",
+        PolicyKey.MPPI: "orbitalgym.policies.mppi",
+    },
+    ObservationFnKey: {
+        ObservationFnKey.COMMS_LEAK: "orbitalgym.observations.comms_leak",
+    },
+    RewardFnKey: {
+        RewardFnKey.DISTANCE_TO_REFERENCE_ORBIT: "orbitalgym.rewards.reference",
+        RewardFnKey.ZERO: "orbitalgym.rewards.reference",
+        RewardFnKey.LBG_WITH_COMMS: "orbitalgym.rewards.lbg_with_comms",
+        RewardFnKey.LBG_ZERO_SUM: "orbitalgym.rewards.lbg_zero_sum",
+    },
+    TerminationFnKey: {
+        TerminationFnKey.MAX_STEPS_ONLY: "orbitalgym.termination.reference",
+        TerminationFnKey.LBG_EVENTS: "orbitalgym.termination.lbg_events",
+        TerminationFnKey.MAX_DISTANCE: "orbitalgym.termination.max_distance",
+        TerminationFnKey.ANY_OF: "orbitalgym.termination.max_distance",
+    },
+    LinkKey: {
+        LinkKey.ALWAYS: "orbitalgym.links.predicates",
+        LinkKey.GROUND_NETWORK: "orbitalgym.links.predicates",
+        LinkKey.POINTING_CONE: "orbitalgym.links.predicates",
+    },
+}
+
+
 def resolve(key: Enum) -> Callable:
-    """Look up the callable registered against `key`. Raises KeyError if missing."""
+    """Resolve a registered callable, lazily importing known built-ins if needed.
+
+    Existing registrations take precedence. Unknown keys never choose an import
+    path, and still raise ``KeyError`` when no caller has registered them.
+    """
+    if key not in _REGISTRY:
+        module = _LAZY_BUILTIN_MODULES.get(type(key), {}).get(key)
+        if module is not None:
+            # One module may register several keys. Preserve explicit overrides
+            # of its sibling keys as well as of the requested key.
+            existing = dict(_REGISTRY)
+            existing_reverse = dict(_REVERSE)
+            try:
+                import_module(module)
+            finally:
+                _REGISTRY.update(existing)
+                _REVERSE.update(existing_reverse)
     if key not in _REGISTRY:
         raise KeyError(f"No callable registered for {key!r}")
     return _REGISTRY[key]
