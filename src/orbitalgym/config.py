@@ -612,16 +612,9 @@ _TYPED_INSTANCE_FIELDS: dict[str, type[Enum]] = {
     "bandit_policy": PolicyKey,
 }
 
-# Typed-instance fields whose instances contain config-derived non-serializable
-# sub-objects (e.g. StateLayout). These are stored as key-only dicts in JSON;
-# deserialization leaves them absent from kwargs so __post_init__ re-creates
-# them with the correct layout derived from the config's components/sizes.
-_KEY_ONLY_TYPED_FIELDS: frozenset[str] = frozenset(
-    {
-        "guard_observation_fn",
-        "bandit_observation_fn",
-    }
-)
+# Observation layouts are derived from the config; versioned payloads retain
+# every other constructor field, including recursively nested composites.
+_OBSERVATION_FIELDS = frozenset({"guard_observation_fn", "bandit_observation_fn"})
 
 # Fields that are plain enum members (not typed-instance components).
 _ENUM_FIELDS: dict[str, type[Enum]] = {
@@ -695,14 +688,10 @@ def _config_to_primitive(cfg: ScenarioConfig) -> dict[str, Any]:
         elif f.name in _TYPED_INSTANCE_FIELDS:
             if v is None:
                 d[f.name] = None
-            elif f.name in _KEY_ONLY_TYPED_FIELDS:
-                # Observation fns hold a config-derived StateLayout that is not
-                # independently serializable. Store only the registry key; the
-                # layout is re-derived from config fields during from_json.
-                from orbitalgym.registry import resolve_class_to_key
+            elif f.name in _OBSERVATION_FIELDS:
+                from orbitalgym.observations.serialize import observation_to_primitive
 
-                key_value, _ = resolve_class_to_key(type(v))
-                d[f.name] = {"_key": key_value}
+                d[f.name] = observation_to_primitive(v)
             else:
                 d[f.name] = serializable_to_primitive(v)
         elif f.name == "game":
@@ -751,6 +740,7 @@ def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> Scen
     from orbitalgym.sampling.serialize import serializable_from_primitive
 
     kwargs: dict[str, Any] = {}
+    observations_to_restore = {}
     for f in fields(cls):
         if f.name not in raw:
             # Field absent from JSON — skip and let __post_init__ supply default.
@@ -798,10 +788,12 @@ def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> Scen
             if v is None:
                 # Leave absent so __post_init__ supplies the default instance.
                 pass
-            elif f.name in _KEY_ONLY_TYPED_FIELDS:
-                # Key-only serialized fields: the stored dict has only '_key'.
-                # Leave absent so __post_init__ re-derives from config layout.
-                pass
+            elif f.name in _OBSERVATION_FIELDS:
+                # Historical key-only payloads lost all constructor settings.
+                # Preserve their old FullObservation fallback; new payloads
+                # must restore faithfully or fail, never silently default.
+                if set(v) != {"_key"}:
+                    observations_to_restore[f.name] = v
             else:
                 kwargs[f.name] = serializable_from_primitive(v, _TYPED_INSTANCE_FIELDS[f.name])
         elif f.name == "controlled_side":
@@ -812,7 +804,13 @@ def _primitive_to_config(raw: dict[str, Any], cls: type[ScenarioConfig]) -> Scen
             kwargs[f.name] = _game_from_primitive(v)
         else:
             kwargs[f.name] = v
-    return cls(**kwargs)
+    cfg = cls(**kwargs)
+    if observations_to_restore:
+        from orbitalgym.observations.serialize import observation_from_primitive
+
+        for name, payload in observations_to_restore.items():
+            object.__setattr__(cfg, name, observation_from_primitive(payload, cfg.layout))
+    return cfg
 
 
 def _ic_spec_to_primitive(spec: ICSpec) -> dict:

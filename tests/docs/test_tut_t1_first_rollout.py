@@ -4,6 +4,8 @@ docs/tutorials/t1-first-rollout.md.
 
 from __future__ import annotations
 
+import numpy as np
+
 
 def test_t1_first_rollout_rt2d():
     # --8<-- [start:imports]
@@ -48,6 +50,14 @@ def test_t1_first_rollout_rt2d():
     state_shape = traj.env_state.guards.rt.shape  # (T, N_g, 4)
     # --8<-- [end:inspect]
 
-    assert total_reward < 0.0  # negative-distance reward — closed ellipse
+    # Undiscounted potential shaping telescopes to -gain * Phi(initial),
+    # including the zero-potential timeout. It is not a distance sum.
+    initial_separation = np.linalg.norm(
+        np.asarray(traj.env_state.guards.rt[0, 0, :2])
+        - np.asarray(traj.env_state.bandits.rt[0, 0, :2])
+    )
+    expected = cfg.reward_fn.shaping_gain * initial_separation / cfg.reward_fn.shaping_scale_m
+    np.testing.assert_allclose(total_reward, expected, rtol=1e-6)
+    assert bool(traj.episode_done[-1])
     assert state_shape == (cfg.max_steps, cfg.n_guards, 4)
     assert n_steps_actual >= 1
