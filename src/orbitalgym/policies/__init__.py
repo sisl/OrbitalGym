@@ -10,7 +10,8 @@ Submodules:
     controlled      — gallery of controlled-side patterns
                       (scripted_with_fallback, belief_conditioned, composite_action).
     heuristic       — gallery of heuristic policies
-                      (lead_intercept, evader, sun_tracker, jittered).
+                      (lead_intercept, evader, sun_tracker, jittered, glideslope,
+                      PD and LQR feedback).
 """
 
 from __future__ import annotations

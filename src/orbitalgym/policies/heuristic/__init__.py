@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from orbitalgym.policies.heuristic.evader import OrthogonalEvader
+from orbitalgym.policies.heuristic.feedback import LQRFeedback, PDFeedback
 from orbitalgym.policies.heuristic.glideslope import GlideslopeIntercept, GlideslopeToLady
 from orbitalgym.policies.heuristic.jittered import JitteredPolicy
 from orbitalgym.policies.heuristic.lead_intercept import LeadInterceptPursuer
@@ -13,8 +14,10 @@ __all__ = [
     "GlideslopeIntercept",
     "GlideslopeToLady",
     "JitteredPolicy",
+    "LQRFeedback",
     "LeadInterceptPursuer",
     "OrthogonalEvader",
+    "PDFeedback",
     "PhasedBandit",
     "SunTrackerBlocker",
 ]

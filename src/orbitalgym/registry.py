@@ -91,6 +91,8 @@ class PolicyKey(StrEnum):
     GLIDESLOPE_TO_LADY = "glideslope_to_lady"
     GLIDESLOPE_INTERCEPT = "glideslope_intercept"
     PHASED_BANDIT = "phased_bandit"
+    PD_FEEDBACK = "pd_feedback"
+    LQR_FEEDBACK = "lqr_feedback"
     MPPI = "mppi"
 
 
@@ -247,6 +249,8 @@ _LAZY_BUILTIN_MODULES: dict[type[Enum], dict[Enum, str]] = {
         PolicyKey.GLIDESLOPE_TO_LADY: "orbitalgym.policies.heuristic.glideslope",
         PolicyKey.GLIDESLOPE_INTERCEPT: "orbitalgym.policies.heuristic.glideslope",
         PolicyKey.PHASED_BANDIT: "orbitalgym.policies.heuristic.phased_bandit",
+        PolicyKey.PD_FEEDBACK: "orbitalgym.policies.heuristic.feedback",
+        PolicyKey.LQR_FEEDBACK: "orbitalgym.policies.heuristic.feedback",
         PolicyKey.MPPI: "orbitalgym.policies.mppi",
     },
     ObservationFnKey: {
