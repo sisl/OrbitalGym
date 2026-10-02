@@ -27,6 +27,11 @@ dependencies = [
     "scienceplots>=2.2",
 ]
 
+[project.urls]
+Documentation = "https://sisl.github.io/OrbitalGym/"
+Repository = "https://github.com/sisl/OrbitalGym"
+Issues = "https://github.com/sisl/OrbitalGym/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0",
@@ -59,6 +64,9 @@ ground-stations = []
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/orbitalgym"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/README.md", "/LICENSE.md"]
 
 [tool.ruff]
 line-length = 100
