@@ -85,6 +85,19 @@ def test_lqr_gain_stabilizes_and_is_locally_optimal():
         assert _regulation_cost(perturbed, x0) > best
 
 
+def test_lqr_gain_matches_the_riccati_recursion_for_the_impulsive_transition():
+    # An impulse acts before the step is propagated, so the input matrix is A[:, 3:].
+    a, b = _transition()
+    q = np.diag([1 / 100.0**2] * 3 + [1.0] * 3)
+    r = np.eye(3) / 0.1**2
+    p = q
+    for _ in range(20000):
+        k = np.linalg.solve(r + b.T @ p @ b, b.T @ p @ a)
+        p = q + a.T @ p @ (a - b @ k)
+    gain = np.asarray(hcw_lqr_gain(MEAN_MOTION, DT), dtype=np.float64)
+    np.testing.assert_allclose(gain, k, rtol=1e-4, atol=1e-9)
+
+
 def test_lqr_gain_follows_the_weight_scales():
     cheap = np.asarray(hcw_lqr_gain(MEAN_MOTION, DT, impulse_scale_mps=1.0))
     default = np.asarray(hcw_lqr_gain(MEAN_MOTION, DT))
@@ -157,6 +170,28 @@ def test_policies_regulate_to_the_origin_when_asked():
         rtol=1e-4,
         atol=1e-7,
     )
+
+
+def test_lqr_policy_regulates_the_state_relative_to_the_nearest_opponent():
+    command_cls = make_impulsive_maneuver_command_cls(1)
+    policy = LQRFeedback.build(
+        mean_motion=MEAN_MOTION,
+        dt=DT,
+        n_vehicles=1,
+        n_opponents=2,
+        command_cls=command_cls,
+        max_dv_mps=CAP,
+    )
+    own = np.array([10.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    far = np.array([900.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    near = np.array([14.0, 6.0, -3.0, 0.01, 0.02, 0.0])
+    command, _ = policy(None, _view(own, far, near), jax.random.PRNGKey(0), jnp.array(0.0))
+    gain = hcw_lqr_gain(MEAN_MOTION, DT)
+    expected = np.asarray(lqr_impulse(gain, jnp.asarray(own - near, dtype=jnp.float32)))
+    to_origin = np.asarray(lqr_impulse(gain, jnp.asarray(own, dtype=jnp.float32)))
+    assert np.linalg.norm(expected) < CAP
+    assert not np.allclose(expected, to_origin, atol=1e-3)
+    np.testing.assert_allclose(np.asarray(command.dv[0]), expected, rtol=1e-4, atol=1e-7)
 
 
 def test_lqr_policy_closes_on_a_coasting_opponent():
