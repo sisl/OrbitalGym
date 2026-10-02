@@ -15,6 +15,8 @@ class directly, or read its source as a starting point for your own.
 | [`SunTrackerBlocker`](#suntrackerblocker) | Heuristic | SB | Maintains Sun-line geometry vs. opponent. |
 | [`GlideslopeToLady`](#glideslopetolady) | Heuristic | LBG | Saturation-aware glideslope to the lady plus Gaussian repulsion from opponents. |
 | [`GlideslopeIntercept`](#glideslopeintercept) | Heuristic | LBG, PE | Saturation-aware glideslope onto the nearest opponent's state. |
+| [`PDFeedback`](#pdfeedback) | Heuristic | PE, LBG | Proportional-derivative feedback onto the nearest opponent or the origin. |
+| [`LQRFeedback`](#lqrfeedback) | Heuristic | PE, LBG | Linear-quadratic regulator on the HCW relative state. |
 | [`PhasedBandit`](#phasedbandit) | Heuristic | LBG | Coast, transfer onto a standoff ring, hold there for free, then commit to the lady. |
 | [`JitteredPolicy`](#jitteredpolicy) | Heuristic (wrapper) | All | Wraps any policy and adds Gaussian jitter. |
 | [`HeuristicWithFallbackPolicy`](#heuristicwithfallbackpolicy) | Controlled (wrapper) | All | Confidence-gated routing between primary and fallback. |
@@ -29,7 +31,9 @@ from orbitalgym.policies.heuristic import (
     GlideslopeIntercept,
     GlideslopeToLady,
     LeadInterceptPursuer,
+    LQRFeedback,
     OrthogonalEvader,
+    PDFeedback,
     PhasedBandit,
     SunTrackerBlocker,
     JitteredPolicy,
@@ -96,6 +100,27 @@ beyond about 2.4 km.
 ### GlideslopeIntercept
 
 ::: orbitalgym.policies.heuristic.glideslope.GlideslopeIntercept
+
+### PDFeedback
+
+Two linear feedback baselines regulate a vehicle's RTN state relative to a
+target, the nearest opposing vehicle or the origin of the frame, toward zero.
+`PDFeedback` commands `u = -dt (kp r + kd v)` on the relative position `r` and
+velocity `v`. The default gains, `kp = 1e-4` s⁻² and `kd = 0.02` s⁻¹, give a
+damping ratio of one and a time constant of 100 s for a double integrator.
+
+::: orbitalgym.policies.heuristic.feedback.PDFeedback
+
+### LQRFeedback
+
+`LQRFeedback` commands `u = -K x`, where `K` is the discrete-time
+infinite-horizon regulator gain for the impulsive HCW transition over one
+step. `hcw_lqr_gain` computes the gain from the mean motion, the step, and the
+scales of the position, velocity, and impulse weights.
+
+::: orbitalgym.policies.heuristic.feedback.LQRFeedback
+
+::: orbitalgym.policies.heuristic.feedback.hcw_lqr_gain
 
 ### PhasedBandit
 

@@ -16,7 +16,9 @@ def test_every_gallery_class_imports_from_documented_path():
         GlideslopeToLady,
         JitteredPolicy,
         LeadInterceptPursuer,
+        LQRFeedback,
         OrthogonalEvader,
+        PDFeedback,
         SunTrackerBlocker,
     )
 
@@ -30,3 +32,5 @@ def test_every_gallery_class_imports_from_documented_path():
     assert UniformRandomDiscretePolicy(action_grid=jnp.zeros((1, 2)))
     assert GlideslopeToLady is not None
     assert GlideslopeIntercept is not None
+    assert PDFeedback is not None
+    assert LQRFeedback is not None
