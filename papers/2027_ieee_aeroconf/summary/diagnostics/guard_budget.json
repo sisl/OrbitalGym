@@ -1,0 +1,122 @@
+[
+  {
+    "guard": "lqr",
+    "bandit": "lqr",
+    "guard_budget_mps": 5.0,
+    "defense_fraction": 0.2265625,
+    "capture_fraction": 0.03125,
+    "breach_fraction": 0.7734375,
+    "guard_dv_mps": 4.956181440967533,
+    "median_closest_m": 35.019111085232296
+  },
+  {
+    "guard": "lqr",
+    "bandit": "lqr",
+    "guard_budget_mps": 10.0,
+    "defense_fraction": 0.2265625,
+    "capture_fraction": 0.2109375,
+    "breach_fraction": 0.7734375,
+    "guard_dv_mps": 6.0633409107579785,
+    "median_closest_m": 27.83897876075221
+  },
+  {
+    "guard": "lqr",
+    "bandit": "lqr",
+    "guard_budget_mps": 20.0,
+    "defense_fraction": 0.2265625,
+    "capture_fraction": 0.2265625,
+    "breach_fraction": 0.7734375,
+    "guard_dv_mps": 6.080911876515881,
+    "median_closest_m": 27.83897876075221
+  },
+  {
+    "guard": "lqr",
+    "bandit": "lqr",
+    "guard_budget_mps": "inf",
+    "defense_fraction": 0.2265625,
+    "capture_fraction": 0.2265625,
+    "breach_fraction": 0.7734375,
+    "guard_dv_mps": 6.080911876515881,
+    "median_closest_m": 27.83897876075221
+  },
+  {
+    "guard": "hcw",
+    "bandit": "lqr",
+    "guard_budget_mps": 5.0,
+    "defense_fraction": 0.2109375,
+    "capture_fraction": 0.0078125,
+    "breach_fraction": 0.7890625,
+    "guard_dv_mps": 4.9890625,
+    "median_closest_m": 40.32396061907717
+  },
+  {
+    "guard": "hcw",
+    "bandit": "lqr",
+    "guard_budget_mps": 10.0,
+    "defense_fraction": 0.2109375,
+    "capture_fraction": 0.03125,
+    "breach_fraction": 0.7890625,
+    "guard_dv_mps": 6.423437499999997,
+    "median_closest_m": 37.184577946033784
+  },
+  {
+    "guard": "hcw",
+    "bandit": "lqr",
+    "guard_budget_mps": 20.0,
+    "defense_fraction": 0.2109375,
+    "capture_fraction": 0.171875,
+    "breach_fraction": 0.7890625,
+    "guard_dv_mps": 7.389080299622751,
+    "median_closest_m": 29.171599969209893
+  },
+  {
+    "guard": "hcw",
+    "bandit": "lqr",
+    "guard_budget_mps": "inf",
+    "defense_fraction": 0.2109375,
+    "capture_fraction": 0.171875,
+    "breach_fraction": 0.7890625,
+    "guard_dv_mps": 7.389080299622751,
+    "median_closest_m": 29.171599969209893
+  },
+  {
+    "guard": "pd",
+    "bandit": "lqr",
+    "guard_budget_mps": 5.0,
+    "defense_fraction": 0.25,
+    "capture_fraction": 0.0546875,
+    "breach_fraction": 0.75,
+    "guard_dv_mps": 4.925675689616764,
+    "median_closest_m": 47.557983086028166
+  },
+  {
+    "guard": "pd",
+    "bandit": "lqr",
+    "guard_budget_mps": 10.0,
+    "defense_fraction": 0.25,
+    "capture_fraction": 0.25,
+    "breach_fraction": 0.75,
+    "guard_dv_mps": 5.809039522635508,
+    "median_closest_m": 34.689798205590456
+  },
+  {
+    "guard": "pd",
+    "bandit": "lqr",
+    "guard_budget_mps": 20.0,
+    "defense_fraction": 0.25,
+    "capture_fraction": 0.25,
+    "breach_fraction": 0.75,
+    "guard_dv_mps": 5.809039522635508,
+    "median_closest_m": 34.689798205590456
+  },
+  {
+    "guard": "pd",
+    "bandit": "lqr",
+    "guard_budget_mps": "inf",
+    "defense_fraction": 0.25,
+    "capture_fraction": 0.25,
+    "breach_fraction": 0.75,
+    "guard_dv_mps": 5.809039522635508,
+    "median_closest_m": 34.689798205590456
+  }
+]
