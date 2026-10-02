@@ -2,7 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = ["matplotlib>=3.10", "numpy", "pandas>=2.2", "scienceplots>=2.2"]
 # ///
-"""Print the quantities that the Results section quotes, from the committed summaries.
+"""Print the quantities that the Results section quotes, from the summaries of the runs.
 
     uv run papers/2027_ieee_aeroconf/quoted_numbers.py
 
