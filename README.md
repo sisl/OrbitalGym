@@ -51,6 +51,10 @@ just install
 
 See the [Getting started guide](https://sisl.github.io/OrbitalGym/getting-started/) to walk from a fresh checkout to a rendered trajectory plot.
 
+## Papers
+
+[`papers/2027_ieee_aeroconf`](papers/2027_ieee_aeroconf) holds the experiments, figures, and quoted statistics of "Where Planning Changes the Outcome of Orbital Games" (IEEE Aerospace Conference, 2027), one runnable script per experiment.
+
 ## Development
 
 Every recipe has an equivalent raw command you can run directly.
