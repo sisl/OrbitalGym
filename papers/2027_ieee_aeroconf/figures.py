@@ -2,15 +2,16 @@
 # requires-python = ">=3.12"
 # dependencies = ["matplotlib>=3.10", "numpy", "pandas>=2.2", "scienceplots>=2.2"]
 # ///
-"""Figures 3 to 7 and Table 6 of the paper, from the committed summaries.
+"""Figures 3 to 7 and Table 6 of the paper, from the summaries of the experiment runs.
 
     uv run papers/2027_ieee_aeroconf/figures.py
     uv run papers/2027_ieee_aeroconf/figures.py figure_3_capability table_6_search
 
-Each figure reads ``summary/<run>.csv`` next to this script and writes a PDF
-and a PNG to ``figures/``. Win fractions are plotted in percent. Outcomes that
-favor the bandit (the pursuer in pursuit-evasion, the attacker in
-lady-bandit-guard) shade red and outcomes that favor the guard shade blue.
+Each figure reads ``summary/<run>.csv``, which the experiment scripts write
+next to this script, and writes a PDF and a PNG to ``figures/``. Win fractions
+are plotted in percent. Outcomes that favor the bandit (the pursuer in
+pursuit-evasion, the attacker in lady-bandit-guard) shade red and outcomes
+that favor the guard shade blue.
 """
 
 import argparse

@@ -1,3 +1,4 @@
-# Encounter records are large; the summaries under summary/ are committed.
+# Outputs of the scripts: encounter records, summaries, and figures.
 results/
+summary/
 figures/

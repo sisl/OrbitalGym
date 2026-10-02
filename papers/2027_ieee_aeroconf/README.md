@@ -32,7 +32,7 @@ Run an experiment on a GPU from the repository root:
 uv run --with "jax[cuda12]" papers/2027_ieee_aeroconf/pe_1_capability.py pe_1
 ```
 
-Without run names a script executes all of its runs. A run writes one Parquet file of encounter records per configuration to `results/<run>/cells/` and resumes from the files already there. When it finishes it writes `summary/<run>.csv`, one row per configuration. The records are not committed; the summaries are.
+Without run names a script executes all of its runs. A run writes one Parquet file of encounter records per configuration to `results/<run>/cells/` and resumes from the files already there. When it finishes it writes `summary/<run>.csv`, one row per configuration. Neither the records nor the summaries are committed.
 
 All runs together take about 7.5 hours on one NVIDIA H100. Without `--with "jax[cuda12]"` the scripts run on the CPU, which is practical only for the runs without MPPI or MCTS.
 
@@ -40,7 +40,7 @@ All runs together take about 7.5 hours on one NVIDIA H100. Without `--with "jax[
 
 ## Figures and quoted statistics
 
-These scripts read the committed summaries and need no GPU:
+`figures.py` and `quoted_numbers.py` read the summaries that the experiment scripts and `diagnostics.py` write, so run those first. None of these scripts needs a GPU:
 
 ```bash
 uv run papers/2027_ieee_aeroconf/figures.py
@@ -63,7 +63,7 @@ uv run papers/2027_ieee_aeroconf/figure_2_game_progression.py
 | `figure_1_method_overview.py` | Figure 1, from `figure_data/method_overview.npz` |
 | `figure_2_game_progression.py` | Figure 2, from `figure_data/game_progression.npz` |
 | `figures.py` | Figures 3 to 7 and Table 6, from `summary/` |
-| `quoted_numbers.py` | Every statistic quoted in the Results section, from `summary/` |
+| `quoted_numbers.py` | The statistics quoted in the Results section, from `summary/` |
 | `policy_gain_uncertainty.py` | Standard errors of the win fractions and policy gains, from `results/` |
 | `listing_1_pursuit_evasion.py` | Listing 1 |
 
