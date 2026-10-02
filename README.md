@@ -34,12 +34,6 @@ pip install orbitalgym[cuda13]
 pip install orbitalgym[mps]
 ```
 
-The Gymnasium and PettingZoo adapters live behind their own extras (the POMDP adapter has no external dependency and is always importable):
-
-```bash
-pip install orbitalgym[gymnasium,pettingzoo]
-```
-
 ## Quickstart
 
 This project uses [`just`](https://github.com/casey/just) as a command runner and [`uv`](https://docs.astral.sh/uv/) for Python package management.
