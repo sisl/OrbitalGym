@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sisl/OrbitalGym/actions/workflows/ci.yml"><img src="https://github.com/sisl/OrbitalGym/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <!-- <a href="https://github.com/sisl/OrbitalGym/actions/workflows/ci.yml"><img src="https://github.com/sisl/OrbitalGym/actions/workflows/ci.yml/badge.svg" alt="CI"></a> -->
   <a href="https://sisl.github.io/OrbitalGym/"><img src="https://img.shields.io/badge/docs-latest-blue" alt="Documentation"></a>
 </p>
 
