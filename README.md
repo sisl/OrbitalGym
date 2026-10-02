@@ -34,8 +34,6 @@ pip install orbitalgym[cuda13]
 pip install orbitalgym[mps]
 ```
 
-The Gymnasium, PettingZoo, and POMDP adapters need no extra and are always importable.
-
 ## Quickstart
 
 This project uses [`just`](https://github.com/casey/just) as a command runner and [`uv`](https://docs.astral.sh/uv/) for Python package management.
@@ -68,17 +66,6 @@ Every recipe has an equivalent raw command you can run directly.
 | All quality checks | `just check` | Runs fmt + lint + typecheck |
 | Build docs | `just docs-build` | `uv run zensical build --clean` |
 | Serve docs | `just docs-serve` | `uv run zensical serve --clean` |
-
-## Releasing
-
-Set `version` in `pyproject.toml`, merge the change, then push a tag of the same version prefixed with `v`:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The Release workflow checks that the tag matches the package version, builds the source distribution and the wheel with `uv build`, and publishes them to [PyPI](https://pypi.org/project/orbitalgym/) through trusted publishing from the `pypi` environment.
 
 ## License
 
