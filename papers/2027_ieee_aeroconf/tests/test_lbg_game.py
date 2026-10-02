@@ -1,6 +1,7 @@
 """The lady-bandit-guard game: breach, capture, their order, and the timeout."""
 
 import numpy as np
+import pytest
 from lbg_game import LBGGame, evaluate_lbg
 
 
@@ -45,3 +46,8 @@ def test_timeout_is_a_guard_win():
     game = LBGGame(guard="coast", bandit="coast", horizon_s=100.0)
     result = evaluate_lbg([game], initial, [0])
     assert result["outcome"][0] == 1 and result["capture"][0] == 0 and result["breach"][0] == 0
+
+
+def test_an_unlimited_bandit_thrust_limit_is_rejected():
+    with pytest.raises(ValueError, match="bandit_cap_mps"):
+        LBGGame(bandit_cap_mps=np.inf)

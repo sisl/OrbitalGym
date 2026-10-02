@@ -79,6 +79,16 @@ def atomic_json(path, data):
     os.replace(tmp, path)
 
 
+def package_digest():
+    """Digest of the installed orbitalgym sources."""
+    root = Path(orbitalgym.__file__).parent
+    combined = hashlib.sha256()
+    for path in sorted(root.rglob("*.py")):
+        combined.update(path.relative_to(root).as_posix().encode())
+        combined.update(path.read_bytes())
+    return combined.hexdigest()
+
+
 def identity(run):
     """What must not change between the launch of a run and its resumption."""
     sources = [ROOT / name for name in SHARED_SOURCES]
@@ -88,7 +98,8 @@ def identity(run):
         "episodes": run.episodes,
         "seed": run.seed,
         "default_planner": Planner().record(),
-        "orbitalgym": importlib.metadata.version("orbitalgym"),
+        "orbitalgym": package_digest(),
+        "versions": {name: importlib.metadata.version(name) for name in LIBRARIES},
         "sources": {p.name: digest(p) for p in sorted(set(sources))},
         "initial_population": "isotropic position direction, zero relative velocity",
     }
@@ -136,7 +147,6 @@ def execute(run, results=RESULTS):
         "command": sys.argv,
         "backend": jax.default_backend(),
         "device_kind": jax.devices()[0].device_kind,
-        "versions": {name: importlib.metadata.version(name) for name in LIBRARIES},
     }
     path = out / "run.json"
     if path.exists():
@@ -144,7 +154,7 @@ def execute(run, results=RESULTS):
         if manifest["identity"] != identity(run):
             raise RuntimeError(
                 f"{out} holds a run with a different grid, seed, encounter count, planner, "
-                "or source; move it aside or pass another --results directory"
+                "source, or library version; move it aside or pass another --results directory"
             )
         manifest["invocations"].append(invocation)
         manifest.pop("finished_utc", None)
@@ -173,8 +183,9 @@ def execute(run, results=RESULTS):
         )
         for i, (game, _) in enumerate(rows):
             part = slice(i * len(ids), (i + 1) * len(ids))
-            frame = cell_frame(game, planner, result, part, ids)
-            frame.to_parquet(out / "cells" / f"{game.key(planner)}.parquet")
+            cell = out / "cells" / f"{game.key(planner)}.parquet"
+            cell_frame(game, planner, result, part, ids).to_parquet(cell.with_suffix(".tmp"))
+            os.replace(cell.with_suffix(".tmp"), cell)
         print(
             f"batch {len(batch)} configurations plans={batch[0][0].plans} "
             f"{time.time() - start:.1f}s",
@@ -187,8 +198,12 @@ def execute(run, results=RESULTS):
 def encounters(run, results=RESULTS):
     """Encounter records of every configuration of a finished run, checked for completeness."""
     out = Path(results) / run.name
-    if "finished_utc" not in json.loads((out / "run.json").read_text()):
+    manifest = json.loads((out / "run.json").read_text())
+    if "finished_utc" not in manifest:
         raise ValueError(f"{run.name}: the run has not finished")
+    saved = manifest["identity"]
+    if (saved["run"], saved["episodes"], saved["seed"]) != (run.name, run.episodes, run.seed):
+        raise ValueError(f"{out} holds a run with a different name, encounter count, or seed")
     expected = np.arange(run.episodes)
     frames = []
     for game, planner in run.entries():

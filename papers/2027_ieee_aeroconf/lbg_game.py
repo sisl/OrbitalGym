@@ -72,10 +72,12 @@ class LBGGame:
             value = getattr(self, name)
             if not math.isfinite(value) or value <= 0:
                 raise ValueError(f"{name} must be finite and positive")
-        for name in ("guard_budget_mps", "bandit_budget_mps", "bandit_cap_mps"):
+        if not math.isfinite(self.bandit_cap_mps) or self.bandit_cap_mps < 0:
+            raise ValueError("bandit_cap_mps must be finite and nonnegative")
+        for name in ("guard_budget_mps", "bandit_budget_mps"):
             value = getattr(self, name)
             if math.isnan(value) or value < 0:
-                raise ValueError(f"{name} must be nonnegative")
+                raise ValueError(f"{name} must be nonnegative or positive infinity")
         for name in ("capture_speed_mps", "breach_speed_mps"):
             if math.isnan(getattr(self, name)) or getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive or positive infinity")
@@ -245,17 +247,20 @@ def kernel(dt, steps, lookahead, capture, breach, substeps, planner, g_plans, b_
     env = make_environment(dt, dt * steps, 1e-9)
     matrices = controller_matrices(env.mean_motion, dt, lookahead)
     a = jnp.asarray(hcw_rtn_stm(env.mean_motion, dt))
-    taus = jnp.stack(
-        [
-            jnp.asarray(hcw_rtn_stm(env.mean_motion, dt * (j + 1) / substeps))
-            for j in range(substeps)
-        ]
-    )
+
+    def interior(count):
+        return jnp.stack(
+            [jnp.asarray(hcw_rtn_stm(env.mean_motion, dt * (j + 1) / count)) for j in range(count)]
+        )
+
+    taus = interior(substeps)
+    rollout_taus = interior(planner.rollout_substeps or substeps)
     gain = matrices[0]
     evader_planner = planner.for_evader()
-    g_plan = make_mppi(make_rollout(a, taus, gain, (capture, breach), planner, True), planner)
+    events_at = (capture, breach)
+    g_plan = make_mppi(make_rollout(a, rollout_taus, gain, events_at, planner, True), planner)
     b_plan = make_mppi(
-        make_rollout(a, taus, gain, (capture, breach), evader_planner, False), evader_planner
+        make_rollout(a, rollout_taus, gain, events_at, evader_planner, False), evader_planner
     )
     template, _ = env.reset(jax.random.PRNGKey(0))
     gc, bc = env.guard_command_cls.zeros(1), env.bandit_command_cls.zeros(1)

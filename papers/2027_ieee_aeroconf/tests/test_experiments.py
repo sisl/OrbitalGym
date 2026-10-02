@@ -5,9 +5,11 @@ import importlib
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pandas as pd
 import pytest
 from controllers import controller_matrices, pursuit_command
-from pe_game import REFERENCE_RADIUS_M
+from pe_game import REFERENCE_RADIUS_M, Game
+from runner import Run, encounters, execute, summarize
 
 from orbitalgym.dynamics.hcw import hcw_rtn_stm
 from orbitalgym.policies.heuristic.feedback import hcw_lqr_gain, pd_impulse
@@ -51,3 +53,20 @@ def test_pursuit_laws_use_the_package_feedback_policies():
         x + jnp.concatenate([jnp.zeros(3), pursuit_command(2, x, matrices, 0.1, key, 10.0)])
     )
     np.testing.assert_allclose(after[:3], 0.0, atol=1e-6)
+
+
+def test_a_run_resumes_summarizes_and_refuses_another_seed(tmp_path):
+    def grid():
+        return [Game(pursuer="lqr", evader="coast", horizon_s=300.0)]
+
+    run = Run("resumed", grid, episodes=2)
+    execute(run, tmp_path / "results")
+    execute(run, tmp_path / "results")
+    assert summarize(run, tmp_path / "results", tmp_path / "summary") == 1
+    table = pd.read_csv(tmp_path / "summary" / "resumed.csv")
+    assert table.episodes.tolist() == [2]
+    assert not list((tmp_path / "results").rglob("*.tmp"))
+    with pytest.raises(RuntimeError, match="different grid, seed"):
+        execute(Run("resumed", grid, episodes=2, seed=1), tmp_path / "results")
+    with pytest.raises(ValueError, match="different name, encounter count, or seed"):
+        encounters(Run("resumed", grid, episodes=2, seed=1), tmp_path / "results")
